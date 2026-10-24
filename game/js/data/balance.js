@@ -52,6 +52,13 @@ export const GARDEN_FORAGE = { cap: 200 };
 // patch slowly forms; after the rock is moved the patch lingers, then fades.
 export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 34, y: 187 } }; // the patch's spot on the map
 
+// Eggs found on expeditions: the tier is rolled up from the area's egg tier.
+// [tiers above, weight]. Chests lean higher but never pass +3.
+export const EGG_DROPS = {
+  find: [[0, 85], [1, 11], [2, 3], [3, 1]],
+  chest: [[0, 55], [1, 30], [2, 11], [3, 4]],
+};
+
 // Wild bugs wander into the garden while it has room (say, while the party is
 // away). Say hi before they leave and they give a small gift: usually coins,
 // sometimes an egg. Times are in minutes.

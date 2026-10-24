@@ -4,7 +4,9 @@ import { Rng } from '../game/js/core/rng.js';
 import { EGG_TIERS } from '../game/js/data/eggs.js';
 import { RARITY_ORDER } from '../game/js/data/rarities.js';
 import { SPECIES } from '../game/js/data/species.js';
-import { validateEggTiers, eggOdds, rollEgg, simulateHatches, incubatorCount } from '../game/js/systems/eggs.js';
+import { validateEggTiers, eggOdds, rollEgg, simulateHatches, incubatorCount, rollDropTier } from '../game/js/systems/eggs.js';
+import { AREAS } from '../game/js/data/areas.js';
+import { EGG_BY_ID } from '../game/js/data/eggs.js';
 import { makeGame, HOUR } from './helpers.mjs';
 
 const rarePlus = (tier) => eggOdds(tier).filter((o) => RARITY_ORDER.indexOf(o.rarity) >= RARITY_ORDER.indexOf('rare')).reduce((s, o) => s + o.chance, 0);
@@ -154,4 +156,21 @@ test('better eggs appear in the shop as new areas open', () => {
   assert.equal(game.buyEgg('celestial').ok, false, 'needs runs in the Aether too');
   game.state.areas.aether.runs = 10;
   assert.ok(game.buyEgg('celestial').ok);
+});
+
+test('expedition eggs roll their tier: mostly the area\'s own, rarely up to 3 tiers better', () => {
+  const rng = new Rng(11);
+  for (const area of AREAS) {
+    const base = EGG_BY_ID[area.eggTier].index;
+    for (const kind of ['find', 'chest']) {
+      const ups = [0, 0, 0, 0];
+      for (let i = 0; i < 20000; i++) {
+        const up = EGG_BY_ID[rollDropTier(area, kind, rng)].index - base;
+        assert.ok(up >= 0 && up <= 3, `${area.id} ${kind}: +${up}`);
+        ups[up] += 1;
+      }
+      assert.ok(ups[0] > ups[1] && ups[1] > ups[2] && ups[2] > ups[3] && ups[3] > 0, `${area.id} ${kind}: ${ups}`);
+      if (kind === 'find') assert.ok(ups[3] / 20000 < 0.02, '+3 is rare');
+    }
+  }
 });

@@ -2,7 +2,7 @@ import { Rng } from '../core/rng.js';
 import { EGG_TIERS, EGG_BY_ID } from '../data/eggs.js';
 import { SPECIES_LIST } from '../data/species.js';
 import { RARITY_ORDER } from '../data/rarities.js';
-import { BASE_INCUBATOR_SLOTS } from '../data/balance.js';
+import { BASE_INCUBATOR_SLOTS, EGG_DROPS } from '../data/balance.js';
 import { AREA_BY_ID } from '../data/areas.js';
 import { upgradeValue } from '../data/upgrades.js';
 
@@ -71,4 +71,11 @@ export function shopStock(state, tierId) {
   const runs = state.areas[area.id].runs;
   if (shop.runs && runs < shop.runs) return { ok: false, reason: `After ${shop.runs} expeditions in ${area.name} (${runs}/${shop.runs})` };
   return { ok: true };
+}
+
+// The tier of an egg found in this area: usually the area's own, rarely up
+// to 3 tiers better. kind: 'find' (encounters) or 'chest'.
+export function rollDropTier(area, kind, rng) {
+  const up = rng.weighted(EGG_DROPS[kind]);
+  return EGG_TIERS[Math.min(EGG_TIERS.length - 1, EGG_BY_ID[area.eggTier].index + up)].id;
 }

@@ -5,6 +5,7 @@ import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, EXPEDITION_LENGTH, PACE, PART
 import { upgradeValue } from '../data/upgrades.js';
 import { partyTraitScores, resolveCheck } from './traits.js';
 import { effectiveTraits, bugName, traitTotal } from './bugs.js';
+import { rollDropTier } from './eggs.js';
 
 export function expeditionSlots(state) {
   return BASE_EXPEDITION_SLOTS + upgradeValue(state, 'improved_exploration').slots;
@@ -100,7 +101,7 @@ export function planExpedition(state, area, party, seed, chosenCount) {
     for (const [id, n] of o.items || []) add(id, n);
     if (o.loot && rng.chance(Math.min(1, o.loot * Math.sqrt(special)))) add(rollLoot(area.loot));
     if (o.gear && rng.chance(o.gear)) add(rollLoot(gearOnly));
-    if (o.egg && rng.chance(Math.min(1, o.egg))) rec.eggs.push(rollLoot(area.eggs));
+    if (o.egg && rng.chance(Math.min(1, o.egg))) rec.eggs.push(rollDropTier(area, 'find', rng));
   };
 
   const encounters = [];
@@ -122,7 +123,7 @@ export function planExpedition(state, area, party, seed, chosenCount) {
         rec.coins = Math.round(rng.float(0.8, 1.2) * area.coinBase * area.chest.coins * coinMult);
         const n = rng.int(CHEST.lootRolls[0], CHEST.lootRolls[1]);
         for (let k = 0; k < n; k++) { const id = rollLoot(area.chest.loot); rec.items[id] = (rec.items[id] || 0) + 1; }
-        if (rng.chance(Math.min(1, area.chest.eggChance * Math.sqrt(special)))) rec.eggs.push(rollLoot(area.chest.eggs));
+        if (rng.chance(Math.min(1, area.chest.eggChance * Math.sqrt(special)))) rec.eggs.push(rollDropTier(area, 'chest', rng));
         rec.chest = true;
       } else {
         const chk = resolveCheck(scores, [CHEST.pryTrait], area.difficulty + CHEST.pryDifficulty, rng);

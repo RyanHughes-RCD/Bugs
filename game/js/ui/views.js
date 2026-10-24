@@ -338,6 +338,7 @@ function areaCard(v, area) {
   return `<div class="area-card ${as.unlocked ? '' : 'locked'}">
     <div class="area-banner px-bg" style="${areaBackground(area, A)}"><span>${area.index + 1}. ${area.name}</span><i class="diff">Difficulty ${area.difficulty}</i></div>
     <div class="area-body"><p>${esc(area.desc)}</p>
+      <div class="meta">${eggImg(A, area.eggTier, 'xs')} Finds ${EGG_BY_ID[area.eggTier].name}s, and rarely better: up to ${EGG_TIERS[Math.min(EGG_TIERS.length - 1, EGG_BY_ID[area.eggTier].index + 3)].name}s</div>
       <div class="meta">Suits party power <b>${area.pace.power}</b>: ${fmtDur(encMin)} per encounter at that power, longer for weaker parties${area.index ? ' (and more so here than in easier areas)' : ''}${as.unlocked ? ` · ${as.runs} completed` : ''}</div>
       <div class="row wrap">${action}</div></div></div>`;
 }

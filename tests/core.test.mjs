@@ -39,7 +39,7 @@ test('game data is valid: species, items, areas, encounters, sprites', () => {
   }
   for (const a of AREAS) {
     for (const [id] of [...a.loot, ...a.chest.loot]) assert.ok(ITEMS[id], `${a.id} loot ${id}`);
-    for (const [tier] of [...a.eggs, ...a.chest.eggs]) assert.ok(EGG_BY_ID[tier], `${a.id} egg ${tier}`);
+    assert.ok(EGG_BY_ID[a.eggTier], `${a.id} egg tier ${a.eggTier}`);
     assert.ok(a.encounters[0] >= 1 && a.encounters[1] >= a.encounters[0]);
     assert.ok(ENCOUNTERS.filter((e) => !e.areas || e.areas.includes(a.id)).length >= 10, `${a.id} has an encounter pool`);
   }
