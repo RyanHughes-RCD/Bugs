@@ -209,8 +209,9 @@ export class GardenScene {
         // Crawl back out beside the rock.
         const r = this.game.state.garden.rock;
         const a = rand(0, Math.PI * 2);
-        e.x = clamp(r.x + Math.cos(a) * (this.assets.rock.width / 2 + 6), BOUNDS.x0, BOUNDS.x1);
-        e.y = clamp(r.y + Math.sin(a) * (this.assets.rock.height / 2 + 4), BOUNDS.y0, BOUNDS.y1);
+        const rs = this.rockSize();
+        e.x = clamp(r.x + Math.cos(a) * (rs.w / 2 + 6), BOUNDS.x0, BOUNDS.x1);
+        e.y = clamp(r.y + Math.sin(a) * (rs.h / 2 + 4), BOUNDS.y0, BOUNDS.y1);
         e.wait = rand(0.5, 2);
       }
       return;
@@ -459,29 +460,40 @@ export class GardenScene {
     const { ctx, scale } = this;
     const r = this.rock();
     const art = this.assets.rock;
+    const size = this.rockSize();
     const lifted = this.rockDrag ? 6 : 0;
     const [sx, sy] = this.toScreen(r.x, r.y);
     if (lifted) {
       ctx.fillStyle = 'rgba(26, 28, 44, 0.3)';
       ctx.beginPath();
-      ctx.ellipse(sx, sy + 2 * scale, (art.width / 2) * scale, (art.height / 3) * scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(sx, sy + 2 * scale, (size.w / 2) * scale, (size.h / 3) * scale, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.drawImage(art, Math.round(sx - (art.width * scale) / 2), Math.round(sy - (art.height * 0.62 + lifted) * scale), art.width * scale, art.height * scale);
+    // Whole device pixels per rock pixel keeps the finer pixels crisp.
+    const px = Math.max(1, Math.round(scale * this.assets.rockScale));
+    const dw = art.width * px;
+    const dh = art.height * px;
+    ctx.drawImage(art, Math.round(sx - dw / 2), Math.round(sy - (size.h * 0.62 + lifted) * scale), dw, dh);
+  }
+
+  // The rock's size in map pixels.
+  rockSize() {
+    const art = this.assets.rock;
+    return { w: art.width * this.assets.rockScale, h: art.height * this.assets.rockScale };
   }
 
   // Whether a world point is on the rock (at its saved spot, or at r).
   onRock(wx, wy, r = this.game.state.garden.rock) {
-    const art = this.assets.rock;
-    const dx = (wx - r.x) / (art.width / 2);
-    const dy = (wy - (r.y - art.height * 0.12)) / (art.height / 2);
+    const art = this.rockSize();
+    const dx = (wx - r.x) / (art.w / 2);
+    const dy = (wy - (r.y - art.h * 0.12)) / (art.h / 2);
     return dx * dx + dy * dy <= 1.1;
   }
 
   // Cosmetic only: bugs caught under a dropped rock get squashed, complain,
   // pop out from under it and move slowly for a few seconds.
   squishUnder(x, y) {
-    const art = this.assets.rock;
+    const art = this.rockSize();
     for (const e of this.entities.values()) {
       if (e.hidden || !this.onRock(e.x, e.y - this.bob(e), { x, y })) continue;
       e.squish = 2.4;
@@ -493,8 +505,8 @@ export class GardenScene {
       e.actTime = 0;
       e.wait = 1.2;
       const a = Math.atan2(e.y - y, e.x - x) || rand(0, Math.PI * 2);
-      e.x = clamp(x + Math.cos(a) * (art.width / 2 + 8), BOUNDS.x0, BOUNDS.x1);
-      e.y = clamp(y - art.height * 0.12 + Math.sin(a) * (art.height / 2 + 9), BOUNDS.y0, BOUNDS.y1);
+      e.x = clamp(x + Math.cos(a) * (art.w / 2 + 8), BOUNDS.x0, BOUNDS.x1);
+      e.y = clamp(y - art.h * 0.12 + Math.sin(a) * (art.h / 2 + 9), BOUNDS.y0, BOUNDS.y1);
     }
   }
 

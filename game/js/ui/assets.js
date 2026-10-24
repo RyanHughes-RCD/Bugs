@@ -199,16 +199,14 @@ export class Assets {
     return out;
   }
 
-  // The rock sprite from data/sprites.js, trimmed and scaled up with crisp
-  // pixels so it is about as wide as the dirt patch it sits on.
+  // The rock sprite from data/sprites.js, trimmed and upscaled 3x with
+  // Scale3x, which keeps its shape and colours but smooths the stair-stepped
+  // edges into finer pixels. rockScale is how many map pixels each of those
+  // finer pixels covers, so the rock stays about as wide as the dirt patch.
   makeRock(targetWidth) {
-    const art = this.cropToContent(this.sprites.rock);
-    const k = Math.max(1, Math.round(targetWidth / art.width));
-    const c = makeCanvas(art.width * k, art.height * k);
-    const ctx = c.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(art, 0, 0, c.width, c.height);
-    return c;
+    const art = scale3x(this.cropToContent(this.sprites.rock));
+    this.rockScale = targetWidth / art.width;
+    return art;
   }
 
   // Builds an egg (plus three cracked stages) from the tier's visual config.
@@ -316,4 +314,43 @@ function findEyes(px, W, view) {
     return [left, right].filter(Boolean);
   }
   return [];
+}
+
+// Scale3x / AdvMAME3x pixel-art upscaler: every pixel becomes a 3x3 block,
+// with corners taken from matching neighbours so diagonals stay smooth.
+function scale3x(src) {
+  const w = src.width;
+  const h = src.height;
+  const sctx = src.getContext('2d');
+  const sd = new Uint32Array(sctx.getImageData(0, 0, w, h).data.buffer);
+  const out = makeCanvas(w * 3, h * 3);
+  const octx = out.getContext('2d');
+  const img = octx.createImageData(w * 3, h * 3);
+  const od = new Uint32Array(img.data.buffer);
+  const at = (x, y) => sd[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const [A, B, C] = [at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1)];
+      const [D, E, F] = [at(x - 1, y), at(x, y), at(x + 1, y)];
+      const [G, H, I] = [at(x - 1, y + 1), at(x, y + 1), at(x + 1, y + 1)];
+      const db = D === B && D !== H && B !== F;
+      const bf = B === F && B !== D && F !== H;
+      const dh = D === H && D !== B && H !== F;
+      const hf = H === F && D !== H && B !== F;
+      const px = [
+        db ? D : E,
+        (db && E !== C) || (bf && E !== A) ? B : E,
+        bf ? F : E,
+        (db && E !== G) || (dh && E !== A) ? D : E,
+        E,
+        (bf && E !== I) || (hf && E !== C) ? F : E,
+        dh ? D : E,
+        (dh && E !== I) || (hf && E !== G) ? H : E,
+        hf ? F : E,
+      ];
+      for (let k = 0; k < 9; k++) od[(y * 3 + Math.floor(k / 3)) * w * 3 + x * 3 + (k % 3)] = px[k];
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
 }
