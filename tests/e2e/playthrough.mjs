@@ -41,6 +41,19 @@ try {
   assert.equal(await st(() => window.bugGarden.app.scene.entities.size), 4, 'garden shows the four starter bugs');
   await snap('garden');
 
+  // Drag the garden rock to a new spot; the old dirt patch is left behind.
+  const rockBefore = await st(() => ({ ...window.bugGarden.game.state.garden.rock }));
+  const at = await st(() => { const s = window.bugGarden.app.scene; const r = s.game.state.garden.rock; const [x, y] = s.toScreen(r.x, r.y - 3); const b = s.canvas.getBoundingClientRect(); return [b.left + x / s.dpr, b.top + y / s.dpr]; });
+  await page.mouse.move(at[0], at[1]);
+  await page.mouse.down();
+  await page.mouse.move(at[0] - 80, at[1] + 40, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const after = await st(() => window.bugGarden.game.state.garden);
+  assert.ok(after.rock.x < rockBefore.x - 10, "rock moved");
+  assert.equal(after.welts.length, 1, 'old dirt patch left behind');
+  await snap('rock-moved');
+
   // Hatchery: motto, incubate, four hours, crack, reveal, place in garden.
   await act('#nav [data-panel="hatchery"]');
   assert.ok((await page.textContent('#sheet')).includes('"All bugs come from eggs. Everyone knows this."'));

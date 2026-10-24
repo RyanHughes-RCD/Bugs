@@ -15,9 +15,12 @@ The layout is designed for phones and also works on desktop.
 
 ## The loop
 
-1. **Hatchery:** buy eggs in six tiers (Common → Mythic) and incubate them. Base incubation is 4 hours, and it keeps running while the game is closed.
-2. **Hatch:** tap the egg to crack it open. The tier changes the odds (shown exactly in the game) but never guarantees the result.
-3. **Garden:** up to 10 bugs live here. They wander, visit flowers, dig in the dirt, and dig up a few coins. Tap a bug to inspect it.
+110 species across nine rarities, from Drab to Celestial. Some are recoloured relatives of the original sprites, some are fantasy bugs with auras, and the Flea is a single black pixel.
+
+
+1. **Hatchery:** buy eggs in seven tiers (Common → Celestial) and settle them into the bird's nests along the bottom of the garden (one nest per incubator slot). Base incubation is 4 hours, and it keeps running while the game is closed.
+2. **Hatch:** a full-screen event where you tap the egg four times to crack it open. The tier changes the odds (shown exactly in the game) but never guarantees the result. On top of rarity, any bug can hatch **Shiny** (1%, inverted colours with a glow), **Albino** (0.5%, white with red eyes) or **Golden** (0.2%, gold with sparkles).
+3. **Garden:** up to 10 bugs live here. They wander, visit flowers, dig in the dirt, and dig up a few coins. Tap a bug to inspect it. Drag the **rock** around: shy bugs hide underneath, so lifting it reveals them. A dirt patch forms under the rock over 3 hours and lingers for an hour after the rock moves.
 4. **Explore:** send a party of exactly 4 bugs to one of five areas: The Garden, Misty Forest, Crystal Caves, Volcano and Aether. Each expedition has a random number of encounters, and each takes 10 minutes before upgrades.
 5. **Traits:** encounters test Lift, Cut, Fight, Fly, Dig and Build. Higher trait levels pass more checks and earn better rewards. A missing trait means worse odds, never a blocked expedition.
 6. **Chests:** equip a Chest Key on a party member to open locked chests. The key is used up.

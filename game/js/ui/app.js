@@ -54,6 +54,14 @@ export class App {
       onEgg: (egg) => (egg && this.game.eggProgress(egg).ready ? this.hatch(egg.uid) : this.openPanel('hatchery')),
       onBug: (uid) => this.showQuick(uid),
       onEmpty: () => this.hideQuick(),
+      onRockLift: (found) => {
+        this.hideQuick();
+        if (found.length) {
+          const names = found.map((uid) => this.game.bug(uid)?.name).filter(Boolean);
+          this.toast(`You lift the rock... ${names.join(' and ')} ${names.length > 1 ? 'were' : 'was'} hiding underneath! Say hi!`, 'good');
+        }
+      },
+      onRockMoved: (x, y) => this.game.moveRock(x, y),
     });
     this.scene.start();
 
@@ -281,7 +289,8 @@ export class App {
     if (!this.result(res)) return;
     const s = { res, stage: 0 };
     this.hatchState = s;
-    this.openModal(() => V.hatchModal(this.v, s), { cls: 'hatch', locked: true });
+    this.hideQuick();
+    this.openModal(() => V.hatchModal(this.v, s), { cls: 'hatch-full', locked: true, static: true });
   }
 
   autoParty(areaId) {
@@ -354,7 +363,12 @@ export class App {
         s.stage = Math.min(4, s.stage + 1);
         if (s.stage === 4) this.modal.locked = false;
         this.renderModal();
-        this.el.modalRoot.querySelector('.modal-x').hidden = s.stage < 4;
+        this.el.modalRoot.querySelector('.modal-x').hidden = true;
+        const modal = this.el.modalRoot.querySelector('.modal');
+        modal.classList.remove('quake');
+        void modal.offsetWidth; // restart the shake animation
+        if (s.stage >= 3) modal.classList.add('quake');
+        navigator.vibrate?.(s.stage === 4 ? [30, 40, 80] : 20);
         break;
       }
       case 'upgrade': {

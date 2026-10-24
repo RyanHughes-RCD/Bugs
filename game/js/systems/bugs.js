@@ -1,10 +1,18 @@
 import { SPECIES } from '../data/species.js';
-import { RARITIES } from '../data/rarities.js';
+import { RARITIES, VARIANTS } from '../data/rarities.js';
 import { TRAIT_IDS } from '../data/traits.js';
 import { ITEMS } from '../data/items.js';
 import { BUG_NAMES, GARDEN_LIMIT, MAX_BUG_LEVEL, MAX_TRAIT_LEVEL, XP } from '../data/balance.js';
 
-export const SHINY_CHANCE = 1 / 50;
+// Rolls the extra luck layer on top of rarity: null, or a VARIANTS key.
+export function rollVariant(rng) {
+  let r = rng.next();
+  for (const [id, v] of Object.entries(VARIANTS)) {
+    if (r < v.chance) return id;
+    r -= v.chance;
+  }
+  return null;
+}
 
 export function rarityOf(bug) {
   return SPECIES[bug.species].rarity;
@@ -34,15 +42,16 @@ export function pickName(state, rng) {
   return `${base} ${i}`;
 }
 
-export function recordDex(state, speciesId) {
+export function recordDex(state, speciesId, variant = null) {
   const entry = state.dex[speciesId] || (state.dex[speciesId] = { caught: 0 });
   entry.caught += 1;
+  if (variant) entry.variants = { ...(entry.variants || {}), [variant]: true };
   return entry.caught === 1;
 }
 
 // Creates a bug, adds it to the collection and pays the first-discovery
 // reward. The bug goes to the garden if there is room and placeInGarden is set.
-export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', eggTier = null, placeInGarden = false, traits = null, shiny = null } = {}) {
+export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', eggTier = null, placeInGarden = false, traits = null, variant } = {}) {
   if (!SPECIES[speciesId]) throw new Error(`Unknown species ${speciesId}`);
   const bug = {
     uid: state.nextUid++,
@@ -51,7 +60,7 @@ export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', 
     level: 1,
     xp: 0,
     traits: traits || rollTraits(speciesId, rng),
-    shiny: shiny ?? rng.chance(SHINY_CHANCE),
+    variant: variant === undefined ? rollVariant(rng) : variant,
     item: null,
     inGarden: false,
     origin,
@@ -60,7 +69,7 @@ export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', 
   };
   state.bugs.push(bug);
   if (placeInGarden && gardenCount(state) < GARDEN_LIMIT) bug.inGarden = true;
-  const newSpecies = recordDex(state, speciesId);
+  const newSpecies = recordDex(state, speciesId, bug.variant);
   let reward = 0;
   if (newSpecies) {
     reward = RARITIES[SPECIES[speciesId].rarity].dexReward;
@@ -120,7 +129,8 @@ export function gardenCount(state) {
 }
 
 export function releaseValue(bug) {
-  return Math.round(RARITIES[rarityOf(bug)].release * (1 + 0.1 * (bug.level - 1)));
+  const mult = VARIANTS[bug.variant]?.releaseMult || 1;
+  return Math.round(RARITIES[rarityOf(bug)].release * (1 + 0.1 * (bug.level - 1)) * mult);
 }
 
 export function traitTotal(bug) {

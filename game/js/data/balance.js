@@ -41,9 +41,12 @@ export const STARTING = {
   items: { key: 1 },
 };
 
-// Coins dug up by garden bugs, per minute, by rarity. A small bonus on top of
-// expedition income so the garden feels alive.
-export const GARDEN_FORAGE = { perMinute: { common: 0.1, uncommon: 0.15, rare: 0.2, epic: 0.3, legendary: 0.4, mythic: 0.5 }, cap: 100 };
+// Coins dug up by garden bugs (per-rarity rates are in rarities.js).
+export const GARDEN_FORAGE = { cap: 100 };
+
+// The garden rock. Some bugs like to hide under it. Where it rests, a dirt
+// patch slowly forms; after the rock is moved the patch lingers, then fades.
+export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 112, y: 128 } };
 
 export const BIG_SPEND = { coins: 500, fraction: 0.5 }; // ask for confirmation above either
 

@@ -2,6 +2,7 @@ import { AREAS } from '../data/areas.js';
 import { UPGRADES } from '../data/upgrades.js';
 import { STARTING } from '../data/balance.js';
 import { migrateV1 } from './migrate-v1.js';
+import { defaultRock } from '../systems/garden.js';
 
 export const SAVE_KEY = 'bug-garden-save';
 export const BACKUP_KEY = 'bug-garden-save-backup';
@@ -23,7 +24,7 @@ export function newGameState(now, seed) {
     areas: {},
     expeditions: [],
     history: [],
-    garden: { pot: 0, lastTick: now },
+    garden: { pot: 0, lastTick: now, rock: defaultRock(now), welts: [] },
     dex: {},
     stats: {},
     flags: {},
@@ -47,7 +48,8 @@ export function migrate(raw) {
   for (const a of AREAS) s.areas[a.id] = { unlocked: a.index === 0, runs: 0, ...(s.areas[a.id] || {}) };
   s.expeditions = Array.isArray(s.expeditions) ? s.expeditions : [];
   s.history = Array.isArray(s.history) ? s.history : [];
-  s.garden = { pot: 0, lastTick: s.lastSeen || 0, ...(s.garden || {}) };
+  s.garden = { pot: 0, lastTick: s.lastSeen || 0, welts: [], ...(s.garden || {}) };
+  if (!s.garden.rock) s.garden.rock = defaultRock(s.lastSeen || 0);
   s.dex = s.dex || {};
   s.stats = { expeditions: 0, hatched: 0, eggsBought: 0, chestsOpened: 0, coinsEarned: 0, ...(s.stats || {}) };
   s.flags = s.flags || {};
@@ -57,6 +59,8 @@ export function migrate(raw) {
     b.xp = b.xp || 0;
     b.item = b.item || null;
     b.inGarden = !!b.inGarden;
+    if (b.variant === undefined) b.variant = b.shiny ? 'shiny' : null;
+    delete b.shiny;
   }
   return s;
 }

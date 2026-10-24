@@ -8,40 +8,46 @@ import { BASE_INCUBATION_MS } from './balance.js';
 // sprite: optional path to custom egg art; drawn instead of the generated egg.
 export const EGG_TIERS = [
   {
-    id: 'common', name: 'Common Egg', price: 100, hatchMs: BASE_INCUBATION_MS,
-    odds: { common: 70, uncommon: 22, rare: 6, epic: 1.5, legendary: 0.45, mythic: 0.05 },
+    id: 'common', name: 'Common Egg', price: 150, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 35, plain: 30, common: 25, uncommon: 7, rare: 2.2, epic: 0.6, legendary: 0.15, mythic: 0.04, celestial: 0.01 },
     visual: { base: 'W', shade: 'l', mark: 's', pattern: 'speckles' },
-    desc: 'A plain, speckled egg. Usually a common bug, but you never know.',
+    desc: 'A plain, speckled egg. Usually something humble, but you never know.',
   },
   {
-    id: 'uncommon', name: 'Uncommon Egg', price: 250, hatchMs: BASE_INCUBATION_MS,
-    odds: { common: 40, uncommon: 40, rare: 15, epic: 4, legendary: 0.9, mythic: 0.1 },
+    id: 'uncommon', name: 'Uncommon Egg', price: 500, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 15, plain: 22, common: 30, uncommon: 22, rare: 8, epic: 2.2, legendary: 0.6, mythic: 0.17, celestial: 0.03 },
     visual: { base: 'g', shade: 'G', mark: 'T', pattern: 'spots' },
     desc: 'Leafy green spots. Better odds of something special.',
   },
   {
-    id: 'rare', name: 'Rare Egg', price: 600, hatchMs: BASE_INCUBATION_MS,
-    odds: { common: 15, uncommon: 30, rare: 40, epic: 11, legendary: 3.5, mythic: 0.5 },
+    id: 'rare', name: 'Rare Egg', price: 1600, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 5, plain: 10, common: 20, uncommon: 30, rare: 25, epic: 7.5, legendary: 2, mythic: 0.45, celestial: 0.05 },
     visual: { base: 'c', shade: 'b', mark: 'C', pattern: 'stripes', band: 'W' },
     desc: 'Cool blue stripes with a silver band.',
   },
   {
-    id: 'epic', name: 'Epic Egg', price: 1500, hatchMs: BASE_INCUBATION_MS,
-    odds: { common: 5, uncommon: 15, rare: 30, epic: 37, legendary: 11, mythic: 2 },
+    id: 'epic', name: 'Epic Egg', price: 5000, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 2, plain: 4, common: 10, uncommon: 20, rare: 30, epic: 25, legendary: 7, mythic: 1.8, celestial: 0.2 },
     visual: { base: 'P', shade: 'K', mark: 'p', pattern: 'zigzag', band: 'Y', glow: 'rgba(200,110,224,0.55)' },
     desc: 'Royal purple zigzags and a faint violet glow.',
   },
   {
-    id: 'legendary', name: 'Legendary Egg', price: 3500, hatchMs: BASE_INCUBATION_MS,
-    odds: { common: 2, uncommon: 6, rare: 17, epic: 30, legendary: 38, mythic: 7 },
+    id: 'legendary', name: 'Legendary Egg', price: 15000, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 1, plain: 2, common: 5, uncommon: 10, rare: 20, epic: 27, legendary: 27, mythic: 7, celestial: 1 },
     visual: { base: 'Y', shade: 'r', mark: 'W', pattern: 'stars', band: 'R', gem: 'R', glow: 'rgba(255,205,117,0.7)', sparkles: 3 },
     desc: 'Golden, star-studded and warm to the touch.',
   },
   {
-    id: 'mythic', name: 'Mythic Egg', price: 8000, hatchMs: BASE_INCUBATION_MS,
-    odds: { common: 1, uncommon: 3, rare: 10, epic: 21, legendary: 30, mythic: 35 },
+    id: 'mythic', name: 'Mythic Egg', price: 40000, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 0.5, plain: 1, common: 2.5, uncommon: 6, rare: 12, epic: 20, legendary: 28, mythic: 25, celestial: 5 },
     visual: { base: 'k', shade: 'K', mark: 'C', mark2: 'p', pattern: 'swirl', band: 'C', gem: 'p', glow: 'rgba(244,160,176,0.75)', sparkles: 5 },
     desc: 'A swirling cosmic shell. Even this is no sure thing.',
+  },
+  {
+    id: 'celestial', name: 'Celestial Egg', price: 100000, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 0.2, plain: 0.5, common: 1.3, uncommon: 3, rare: 7, epic: 13, legendary: 25, mythic: 30, celestial: 20 },
+    visual: { base: 'b', shade: 'K', mark: 'W', mark2: 'C', pattern: 'constellation', band: 'C', gem: 'W', glow: 'rgba(115,239,247,0.8)', sparkles: 7 },
+    desc: 'A sliver of night sky in an eggshell.',
   },
 ];
 

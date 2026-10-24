@@ -10,6 +10,10 @@ const FALLBACK_PALETTE = {
 };
 const MAP_LAYERS = ['BugsMap/pixil-layer-0.png', 'BugsMap/pixil-layer-1.png'];
 
+const GOLD_RAMP = ['#7a4f12', '#b8801c', '#e6aa2e', '#ffd75e', '#fff3b8'];
+const ALBINO_RAMP = ['#aeb8c2', '#d3dae0', '#eef1f4', '#ffffff'];
+const ALBINO_EYE = '#e0323c';
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -26,39 +30,8 @@ function makeCanvas(w = 16, h = 16) {
   return c;
 }
 
-// Hue-rotates a sprite for shiny variants, leaving outlines and greys alone.
-function shinify(src) {
-  const c = makeCanvas(src.width, src.height);
-  const ctx = c.getContext('2d');
-  ctx.drawImage(src, 0, 0);
-  const data = ctx.getImageData(0, 0, c.width, c.height);
-  const d = data.data;
-  for (let i = 0; i < d.length; i += 4) {
-    if (!d[i + 3]) continue;
-    const [r, g, b] = [d[i] / 255, d[i + 1] / 255, d[i + 2] / 255];
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    if (max - min < 0.12) continue;
-    const l = (max + min) / 2;
-    const s = l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min);
-    let h = max === r ? (g - b) / (max - min) + (g < b ? 6 : 0) : max === g ? (b - r) / (max - min) + 2 : (r - g) / (max - min) + 4;
-    h = (h / 6 + 0.42) % 1;
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    const hue = (t) => {
-      t = (t + 1) % 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-    d[i] = hue(h + 1 / 3) * 255;
-    d[i + 1] = hue(h) * 255;
-    d[i + 2] = hue(h - 1 / 3) * 255;
-  }
-  ctx.putImageData(data, 0, 0);
-  return c;
-}
+const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const lum = (r, g, b) => (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
 // Pattern painters for generated eggs: return a palette char or null per pixel.
 const PATTERNS = {
@@ -66,20 +39,25 @@ const PATTERNS = {
   spots: (x, y, v) => ([[6, 4], [7, 4], [9, 7], [10, 7], [5, 9], [6, 9], [9, 11], [8, 11]].some(([a, b]) => a === x && b === y) ? v.mark : null),
   stripes: (x, y, v) => (y === 5 || y === 8 || y === 11 ? v.mark : null),
   zigzag: (x, y, v) => (y === 6 + ((x >> 1) % 2) || y === 10 + ((x >> 1) % 2) ? v.mark : null),
-  stars: (x, y, v) => ([[6, 5], [10, 8], [6, 11]].some(([a, b]) => (Math.abs(a - x) + Math.abs(b - y) === 1) || (a === x && b === y)) ? v.mark : null),
+  stars: (x, y, v) => ([[7, 4], [10, 8], [5, 10]].some(([a, b]) => (Math.abs(a - x) + Math.abs(b - y) === 1) || (a === x && b === y)) ? v.mark : null),
   swirl: (x, y, v) => (((x * 2 + y * 3) % 7 < 2) ? (y % 2 ? v.mark : v.mark2 || v.mark) : null),
+  constellation: (x, y, v) => {
+    if ([[6, 4], [9, 6], [4, 8], [10, 10], [7, 12]].some(([a, b]) => a === x && b === y)) return v.mark;
+    if ([[7, 5], [8, 5], [5, 7], [8, 11], [9, 11]].some(([a, b]) => a === x && b === y)) return v.mark2;
+    return null;
+  },
 };
 const CRACK_PATHS = [
-  [[7, 3], [7, 4], [6, 5]],
-  [[5, 6], [4, 7], [8, 5], [9, 6]],
-  [[10, 7], [11, 8], [6, 7], [7, 8], [8, 7]],
+  [[7, 2], [7, 3], [8, 4], [7, 5]],
+  [[6, 6], [5, 7], [8, 6], [9, 7], [10, 7]],
+  [[4, 8], [5, 8], [6, 9], [7, 8], [8, 9], [9, 8]],
 ];
 
 export class Assets {
   constructor() {
     this.palette = { ...FALLBACK_PALETTE };
     this.bugs = {};
-    this.shinyBugs = {};
+    this.variants = {};
     this.sprites = {};
     this.eggs = {};
     this.urls = new Map();
@@ -98,18 +76,25 @@ export class Assets {
         if (ch && /^#[0-9a-f]{6}$/i.test(hex)) this.palette[ch] = hex;
       }
     } catch { this.missing.push('pixel_bugs/palette.txt'); }
+    this.byRgb = new Map(Object.entries(this.palette).map(([ch, hex]) => [hexRgb(hex).join(','), ch]));
 
     for (const [id, rows] of Object.entries(SPRITES)) this.sprites[id] = this.paint(rows);
     const fallbackBug = this.paint(SPRITES.star);
+    const baseArt = {};
     const soft = (src, fn) => loadImage(src).then(fn, () => { this.missing.push(src); });
+    const files = [...new Set(SPECIES_LIST.filter((s) => s.sprite).map((s) => s.sprite))];
     const jobs = [
       ...MAP_LAYERS.map((src, i) => soft(src, (img) => { this.map[i] = img; })),
-      ...SPECIES_LIST.map((s) => soft(s.sprite, (img) => { this.bugs[s.id] = this.downscale(img); })),
+      ...files.map((src) => soft(src, (img) => { baseArt[src] = this.downscale(img); })),
       ...EGG_TIERS.filter((t) => t.sprite).map((t) => soft(t.sprite, (img) => { this.eggs[t.id] = [this.downscale(img)]; })),
     ];
     let done = 0;
     await Promise.all(jobs.map((j) => j.then(() => onProgress(++done / jobs.length))));
-    for (const s of SPECIES_LIST) if (!this.bugs[s.id]) this.bugs[s.id] = fallbackBug;
+    for (const s of SPECIES_LIST) {
+      if (s.grid) this.bugs[s.id] = this.sprites[s.grid];
+      else if (baseArt[s.sprite]) this.bugs[s.id] = s.recolor ? this.recolor(baseArt[s.sprite], s.recolor) : baseArt[s.sprite];
+      else this.bugs[s.id] = fallbackBug;
+    }
     for (const t of EGG_TIERS) if (!this.eggs[t.id]) this.eggs[t.id] = this.makeEgg(t.visual);
     if (this.map[0]) this.flowerSpots = this.findFlowers(this.map[0]);
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
@@ -136,16 +121,71 @@ export class Assets {
     return c;
   }
 
+  // Runs fn over every opaque pixel. fn gets the palette char (if any), the
+  // rgb, position and whether the pixel is part of the outer outline.
+  mapPixels(src, fn) {
+    const c = makeCanvas(src.width, src.height);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const img = ctx.getImageData(0, 0, c.width, c.height);
+    const d = img.data;
+    const W = c.width;
+    const H = c.height;
+    const opaque = (x, y) => x >= 0 && y >= 0 && x < W && y < H && d[(y * W + x) * 4 + 3] > 0;
+    const out = [];
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        if (!d[i + 3]) continue;
+        const rgb = [d[i], d[i + 1], d[i + 2]];
+        const ch = this.byRgb.get(rgb.join(','));
+        const edge = !opaque(x - 1, y) || !opaque(x + 1, y) || !opaque(x, y - 1) || !opaque(x, y + 1);
+        out.push({ i, x, y, rgb, ch, outline: ch === 'K' && edge });
+      }
+    }
+    fn(out, { W, H });
+    for (const p of out) if (p.set) [d[p.i], d[p.i + 1], d[p.i + 2]] = p.set;
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  recolor(src, map) {
+    return this.mapPixels(src, (px) => {
+      for (const p of px) if (map[p.ch]) p.set = hexRgb(this.palette[map[p.ch]]);
+    });
+  }
+
+  // Shiny: every colour inverted except the black outline.
+  shiny(src) {
+    return this.mapPixels(src, (px) => {
+      for (const p of px) if (!p.outline) p.set = p.rgb.map((v) => 255 - v);
+    });
+  }
+
+  // Golden: brightness mapped onto a gold ramp; the outline stays.
+  golden(src) {
+    return this.mapPixels(src, (px) => {
+      for (const p of px) if (!p.outline) p.set = hexRgb(GOLD_RAMP[Math.min(GOLD_RAMP.length - 1, Math.floor(lum(...p.rgb) * GOLD_RAMP.length))]);
+    });
+  }
+
+  // Albino: pale whites and greys, with red eyes.
+  albino(src, view) {
+    return this.mapPixels(src, (px, { W }) => {
+      for (const p of px) if (!p.outline) p.set = hexRgb(ALBINO_RAMP[Math.min(ALBINO_RAMP.length - 1, Math.floor(lum(...p.rgb) * ALBINO_RAMP.length))]);
+      for (const p of findEyes(px, W, view)) p.set = hexRgb(ALBINO_EYE);
+    });
+  }
+
   // Builds an egg (plus three cracked stages) from the tier's visual config.
   makeEgg(v) {
     const rows = SPRITES.egg.map((row, y) => [...row].map((ch, x) => {
       if (ch === '3') return v.shade;
       if (ch !== '1' && ch !== '2') return ch;
+      if (v.gem && y === 9 && (x === 7 || x === 8)) return v.gem;
       if (v.band && y === 9) return v.band;
-      if (v.gem && y >= 9 && y <= 9 && (x === 7 || x === 8)) return v.gem;
       return PATTERNS[v.pattern]?.(x, y, v) || v.base;
     }).join(''));
-    if (v.gem) rows[8] = rows[8].slice(0, 7) + v.gem + rows[8].slice(8);
     const stages = [this.paint(rows)];
     const cracked = rows.map((r) => [...r]);
     for (const path of CRACK_PATHS) {
@@ -180,10 +220,15 @@ export class Assets {
     }
   }
 
-  bug(species, shiny = false) {
-    if (!shiny) return this.bugs[species];
-    if (!this.shinyBugs[species]) this.shinyBugs[species] = shinify(this.bugs[species]);
-    return this.shinyBugs[species];
+  // variant: null | 'shiny' | 'albino' | 'golden'
+  bug(species, variant = null) {
+    if (!variant) return this.bugs[species];
+    const key = `${species}:${variant}`;
+    if (!this.variants[key]) {
+      const view = SPECIES_LIST.find((s) => s.id === species)?.view;
+      this.variants[key] = variant === 'albino' ? this.albino(this.bugs[species], view) : this[variant](this.bugs[species]);
+    }
+    return this.variants[key];
   }
 
   url(key, canvas) {
@@ -191,8 +236,8 @@ export class Assets {
     return this.urls.get(key);
   }
 
-  bugUrl(species, shiny = false) {
-    return this.url(`bug:${species}:${shiny}`, this.bug(species, shiny));
+  bugUrl(species, variant = null) {
+    return this.url(`bug:${species}:${variant}`, this.bug(species, variant));
   }
 
   spriteUrl(id) {
@@ -203,4 +248,38 @@ export class Assets {
     const stages = this.eggs[tier];
     return this.url(`egg:${tier}:${stage}`, stages[Math.min(stage, stages.length - 1)]);
   }
+}
+
+// Finds a bug's eyes: the bright pixels in the head region (top for top-down
+// sprites, right end for side views). Falls back to a symmetric pair just
+// below the top of the head when a sprite has no highlighted eyes.
+function findEyes(px, W, view) {
+  const solid = px.filter((p) => p.ch !== undefined);
+  if (!solid.length) return [];
+  const xs = solid.map((p) => p.x);
+  const ys = solid.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const bright = (p) => lum(...p.rgb) > 0.75 && !p.outline;
+  if (view === 'side') {
+    const head = px.filter((p) => p.x >= x1 - (x1 - x0) * 0.35 && p.y <= y0 + (y1 - y0) * 0.7);
+    const eyes = head.filter(bright).sort((a, b) => b.x - a.x || a.y - b.y).slice(0, 1);
+    if (eyes.length) return eyes;
+    const inner = head.filter((p) => !p.outline).sort((a, b) => b.x - a.x || a.y - b.y);
+    return inner.slice(0, 1);
+  }
+  const cx = (x0 + x1) / 2;
+  const head = px.filter((p) => p.y <= y0 + (y1 - y0) * 0.4 && Math.abs(p.x + 0.5 - (cx + 0.5)) <= 3.5);
+  const eyes = head.filter(bright).sort((a, b) => a.y - b.y);
+  if (eyes.length) return eyes.filter((p) => p.y === eyes[0].y).slice(0, 2);
+  // No bright eyes: use the first row that is at least 3 pixels wide, nearest the centre.
+  const byRow = new Map();
+  for (const p of head) byRow.set(p.y, [...(byRow.get(p.y) || []), p]);
+  for (const y of [...byRow.keys()].sort((a, b) => a - b)) {
+    const row = byRow.get(y).sort((a, b) => a.x - b.x);
+    if (row.length < 3) continue;
+    const left = row.filter((p) => p.x <= cx).pop();
+    const right = row.find((p) => p.x > cx);
+    return [left, right].filter(Boolean);
+  }
+  return [];
 }

@@ -8,7 +8,7 @@ import { GARDEN_LIMIT, HISTORY_LIMIT, STARTING } from './data/balance.js';
 import { createBug, addXp, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
-import { tickGarden } from './systems/garden.js';
+import { tickGarden, moveRock } from './systems/garden.js';
 
 const fail = (error) => ({ ok: false, error });
 
@@ -70,7 +70,7 @@ export class Game {
     const seed = this.seedOverride ?? Math.floor(Math.random() * 0x7fffffff);
     this.state = newGameState(now, seed);
     this.rng = new Rng(seed);
-    for (const id of STARTING.bugs) createBug(this.state, id, this.rng, { now, origin: 'starter', placeInGarden: true, shiny: false });
+    for (const id of STARTING.bugs) createBug(this.state, id, this.rng, { now, origin: 'starter', placeInGarden: true, variant: null });
     for (const tier of STARTING.eggs) this.addEgg(tier, 'starter');
     this.state.coins = STARTING.coins;
     this.state.stats.coinsEarned = 0;
@@ -180,6 +180,15 @@ export class Game {
     this.earn(n);
     this.commit();
     return { ok: true, coins: n };
+  }
+
+  // Drag the garden rock somewhere new (world coordinates of the garden map).
+  moveRock(x, y) {
+    const cx = Math.min(140, Math.max(10, Math.round(x)));
+    const cy = Math.min(290, Math.max(16, Math.round(y)));
+    if (!moveRock(this.state.garden, cx, cy, this.now())) return fail('The rock barely moved.');
+    this.commit();
+    return { ok: true };
   }
 
   // ---------- eggs ----------

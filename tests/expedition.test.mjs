@@ -166,7 +166,7 @@ test('Chest Keys open locked chests, are consumed once, and are credited in the 
   assert.deepEqual(res.report.keysUsed, [game.state.bugs[0].uid]);
   assert.equal(game.state.bugs[0].item, null, 'key consumed');
   assert.equal(game.claimExpedition(exp.id).ok, false);
-  assert.equal(game.state.inventory.key, 1, 'the spare key in the bag is untouched');
+  assert.equal(game.state.inventory.key, 1 + (res.report.rewards.items.key || 0), 'the spare key in the bag is untouched');
 });
 
 test('without a key, chests stay locked unless the party can force them with Lift', () => {

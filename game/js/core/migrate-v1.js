@@ -42,7 +42,7 @@ export function migrateV1(old) {
     if (!SPECIES[ob.species]) continue;
     const bug = {
       uid: ob.uid, name: ob.nickname || pickName(s, rng), species: ob.species,
-      level: 1, xp: 0, traits: rollTraits(ob.species, rng), shiny: !!ob.shiny, item: null,
+      level: 1, xp: 0, traits: rollTraits(ob.species, rng), variant: ob.shiny ? 'shiny' : null, item: null,
       inGarden: false, origin: ob.origin || 'hatched', obtainedAt: ob.obtainedAt || now,
     };
     // Re-grant old levels as trait growth.

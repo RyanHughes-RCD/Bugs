@@ -16,7 +16,7 @@ export function makeGame({ seed = 12345, storage = memoryStorage(), clock = { t:
 
 // Adds a bug with exact traits, for deterministic trait tests.
 export function addBug(game, species, traits, extra = {}) {
-  const { bug } = createBug(game.state, species, new Rng(game.state.nextUid), { traits, shiny: false });
+  const { bug } = createBug(game.state, species, new Rng(game.state.nextUid), { traits, variant: null });
   Object.assign(bug, extra);
   return bug;
 }

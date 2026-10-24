@@ -26,7 +26,8 @@ test('rng is deterministic and in range', () => {
 
 test('game data is valid: species, items, areas, encounters, sprites', () => {
   for (const s of SPECIES_LIST) {
-    assert.ok(existsSync(new URL(`../${s.sprite}`, import.meta.url)), s.sprite);
+    if (s.grid) assert.ok(SPRITES[s.grid], `${s.id} drawn sprite`);
+    else assert.ok(existsSync(new URL(`../${s.sprite}`, import.meta.url)), s.sprite);
     assert.ok(s.traits.length >= 1, `${s.id} has a trait`);
     for (const t of s.traits) assert.ok(TRAIT_IDS.includes(t), `${s.id}: ${t}`);
     assert.ok(RARITY_ORDER.includes(s.rarity));
@@ -152,7 +153,7 @@ test('saves from the first version are migrated without losing progress', () => 
   assert.equal(ant.level, 6);
   assert.equal(ant.item, 'thorn_spear');
   assert.ok(Object.values(ant.traits).reduce((a, b) => a + b, 0) >= 6, 'levels became trait growth');
-  assert.ok(st.bugs.find((b) => b.uid === 2).shiny);
+  assert.equal(st.bugs.find((b) => b.uid === 2).variant, 'shiny');
   assert.ok(st.bugs.every((b) => b.inGarden));
   const golden = st.eggs.find((e) => e.uid === 3);
   assert.equal(golden.tier, 'epic');

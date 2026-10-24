@@ -8,7 +8,7 @@ import { BASE_INCUBATION_MS } from '../game/js/data/balance.js';
 import { validateEggTiers, eggOdds, rollEgg, simulateHatches, incubatorCount } from '../game/js/systems/eggs.js';
 import { makeGame, HOUR } from './helpers.mjs';
 
-const rarePlus = (tier) => eggOdds(tier).filter((o) => RARITY_ORDER.indexOf(o.rarity) >= 2).reduce((s, o) => s + o.chance, 0);
+const rarePlus = (tier) => eggOdds(tier).filter((o) => RARITY_ORDER.indexOf(o.rarity) >= RARITY_ORDER.indexOf('rare')).reduce((s, o) => s + o.chance, 0);
 
 test('egg probability tables are valid and sum to 100%', () => {
   assert.deepEqual(validateEggTiers(), []);
@@ -97,8 +97,9 @@ test('low rarities have one weak trait; stats climb steadily up the rarity ladde
       const s = (stats[sp.rarity] = stats[sp.rarity] || { count: 0, best: 0, total: 0, n: 0, maxCount: 0 });
       s.count += t.length; s.best += Math.max(...t); s.total += t.reduce((a, b) => a + b, 0); s.n += 1;
       s.maxCount = Math.max(s.maxCount, t.length);
-      if (sp.rarity === 'common' || sp.rarity === 'uncommon') assert.equal(t.length, 1, `${sp.id} has one trait`);
-      if (sp.rarity === 'common') assert.ok(t[0] <= 2, 'commons start weak');
+      if (['drab', 'plain', 'common'].includes(sp.rarity)) assert.equal(t.length, 1, `${sp.id} has one trait`);
+      if (sp.rarity === 'drab') assert.equal(t[0], 1, 'drab bugs start at level 1');
+      if (sp.rarity === 'plain') assert.ok(t[0] <= 2, 'plain bugs start weak');
     }
   }
   for (let i = 1; i < RARITY_ORDER.length; i++) {
