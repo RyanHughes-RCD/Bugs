@@ -6,6 +6,7 @@ import { EGG_BY_ID, EGG_TIERS } from '../data/eggs.js';
 import { AREA_BY_ID } from '../data/areas.js';
 import { UPGRADE_BY_ID, upgradeCost } from '../data/upgrades.js';
 import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
+import { clampEncounterCount, defaultEncounterCount, encounterMs } from '../systems/expedition.js';
 import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { simulateHatches } from '../systems/eggs.js';
@@ -457,7 +458,7 @@ export class App {
         break;
       }
       case 'plan':
-        ui.plan = { areaId: d.area, party: this.autoParty(d.area) };
+        ui.plan = { areaId: d.area, party: this.autoParty(d.area), count: ui.lastTrip ?? defaultEncounterCount(AREA_BY_ID[d.area]) };
         this.openModal(() => V.plannerModal(this.v));
         break;
       case 'plan-toggle': {
@@ -468,13 +469,15 @@ export class App {
         this.renderModal();
         break;
       }
+      case 'plan-count': ui.plan.count = ui.lastTrip = clampEncounterCount(Number(d.n)); this.renderModal(); break;
       case 'plan-auto': ui.plan.party = this.autoParty(ui.plan.areaId); this.renderModal(); break;
       case 'launch': {
         const area = AREA_BY_ID[ui.plan.areaId];
         const names = ui.plan.party.map((u) => bugName(g.bug(u))).join(', ');
         const plan = { ...ui.plan, party: [...ui.plan.party] };
-        this.ask({ title: `Send the party to ${area.name}?`, body: `<p>${names} will be away until the expedition ends. Their items can't be changed while they're exploring.</p>`, yes: 'Set off!' }, () => {
-          const res = g.launchExpedition(plan.areaId, plan.party);
+        const ms = plan.count * encounterMs(st, plan.party.map((u) => g.bug(u)));
+        this.ask({ title: `Send the party to ${area.name}?`, body: `<p>${plan.count} encounters, about <b>${fmtTime(ms)}</b>. ${names} will be away until the expedition ends. Their items can't be changed while they're exploring.</p>`, yes: 'Set off!' }, () => {
+          const res = g.launchExpedition(plan.areaId, plan.party, plan.count);
           if (this.result(res, `The party sets off for ${area.name}!`)) this.dispatch('view-exp', { id: res.expedition.id });
           else { ui.plan = plan; this.openModal(() => V.plannerModal(this.v)); }
         });

@@ -79,7 +79,10 @@ try {
   await act('#nav [data-panel="explore"]');
   await act('[data-act="plan"][data-area="garden"]');
   assert.equal(await page.locator('.team-slots .slot.filled').count(), 4);
+  await act('[data-act="plan-count"]:has-text("8h overnight")');
+  assert.ok((await page.textContent('.modal')).includes('96 encounters'));
   await snap('planner');
+  await act('[data-act="plan-count"]:has-text("Short")');
   await act('[data-act="launch"]');
   await act('[data-act="confirm-yes"]');
   const exp = await st(() => window.bugGarden.game.state.expeditions[0]);

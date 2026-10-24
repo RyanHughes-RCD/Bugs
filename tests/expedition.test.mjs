@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AREAS, AREA_BY_ID } from '../game/js/data/areas.js';
-import { BASE_ENCOUNTER_MS } from '../game/js/data/balance.js';
-import { planExpedition, expeditionTimeline, encounterMs } from '../game/js/systems/expedition.js';
+import { BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../game/js/data/balance.js';
+import { planExpedition, expeditionTimeline, encounterMs, encountersForHours, defaultEncounterCount } from '../game/js/systems/expedition.js';
 import { bugName } from '../game/js/systems/bugs.js';
 import { makeGame, addBug, partyUids, MIN, HOUR } from './helpers.mjs';
 
@@ -45,6 +45,34 @@ test('encounter counts are randomized within each area\'s range, saved at launch
     }
     assert.equal(seen.size, area.encounters[1] - area.encounters[0] + 1, `${area.id} uses its whole range`);
   }
+});
+
+test('players choose the trip length, up to an overnight run', () => {
+  const { game } = makeGame();
+  const uids = partyUids(game);
+  const party = uids.map((u) => game.bug(u));
+  const overnight = encountersForHours(game.state, party, 8);
+  assert.equal(overnight, 96, '8 hours of 5-minute encounters');
+  assert.equal(game.launchExpedition('garden', uids, EXPEDITION_LENGTH.max + 1).ok, false);
+  assert.equal(game.launchExpedition('garden', uids, 2.5).ok, false);
+  const res = game.launchExpedition('garden', uids, overnight);
+  assert.ok(res.ok);
+  assert.equal(res.expedition.count, 96);
+  assert.equal(res.expedition.encounters.length, 96);
+  assert.equal(res.expedition.endsAt - res.expedition.startAt, 8 * HOUR);
+});
+
+test('long trips keep per-run caps in proportion, so chests and eggs keep coming', () => {
+  const { game } = makeGame();
+  const area = AREA_BY_ID.garden;
+  const chests = (count) => {
+    let n = 0;
+    for (let s = 0; s < 100; s++) n += planExpedition(game.state, area, game.state.bugs, s, count).encounters.filter((e) => e.category === 'chest').length;
+    return n / 100;
+  };
+  const short = chests(defaultEncounterCount(area));
+  const long = chests(96);
+  assert.ok(long > short * 8, `chests per run: ${short} short vs ${long} overnight`);
 });
 
 test('every base encounter lasts 5 minutes: ten encounters take 50 minutes', () => {
