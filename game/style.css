@@ -501,3 +501,5 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .hatch-event .new { color: var(--lime); }
 .hatch-event small { color: var(--light); }
 .he-actions { margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+
+.chip.update { background: var(--yellow); animation: bounce 1s ease-in-out infinite; }
