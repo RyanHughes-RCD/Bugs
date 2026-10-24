@@ -78,7 +78,8 @@ test('old saves turn the shiny flag into the shiny variant', async () => {
 });
 
 test('progression is slower: pricier eggs, and common eggs are mostly humble', () => {
-  for (let i = 1; i < EGG_TIERS.length; i++) assert.ok(EGG_TIERS[i].price >= EGG_TIERS[i - 1].price * 2.5);
+  for (let i = 1; i < EGG_TIERS.length; i++) assert.ok(EGG_TIERS[i].price >= EGG_TIERS[i - 1].price * 1.5);
+  assert.deepEqual(EGG_TIERS.map((t) => t.id), ['common', 'uncommon', 'nice', 'rare', 'epic', 'legendary', 'mythic', 'celestial']);
   const humble = eggOdds('common').filter((o) => ['drab', 'common', 'uncommon'].includes(o.rarity)).reduce((s, o) => s + o.chance, 0);
   assert.ok(humble >= 0.85, `common eggs: ${humble}`);
   assert.ok(EGG_TIERS.find((t) => t.id === 'rare').price >= 1500);

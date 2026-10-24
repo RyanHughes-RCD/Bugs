@@ -20,6 +20,12 @@ export const EGG_TIERS = [
     desc: 'Leafy green spots. Better odds of something special.',
   },
   {
+    id: 'nice', name: 'Nice Egg', price: 900, hatchMs: BASE_INCUBATION_MS,
+    odds: { drab: 7, common: 20, uncommon: 28, nice: 26, rare: 14, epic: 3.8, legendary: 1, mythic: 0.18, celestial: 0.02 },
+    visual: { base: 'C', shade: 'T', mark: 'W', pattern: 'spots' },
+    desc: 'Minty, smooth and pleasantly cool. A nice step up.',
+  },
+  {
     id: 'rare', name: 'Rare Egg', price: 1600, hatchMs: BASE_INCUBATION_MS,
     odds: { drab: 4, common: 12, uncommon: 22, nice: 25, rare: 25, epic: 9, legendary: 2.5, mythic: 0.45, celestial: 0.05 },
     visual: { base: 'c', shade: 'b', mark: 'C', pattern: 'stripes', band: 'W' },

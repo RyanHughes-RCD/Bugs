@@ -43,14 +43,14 @@ try {
 
   // Drag the garden rock to a new spot; the old dirt patch is left behind.
   const rockBefore = await st(() => ({ ...window.bugGarden.game.state.garden.rock }));
-  const at = await st(() => { const s = window.bugGarden.app.scene; const r = s.game.state.garden.rock; const [x, y] = s.toScreen(r.x, r.y - 3); const b = s.canvas.getBoundingClientRect(); return [b.left + x / s.dpr, b.top + y / s.dpr]; });
+  const at = await st(() => { const s = window.bugGarden.app.scene; const r = s.game.state.garden.rock; const [x, y] = s.toScreen(r.x, r.y - 4); const b = s.canvas.getBoundingClientRect(); return [b.left + x / s.dpr, b.top + y / s.dpr]; });
   await page.mouse.move(at[0], at[1]);
   await page.mouse.down();
-  await page.mouse.move(at[0] - 80, at[1] + 40, { steps: 10 });
+  await page.mouse.move(at[0] + 90, at[1] - 60, { steps: 10 });
   await page.mouse.up();
   await page.waitForTimeout(300);
   const after = await st(() => window.bugGarden.game.state.garden);
-  assert.ok(after.rock.x < rockBefore.x - 10, "rock moved");
+  assert.ok(after.rock.x > rockBefore.x + 10, "rock moved");
   assert.equal(after.welts.length, 1, 'old dirt patch left behind');
   await snap('rock-moved');
 
