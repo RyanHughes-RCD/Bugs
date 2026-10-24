@@ -111,6 +111,18 @@ try {
   await act('#nav [data-panel="bugs"]');
   await snap('collection');
 
+  // Backup to a file, lose progress, then restore from that file.
+  await act('[data-act="settings"]');
+  const download = page.waitForEvent('download');
+  await act('.modal [data-act="backup-file"]');
+  const backupPath = await (await download).path();
+  assert.ok((await page.textContent('.modal')).includes('Last backup: just now'));
+  await page.evaluate(() => { window.bugGarden.game.state.coins = 1; window.bugGarden.game.commit(); });
+  await page.setInputFiles('#save-file', backupPath);
+  await page.waitForSelector('[data-act="confirm-yes"]');
+  await act('[data-act="confirm-yes"]');
+  assert.equal(await st(sig), before, 'backup file restores the save');
+
   // Update button: pretend a newer build is on the server.
   await page.route(/version\.js\?t=/, (route) => route.fulfill({ contentType: 'text/javascript', body: "export const VERSION = '99.0.0';" }));
   await act('[data-act="settings"]');

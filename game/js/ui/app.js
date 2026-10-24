@@ -11,6 +11,8 @@ import { gardenRatePerMin } from '../systems/garden.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 
+const BACKUP_TIME_KEY = 'bug-garden-last-backup';
+
 const PANELS = {
   garden: { title: 'Garden', icon: 'flower' },
   hatchery: { title: 'Hatchery', egg: true, render: V.renderHatchery },
@@ -77,6 +79,12 @@ export class App {
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.modal && !this.modal.locked) this.closeModal();
+    });
+    document.addEventListener('change', async (e) => {
+      if (e.target.id !== 'save-file' || !e.target.files?.[0]) return;
+      const file = e.target.files[0];
+      e.target.value = '';
+      this.restore(await file.text().catch(() => ''));
     });
     this.game.on((type) => { if (type === 'change') this.render(); });
     const persist = () => this.game.save();
@@ -240,6 +248,56 @@ export class App {
     this.pending = null;
     this.el.modalRoot.innerHTML = '';
     this.el.app.classList.remove('has-modal');
+  }
+
+  lastBackup() {
+    try { return Number(localStorage.getItem(BACKUP_TIME_KEY)) || 0; } catch { return 0; }
+  }
+
+  markBackup() {
+    this.ui.lastBackup = Date.now();
+    try { localStorage.setItem(BACKUP_TIME_KEY, String(this.ui.lastBackup)); } catch { /* storage unavailable */ }
+  }
+
+  // Share sheet first (lets iPhone "Save to Files"), then a plain download.
+  async backupFile() {
+    const code = this.game.exportSave();
+    const name = `bug-garden-backup-${new Date().toISOString().slice(0, 10)}.txt`;
+    const file = new File([code], name, { type: 'text/plain' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Bug Garden backup' });
+        this.markBackup();
+        this.toast('Backup saved. Load it from Settings any time to restore.', 'good');
+        this.openModal(() => V.settingsModal(this.v), { static: true });
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+    try {
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(file), download: name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10e3);
+      this.markBackup();
+      this.toast(`Backup downloaded as ${name}.`, 'good');
+      this.openModal(() => V.settingsModal(this.v), { static: true });
+    } catch {
+      this.toast("This browser can't save files here. Use Copy save code instead.", 'bad');
+    }
+  }
+
+  restore(code) {
+    if (!code.trim()) return this.toast('Paste a save code or pick a backup file first.', 'bad');
+    const s = this.game.state;
+    this.ask({ title: 'Restore this backup?', body: `<p>It replaces the game on this device (${s.bugs.length} bugs, ${fmtNum(s.coins)} coins) with the backup.</p>`, yes: 'Restore', danger: true }, () => {
+      if (this.result(this.game.importSave(code), 'Backup restored!')) {
+        this.closePanel();
+        this.closeModal();
+      }
+    });
   }
 
   ask(opts, onYes) {
@@ -436,17 +494,16 @@ export class App {
         fn?.();
         break;
       }
-      case 'settings': ui.exportCode = ''; this.openModal(() => V.settingsModal(this.v), { static: true }); break;
+      case 'settings': ui.exportCode = ''; ui.lastBackup = this.lastBackup(); this.openModal(() => V.settingsModal(this.v), { static: true }); break;
       case 'export':
         ui.exportCode = g.exportSave();
+        this.markBackup();
         this.openModal(() => V.settingsModal(this.v), { static: true });
-        navigator.clipboard?.writeText(ui.exportCode).then(() => this.toast('Save code copied.', 'good'), () => {});
+        document.querySelector('#save-code')?.select();
+        navigator.clipboard?.writeText(ui.exportCode).then(() => this.toast('Save code copied. Paste it somewhere safe, like your notes.', 'good'), () => this.toast('Select the code below and copy it somewhere safe.'));
         break;
-      case 'import': {
-        const code = document.querySelector('#save-code')?.value || '';
-        if (this.result(g.importSave(code), 'Save imported!')) this.closeModal();
-        break;
-      }
+      case 'backup-file': this.backupFile(); break;
+      case 'import': this.restore(document.querySelector('#save-code')?.value || ''); break;
       case 'reset':
         this.ask({ title: 'Reset the game?', body: '<p>This erases all bugs, eggs, coins and progress on this device. It cannot be undone.</p>', yes: 'Erase everything', danger: true }, () => {
           g.reset();

@@ -499,6 +499,13 @@ export function confirmModal(v, { title, body, yes = 'Confirm', danger = false }
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn(yes, 'confirm-yes', {}, danger ? 'danger big' : 'go big')}</div>`;
 }
 
+const timeAgo = (ms) => {
+  const m = Math.floor(ms / 60e3), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d) return `${d} day${d > 1 ? 's' : ''} ago`;
+  if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
+  return m ? `${m} min ago` : 'just now';
+};
+
 export function settingsModal(v) {
   const { game, ui, A } = v;
   const s = game.state.stats;
@@ -510,9 +517,12 @@ export function settingsModal(v) {
     <h4>App version</h4>
     <p class="muted">You're on version <b>${VERSION}</b>.${ui.updateAvailable ? ` Version <b>${esc(ui.updateAvailable)}</b> is ready.` : ''}</p>
     <div class="row wrap">${ui.updateAvailable ? btn('Update now', 'update-app', {}, 'go') : btn('Check for updates', 'check-update')}</div>
-    <h4>Save</h4><p class="muted">Progress saves automatically on this device after every action. Export a code to move it.</p>
-    <textarea id="save-code" rows="3" placeholder="Paste a save code here to import">${ui.exportCode ? esc(ui.exportCode) : ''}</textarea>
-    <div class="row wrap">${btn('Export code', 'export')}${btn('Import code', 'import')}${btn('Reset game', 'reset', {}, 'danger')}</div>
+    <h4>Backup</h4>
+    <p class="muted">Progress saves automatically, but only on this device. Removing the home-screen icon or clearing website data erases it, so keep a backup. ${ui.lastBackup ? `Last backup: <b>${timeAgo(Date.now() - ui.lastBackup)}</b>.` : '<b>No backup yet.</b>'}</p>
+    <div class="row wrap">${btn('Save backup file', 'backup-file', {}, 'go')}<label class="btn">Load backup file<input id="save-file" type="file" accept=".txt,text/plain" hidden></label></div>
+    <p class="muted">Or copy a save code into your notes, then paste it here to restore.</p>
+    <textarea id="save-code" rows="3" placeholder="Paste a save code here to restore it">${ui.exportCode ? esc(ui.exportCode) : ''}</textarea>
+    <div class="row wrap">${btn('Copy save code', 'export')}${btn('Restore from code', 'import')}${btn('Reset game', 'reset', {}, 'danger')}</div>
     ${ui.debug ? devTools(v) : ''}
     <div class="row sticky-foot">${btn('How to play', 'help')}${btn('Close', 'close-modal')}</div>`;
 }
