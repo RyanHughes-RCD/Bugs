@@ -90,7 +90,6 @@ export class App {
         else this.toast(`The wild ${res.name} says hi back and leaves you ${res.coins} coins.`, 'good');
         return res;
       },
-      onSign: (id) => this.dispatch('view-exp', { id }),
       onRockMoved: (x, y) => this.game.moveRock(x, y),
     });
     this.scene.start();

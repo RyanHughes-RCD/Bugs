@@ -90,11 +90,10 @@ try {
   await warp(15 * 60e3);
   assert.ok((await page.textContent('.modal')).includes(`of ${exp.count}`));
   await snap('live-log');
-  // While the party is away: the away board, and wild visitors to greet.
+  // While the party is away: wild visitors to greet.
   await act('.modal [data-act="close-modal"]');
   await act('#nav [data-panel="garden"]');
   await warp(2 * HOUR);
-  assert.ok(await st(() => window.bugGarden.app.scene.signLayout()), 'away board is up');
   const visitor = await st(() => { const s = window.bugGarden.app.scene; const e = [...s.entities.values()].find((x) => x.visitor && !x.hidden && x.x > 12 && x.x < 138); if (!e) return null; const [x, y] = s.toScreen(e.x, e.y); const b = s.canvas.getBoundingClientRect(); return { id: e.visitor, at: [b.left + x / s.dpr, b.top + y / s.dpr] }; });
   if (visitor) {
     await page.mouse.click(...visitor.at);
@@ -102,8 +101,7 @@ try {
     assert.ok(await st(() => window.bugGarden.game.state.stats.visitorsGreeted >= 1), 'greeted a visitor');
   }
   await snap('visitors');
-  const sign = await st(() => { const s = window.bugGarden.app.scene; const l = s.signLayout(); const [x, y] = s.toScreen(l.x, l.y - 13); const b = s.canvas.getBoundingClientRect(); return [b.left + x / s.dpr, b.top + y / s.dpr]; });
-  await page.mouse.click(...sign);
+  await act('#hud [data-act="view-exp"]', { force: true });
   await page.waitForSelector('.modal [data-act="claim"]');
   await act('.modal [data-act="claim"]');
   await snap('claimed');
