@@ -1,6 +1,6 @@
 // Converts saves from the first version of Bug Garden (combat stats, 16
 // traits, area eggs) to the current format. Nothing the player earned is
-// silently lost: bugs keep species, level, name and gear; eggs map to tiers;
+// silently lost: bugs keep species and gear; eggs map to tiers;
 // removed items and old upgrades are refunded as coins.
 import { Rng } from './rng.js';
 import { SPECIES } from '../data/species.js';
