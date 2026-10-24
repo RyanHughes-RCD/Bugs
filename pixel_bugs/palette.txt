@@ -1,0 +1,19 @@
+# char  hex       description      ('.' is always transparent)
+K  #1a1c2c  outline / black
+k  #333c57  dark grey
+s  #566c86  grey
+l  #94b0c2  light grey
+W  #f4f4f4  white / highlight
+R  #b13e53  red
+r  #ef7d57  orange
+Y  #ffcd75  yellow
+G  #38b764  green
+g  #a7f070  light green
+T  #257179  teal
+b  #3b5dc9  blue
+c  #41a6f6  light blue
+C  #73eff7  cyan
+P  #5d275d  purple
+N  #7a4a2a  brown
+n  #b07a4a  light brown
+p  #f4a0b0  pink
