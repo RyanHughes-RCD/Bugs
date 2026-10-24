@@ -36,17 +36,20 @@ const lum = (r, g, b) => (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 // Pattern painters for generated eggs: return a palette char or null per pixel.
 const PATTERNS = {
   speckles: (x, y, v) => (((x * 7 + y * 13) % 11 === 0) ? v.mark : null),
-  spots: (x, y, v) => ([[6, 4], [7, 4], [9, 7], [10, 7], [5, 9], [6, 9], [9, 11], [8, 11]].some(([a, b]) => a === x && b === y) ? v.mark : null),
+  spots: (x, y, v) => ([[6, 4], [7, 4], [9, 7], [10, 7], [5, 9], [6, 9], [9, 11], [8, 11], [11, 9], [12, 9], [6, 12], [7, 12]].some(([a, b]) => a === x && b === y) ? v.mark : null),
   stripes: (x, y, v) => (y === 5 || y === 8 || y === 11 ? v.mark : null),
   zigzag: (x, y, v) => (y === 6 + ((x >> 1) % 2) || y === 10 + ((x >> 1) % 2) ? v.mark : null),
-  stars: (x, y, v) => ([[7, 4], [10, 8], [5, 10]].some(([a, b]) => (Math.abs(a - x) + Math.abs(b - y) === 1) || (a === x && b === y)) ? v.mark : null),
+  stars: (x, y, v) => ([[7, 4], [10, 8], [5, 10], [9, 12]].some(([a, b]) => (Math.abs(a - x) + Math.abs(b - y) === 1) || (a === x && b === y)) ? v.mark : null),
   swirl: (x, y, v) => (((x * 2 + y * 3) % 7 < 2) ? (y % 2 ? v.mark : v.mark2 || v.mark) : null),
   constellation: (x, y, v) => {
-    if ([[6, 4], [9, 6], [4, 8], [10, 10], [7, 12]].some(([a, b]) => a === x && b === y)) return v.mark;
-    if ([[7, 5], [8, 5], [5, 7], [8, 11], [9, 11]].some(([a, b]) => a === x && b === y)) return v.mark2;
+    if ([[6, 4], [9, 6], [4, 8], [10, 10], [7, 12], [12, 8]].some(([a, b]) => a === x && b === y)) return v.mark;
+    if ([[7, 5], [8, 5], [5, 7], [8, 11], [9, 11], [11, 6], [10, 13]].some(([a, b]) => a === x && b === y)) return v.mark2;
     return null;
   },
 };
+// One step darker for each palette colour, used to carry egg patterns into
+// the shaded side of the shell.
+const DARKER = { W: 'l', l: 's', s: 'k', k: 'K', K: 'K', R: 'P', r: 'R', Y: 'r', G: 'T', g: 'G', T: 'k', b: 'k', c: 'b', C: 'c', P: 'K', N: 'K', n: 'N', p: 'R' };
 const CRACK_PATHS = [
   [[7, 2], [7, 3], [8, 4], [7, 5]],
   [[6, 6], [5, 7], [8, 6], [9, 7], [10, 7]],
@@ -210,13 +213,23 @@ export class Assets {
   }
 
   // Builds an egg (plus three cracked stages) from the tier's visual config.
+  // The shell's lit side takes the base colour; the shaded side ('3') takes
+  // the shade colour, dithered where the two meet. Bands, gems and patterns
+  // run across both, one step darker in the shade.
   makeEgg(v) {
-    const rows = SPRITES.egg.map((row, y) => [...row].map((ch, x) => {
-      if (ch === '3') return v.shade;
-      if (ch !== '1' && ch !== '2') return ch;
-      if (v.gem && y === 9 && (x === 7 || x === 8)) return v.gem;
-      if (v.band && y === 9) return v.band;
-      return PATTERNS[v.pattern]?.(x, y, v) || v.base;
+    const T = SPRITES.egg;
+    const lit = (x, y) => T[y]?.[x] === '1' || T[y]?.[x] === '2' || T[y]?.[x] === 'W';
+    const rows = T.map((row, y) => [...row].map((ch, x) => {
+      if (ch !== '1' && ch !== '2' && ch !== '3') return ch;
+      const shaded = ch === '3';
+      const dark = (c) => (shaded ? v.shadeMarks?.[c] || DARKER[c] || c : c);
+      if (v.gem && y === 9 && (x === 7 || x === 8)) return dark(v.gem);
+      if (v.band && y === 9) return dark(v.band);
+      const mark = PATTERNS[v.pattern]?.(x, y, v);
+      if (mark) return dark(mark) === v.shade ? mark : dark(mark);
+      if (!shaded) return v.base;
+      const edge = lit(x - 1, y) || lit(x, y - 1);
+      return edge && (x + y) % 2 ? v.base : v.shade;
     }).join(''));
     const stages = [this.paint(rows)];
     const cracked = rows.map((r) => [...r]);

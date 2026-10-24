@@ -8,6 +8,8 @@ import { HOUR } from './balance.js';
 //       optionally after a number of expeditions there.
 // visual: palette characters (see pixel_bugs/palette.txt) and effects used to
 // draw the egg, so tiers read at a glance without revealing what's inside.
+// Patterns continue into the shaded side one shade darker; shadeMarks
+// overrides that darker colour for specific marks.
 // sprite: optional path to custom egg art; drawn instead of the generated egg.
 export const EGG_TIERS = [
   {
@@ -43,7 +45,7 @@ export const EGG_TIERS = [
   {
     id: 'legendary', name: 'Legendary Egg', price: 20000, hatchMs: 8 * HOUR, shop: { area: 'aether' },
     odds: { drab: 0.5, common: 2.5, uncommon: 5, nice: 10, rare: 18, epic: 27, legendary: 28, mythic: 8, celestial: 1 },
-    visual: { base: 'Y', shade: 'r', mark: 'W', pattern: 'stars', band: 'R', gem: 'R', glow: 'rgba(255,205,117,0.7)', sparkles: 3 },
+    visual: { base: 'Y', shade: 'r', mark: 'W', shadeMarks: { W: 'Y' }, pattern: 'stars', band: 'R', gem: 'R', glow: 'rgba(255,205,117,0.7)', sparkles: 3 },
     desc: 'Golden, star-studded and warm to the touch.',
   },
   {
