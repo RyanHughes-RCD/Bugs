@@ -1,43 +1,57 @@
-// Inventory items. Sprites live in game/js/data/sprites.js under the same id.
-// type: consumable (used from the bag), supply (packed for an expedition),
-//       gear (equipped on one bug), treasure (sold for coins).
+// Items. Sprites are in data/sprites.js under the same id.
+// type 'gear': equipped by one bug at a time. effects:
+//   traits:        { trait: +levels } added to the wearer's trait levels
+//   encounterSpeed: fraction cut from EVERY encounter of the wearer's expedition
+//                   (party total capped by MAX_ITEM_SPEED). Applied when the
+//                   expedition starts, so the shown timer always matches.
+//   coinBonus:     + fraction of coins from expedition encounters
+//   specialFind:   + chance-weight for treasure, eggs and chests
+//   key:           opens one locked chest, then is used up
+// type 'resource': found on expeditions and sold for coins.
+// buy: price in the shop (omit for find-only items). sell: coins when sold.
+export const MAX_ITEM_SPEED = 0.2;
+
 export const ITEMS = {
-  honey_drop:     { name: 'Honey Drop',     type: 'consumable', use: 'bug',        price: 40,  desc: 'Wakes a resting bug fully healed, ready to explore.' },
-  xp_nectar:      { name: 'Nectar Vial',    type: 'consumable', use: 'bug',        price: 90,  desc: 'A bug drinks it and gains 120 XP.', xp: 120 },
-  sugar_cube:     { name: 'Sugar Cube',     type: 'consumable', use: 'expedition', price: 60,  desc: 'Halves the remaining time of an expedition.' },
-  warm_moss:      { name: 'Warm Moss',      type: 'consumable', use: 'egg',        price: 50,  desc: 'Halves the remaining incubation time of an egg.' },
+  key:             { name: 'Chest Key',       type: 'gear', sell: 40, effects: { key: true }, desc: 'Opens one locked chest found on an expedition. Used up when it does.' },
+  power_brace:     { name: 'Beetle Brace',    type: 'gear', buy: 150, effects: { traits: { lift: 2 } }, desc: 'A tough little harness for heavy lifting.' },
+  stinger_blade:   { name: 'Stinger Blade',   type: 'gear', buy: 150, effects: { traits: { cut: 2 } }, desc: 'Razor-sharp. Vines don\'t stand a chance.' },
+  thorn_spear:     { name: 'Thorn Spear',     type: 'gear', buy: 150, effects: { traits: { fight: 2 } }, desc: 'A sharpened rose thorn.' },
+  dew_wings:       { name: 'Dewdrop Wings',   type: 'gear', buy: 150, effects: { traits: { fly: 2 } }, desc: 'Glistening wing-tips that catch the wind.' },
+  pebble_shovel:   { name: 'Pebble Shovel',   type: 'gear', buy: 150, effects: { traits: { dig: 2 } }, desc: 'A flat pebble lashed to a twig.' },
+  twig_hammer:     { name: 'Twig Hammer',     type: 'gear', buy: 150, effects: { traits: { build: 2 } }, desc: 'For bridges, ramps and the odd fort.' },
+  acorn_cap:       { name: 'Acorn Helmet',    type: 'gear', buy: 260, effects: { traits: { fight: 1, lift: 1 } }, desc: 'Keeps your head safe while you push.' },
+  silk_cloak:      { name: 'Silk Cloak',      type: 'gear', buy: 320, effects: { traits: { build: 1, fly: 1, cut: 1 } }, desc: 'Woven by a very patient spider.' },
+  trail_mix:       { name: 'Trail Snacks',    type: 'gear', buy: 400, effects: { encounterSpeed: 0.05 }, desc: 'Fuel for the road: the whole party\'s encounters take 5% less time.' },
+  clover_charm:    { name: 'Clover Charm',    type: 'gear', buy: 450, effects: { coinBonus: 0.15 }, desc: '+15% coins from the expedition.' },
+  bug_net:         { name: 'Explorer\'s Net', type: 'gear', buy: 500, effects: { specialFind: 0.25 }, desc: 'More treasure, chests and eggs turn up.' },
+  amber_shell:     { name: 'Amber Shell',     type: 'gear', buy: 900, effects: { traits: { lift: 3, dig: 2 } }, desc: 'Heavy, golden, nearly unbreakable.' },
+  firefly_lantern: { name: 'Firefly Lantern', type: 'gear', buy: 1800, effects: { traits: { lift: 1, cut: 1, fight: 1, fly: 1, dig: 1, build: 1 } }, desc: 'A warm glow that steadies every task.' },
+  moon_pendant:    { name: 'Moon Pendant',    type: 'gear', sell: 1500, effects: { traits: { lift: 2, cut: 2, fight: 2, fly: 2, dig: 2, build: 2 }, specialFind: 0.1 }, desc: 'Pulses with Aether light. Only found, never sold.' },
 
-  bug_net:        { name: 'Bug Net',        type: 'supply', price: 30, desc: 'Supply: +20% capture chance for one expedition.', supply: { capture: 0.2 } },
-  trail_mix:      { name: 'Trail Mix',      type: 'supply', price: 35, desc: 'Supply: heals the team 40% the first time a bug drops below half HP.', supply: { snack: 0.4 } },
-  clover_leaf:    { name: 'Clover Leaf',    type: 'supply', price: 45, desc: 'Supply: +30% loot and coins for one expedition.', supply: { loot: 0.3 } },
-  smelling_salts: { name: 'Smelling Salts', type: 'supply', price: 70, desc: 'Supply: revives the first bug that faints with 50% HP.', supply: { revive: 0.5 } },
-
-  acorn_cap:       { name: 'Acorn Cap',       type: 'gear', price: 120, stats: { hp: 6, def: 4 },  desc: 'A sturdy little helmet.' },
-  thorn_spear:     { name: 'Thorn Spear',     type: 'gear', price: 120, stats: { atk: 5 },         desc: 'A sharpened rose thorn.' },
-  dew_wings:       { name: 'Dewdrop Wings',   type: 'gear', price: 140, stats: { spd: 6 },         desc: 'Glistening wing-tips that catch the wind.' },
-  silk_cloak:      { name: 'Silk Cloak',      type: 'gear', price: 160, stats: { hp: 16 },        desc: 'Woven by a very patient spider.' },
-  clover_charm:    { name: 'Clover Charm',    type: 'gear', price: 200, stats: {}, team: { loot: 0.15 }, desc: 'The team finds 15% more loot.' },
-  amber_shell:     { name: 'Amber Shell',     type: 'gear', price: 260, stats: { def: 10, spd: -2 }, desc: 'Heavy, golden, nearly unbreakable.' },
-  stinger_blade:   { name: 'Stinger Blade',   type: 'gear', price: 320, stats: { atk: 11, def: -2 }, desc: 'Borrowed from a scorpion. Do not ask how.' },
-  firefly_lantern: { name: 'Firefly Lantern', type: 'gear', price: 380, stats: { hp: 6, atk: 4, def: 4, spd: 4 }, desc: 'A warm glow that steadies the nerves.' },
-  moon_pendant:    { name: 'Moon Pendant',    type: 'gear', price: 700, stats: { hp: 16, atk: 8, def: 8, spd: 8 }, desc: 'Pulses softly with moonlight.' },
-
-  shiny_pebble:  { name: 'Shiny Pebble',  type: 'treasure', sell: 12,  desc: 'Smooth and sparkly. A merchant will pay for it.' },
-  dewdrop_pearl: { name: 'Dewdrop Pearl', type: 'treasure', sell: 25,  desc: 'A drop of morning dew, frozen solid.' },
-  amber_chunk:   { name: 'Amber Chunk',   type: 'treasure', sell: 60,  desc: 'Ancient tree sap with something inside.' },
-  desert_glass:  { name: 'Desert Glass',  type: 'treasure', sell: 110, desc: 'Sand fused by lightning.' },
-  moon_crystal:  { name: 'Moon Crystal',  type: 'treasure', sell: 220, desc: 'Hums quietly when held up to the night sky.' },
+  honey_drop:    { name: 'Honey Drop',    type: 'resource', sell: 8,   desc: 'Sweet food gathered on the trail.' },
+  shiny_pebble:  { name: 'Shiny Pebble',  type: 'resource', sell: 12,  desc: 'Smooth and sparkly.' },
+  dewdrop_pearl: { name: 'Dewdrop Pearl', type: 'resource', sell: 30,  desc: 'Morning mist, frozen solid.' },
+  amber_chunk:   { name: 'Amber Chunk',   type: 'resource', sell: 45,  desc: 'Ancient tree sap with something inside.' },
+  desert_glass:  { name: 'Crystal Shard', type: 'resource', sell: 80,  desc: 'Hums when tapped. Grows in the deep caves.' },
+  ember_stone:   { name: 'Ember Stone',   type: 'resource', sell: 140, desc: 'Still warm from the volcano.' },
+  moon_crystal:  { name: 'Aether Crystal', type: 'resource', sell: 260, desc: 'Weightless and faintly singing.' },
 };
 
-export function sellPrice(itemId) {
-  const it = ITEMS[itemId];
+export const ITEM_TYPES = { gear: 'Equipment', resource: 'Resources' };
+
+export function sellPrice(id) {
+  const it = ITEMS[id];
   if (!it) return 0;
-  return it.sell ?? Math.floor((it.price || 0) * 0.4);
+  return it.sell ?? Math.floor((it.buy || 0) * 0.4);
 }
 
-export const ITEM_TYPES = {
-  consumable: 'Consumables',
-  supply: 'Expedition Supplies',
-  gear: 'Gear',
-  treasure: 'Treasures',
-};
+export function itemEffectsText(id) {
+  const e = ITEMS[id]?.effects || {};
+  const parts = [];
+  for (const [t, v] of Object.entries(e.traits || {})) parts.push(`+${v} ${t[0].toUpperCase()}${t.slice(1)}`);
+  if (e.encounterSpeed) parts.push(`-${Math.round(e.encounterSpeed * 100)}% encounter time`);
+  if (e.coinBonus) parts.push(`+${Math.round(e.coinBonus * 100)}% coins`);
+  if (e.specialFind) parts.push(`+${Math.round(e.specialFind * 100)}% special finds`);
+  if (e.key) parts.push('Opens a locked chest');
+  return parts.join(', ');
+}

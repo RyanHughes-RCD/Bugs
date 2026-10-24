@@ -1,142 +1,187 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planExpedition } from '../game/js/systems/expedition.js';
-import { addBug } from '../game/js/systems/bugs.js';
-import { AREAS, AREA_BY_ID, GUARDIAN_RUNS } from '../game/js/data/areas.js';
-import { Rng } from '../game/js/core/rng.js';
-import { makeGame, finishExpedition } from './helpers.mjs';
+import { AREAS, AREA_BY_ID } from '../game/js/data/areas.js';
+import { BASE_ENCOUNTER_MS } from '../game/js/data/balance.js';
+import { planExpedition, expeditionTimeline, encounterMs } from '../game/js/systems/expedition.js';
+import { makeGame, addBug, partyUids, MIN, HOUR } from './helpers.mjs';
 
-const uids = (game) => game.state.bugs.map((b) => b.uid);
+const unlockAll = (game) => { for (const a of AREAS) game.state.areas[a.id].unlocked = true; };
 
-test('launch validation: team size, locked areas, supplies', () => {
+test('a party must be exactly four eligible bugs', () => {
   const { game } = makeGame();
-  assert.equal(game.launchExpedition('meadow', []).ok, false);
-  assert.equal(game.launchExpedition('pond', uids(game)).ok, false, 'pond is locked');
-  addBug(game.state, 'bee', {}, new Rng(1));
-  assert.equal(game.launchExpedition('meadow', uids(game)).ok, false, 'five bugs is too many');
-  assert.equal(game.launchExpedition('meadow', uids(game).slice(0, 4), ['bug_net', 'trail_mix']).ok, false, 'one supply slot');
-  assert.equal(game.launchExpedition('meadow', uids(game).slice(0, 4), ['honey_drop']).ok, false, 'not a supply');
-  const nets = game.state.inventory.bug_net;
-  const res = game.launchExpedition('meadow', uids(game).slice(0, 4), ['bug_net']);
-  assert.ok(res.ok);
-  assert.equal(game.state.inventory.bug_net, nets - 1, 'supply consumed');
-  assert.equal(game.launchExpedition('meadow', [uids(game)[4]]).ok, false, 'area already has a team / slots full');
+  const uids = partyUids(game);
+  assert.equal(game.launchExpedition('garden', uids.slice(0, 3)).ok, false, 'three is not enough');
+  addBug(game, 'bee', { fly: 3 });
+  assert.equal(game.launchExpedition('garden', game.state.bugs.map((b) => b.uid)).ok, false, 'five is too many');
+  assert.equal(game.launchExpedition('garden', [uids[0], uids[0], uids[1], uids[2]]).ok, false, 'no duplicates');
+  assert.equal(game.launchExpedition('forest', uids).ok, false, 'locked area');
+  assert.ok(game.launchExpedition('garden', uids).ok);
 });
 
-test('bugs away or resting cannot join another expedition', () => {
-  const { game, clock } = makeGame();
-  game.state.upgrades.camp = 1;
-  game.state.areas.pond.unlocked = true;
-  const [a, b] = uids(game);
-  assert.ok(game.launchExpedition('meadow', [a]).ok);
-  assert.equal(game.launchExpedition('pond', [a]).ok, false, 'already exploring');
-  game.bug(b).restUntil = clock.t + 60e3;
-  assert.equal(game.launchExpedition('pond', [b]).ok, false, 'resting');
-  game.addItem('honey_drop');
-  assert.ok(game.useItem('honey_drop', b).ok);
-  assert.ok(game.launchExpedition('pond', [b]).ok, 'honey drop woke it up');
-});
-
-test('expeditions run on a timer and rewards apply only on collection', () => {
-  const { game, clock } = makeGame();
-  const coins = game.state.coins;
-  const { expedition: exp } = game.launchExpedition('meadow', uids(game));
-  assert.equal(game.collectExpedition(exp.id).ok, false, 'too early');
-  assert.equal(game.state.coins, coins);
-  const res = finishExpedition(game, clock, exp);
-  assert.ok(res.ok);
-  const r = exp.result;
-  assert.equal(game.state.coins, coins + r.coins);
-  assert.equal(game.state.expeditions.length, 0);
-  assert.equal(game.state.stats.expeditions, 1);
-  assert.equal(game.state.stats.captured, r.captures.length);
-  for (const [id, n] of Object.entries(r.items)) assert.ok(game.state.inventory[id] >= n);
-  assert.equal(game.state.areas.meadow.runs, r.retreated ? 0 : 1);
-  const totalXp = game.state.bugs.slice(0, 4).reduce((s, b) => s + b.xp + (b.level - 1) * 100, 0);
-  assert.ok(totalXp > 0, 'team gained xp');
-});
-
-test('the encounter plan is reproducible from its seed and varied across seeds', () => {
+test('bugs cannot be on two expeditions at once, or change items while away', () => {
   const { game } = makeGame();
-  const team = game.state.bugs;
-  const a = planExpedition(game.state, AREAS[0], team, [], 777);
-  const b = planExpedition(game.state, AREAS[0], team, [], 777);
-  assert.deepEqual(a, b);
-  const kinds = new Set();
-  for (let s = 0; s < 60; s++) for (const e of planExpedition(game.state, AREAS[0], team, [], s).events) kinds.add(e.kind);
-  for (const k of ['battle', 'treasure', 'hazard', 'nest', 'rest', 'wanderer', 'home']) assert.ok(kinds.has(k), k);
+  game.state.upgrades.improved_exploration = 1;
+  for (const s of ['bee', 'wasp', 'moth', 'tick']) addBug(game, s, { fly: 2 });
+  const uids = partyUids(game);
+  assert.ok(game.launchExpedition('garden', uids).ok);
+  assert.equal(game.launchExpedition('garden', [uids[0], ...game.state.bugs.slice(4, 7).map((b) => b.uid)]).ok, false);
+  assert.equal(game.equip(uids[0], 'key').ok, false, 'no gear changes while exploring');
+  assert.equal(game.releaseBug(uids[0]).ok, false);
+  assert.equal(game.assignment(game.bug(uids[0])), 'expedition');
+  assert.ok(game.launchExpedition('garden', game.state.bugs.slice(4, 8).map((b) => b.uid)).ok, 'second slot');
 });
 
-test('events are revealed progressively as time passes', () => {
-  const { game, clock } = makeGame();
-  const { expedition: exp } = game.launchExpedition('meadow', uids(game));
-  const shown = () => exp.events.filter((e) => e.at <= game.expeditionProgress(exp).fraction).length;
-  assert.equal(shown(), 0);
-  clock.t += exp.durationMs / 2;
-  const mid = shown();
-  assert.ok(mid > 0 && mid < exp.events.length);
-  clock.t += exp.durationMs;
-  assert.equal(shown(), exp.events.length);
-});
-
-test('sugar cube halves the remaining expedition time', () => {
+test('encounter counts are randomized within each area\'s range, saved at launch', () => {
   const { game } = makeGame();
-  const { expedition: exp } = game.launchExpedition('meadow', uids(game));
-  game.addItem('sugar_cube');
-  const before = game.expeditionProgress(exp).remainingMs;
-  assert.ok(game.useItem('sugar_cube', exp.id).ok);
-  assert.ok(Math.abs(game.expeditionProgress(exp).remainingMs - before / 2) <= 1);
-});
-
-test('bugs rest after an expedition depending on damage taken', () => {
-  const { game, clock } = makeGame({ seed: 5 });
-  const { expedition: exp } = game.launchExpedition('meadow', uids(game));
-  finishExpedition(game, clock, exp);
-  for (const uid of exp.team) {
-    const hurt = exp.result.hp[uid] < exp.result.maxHp[uid];
-    const resting = game.statusOf(game.bug(uid)) === 'resting';
-    assert.equal(resting, hurt, `uid ${uid}`);
+  const party = game.state.bugs;
+  for (const area of AREAS) {
+    const seen = new Set();
+    for (let s = 0; s < 120; s++) {
+      const p = planExpedition(game.state, area, party, s);
+      assert.ok(p.count >= area.encounters[0] && p.count <= area.encounters[1], area.id);
+      assert.equal(p.encounters.length, p.count);
+      seen.add(p.count);
+    }
+    assert.equal(seen.size, area.encounters[1] - area.encounters[0] + 1, `${area.id} uses its whole range`);
   }
 });
 
-test('trail maps and scout traits shorten expeditions', () => {
+test('every base encounter lasts 10 minutes: five encounters take 50 minutes', () => {
+  const { game, clock } = makeGame();
+  assert.equal(BASE_ENCOUNTER_MS, 10 * MIN);
+  let exp;
+  for (let i = 0; i < 40 && !exp; i++) {
+    const res = game.launchExpedition('garden', partyUids(game)).expedition;
+    if (res.count === 5) exp = res;
+    else game.state.expeditions = [];
+  }
+  assert.equal(exp.encounterMs, 10 * MIN);
+  assert.equal(exp.endsAt - exp.startAt, 50 * MIN);
+  const tl = (dt) => expeditionTimeline(exp, exp.startAt + dt);
+  assert.equal(tl(0).resolved, 0);
+  assert.equal(tl(9 * MIN).current, 0);
+  assert.equal(tl(10 * MIN).resolved, 1);
+  assert.equal(tl(25 * MIN).current, 2);
+  assert.equal(tl(25 * MIN).currentEndsAt, exp.startAt + 30 * MIN);
+  assert.ok(Math.abs(tl(25 * MIN).fraction - 0.5) < 1e-9);
+  assert.ok(!tl(50 * MIN - 1).done);
+  assert.ok(tl(50 * MIN).done);
+  assert.equal(game.claimExpedition(exp.id).ok, false, 'not before it ends');
+  clock.t = exp.endsAt;
+  assert.ok(game.claimExpedition(exp.id).ok);
+});
+
+test('Expedition Efficiency and speed items shorten encounters; the timer matches', () => {
   const { game } = makeGame();
-  game.state.upgrades.trail_maps = 5;
-  for (const b of game.state.bugs) b.traits = ['scout'];
-  const { expedition: exp } = game.launchExpedition('meadow', uids(game));
-  // 60s * (1 - 0.4) * (1 - 0.3 cap); shorter still if the team retreated.
-  assert.ok(exp.durationMs <= Math.round(60e3 * 0.6 * 0.7));
+  game.state.upgrades.expedition_efficiency = 5;
+  game.state.bugs[0].item = 'trail_mix';
+  const exp = game.launchExpedition('garden', partyUids(game)).expedition;
+  const expected = Math.round(10 * MIN * (1 - 0.3) * (1 - 0.05));
+  assert.equal(exp.encounterMs, expected);
+  assert.equal(exp.endsAt - exp.startAt, exp.count * expected);
+  assert.equal(encounterMs(game.state, game.state.bugs.slice(0, 4)), expected);
 });
 
-test(`guardian appears after ${GUARDIAN_RUNS} runs; defeating it allows unlocking the next area`, () => {
-  const { game, clock } = makeGame({ seed: 77 });
-  const st = game.state;
-  for (const b of st.bugs) b.level = 12; // strong enough to win reliably
-  st.areas.meadow.runs = GUARDIAN_RUNS;
-  assert.equal(game.canUnlock('pond').ok, false);
-  const { expedition: exp } = game.launchExpedition('meadow', uids(game));
-  assert.equal(exp.events.at(-2).kind, 'guardian');
-  const res = finishExpedition(game, clock, exp);
-  assert.ok(res.report.guardian.won);
-  assert.ok(st.areas.meadow.guardianDefeated);
-  st.coins = 0;
-  assert.equal(game.unlockArea('pond').ok, false, 'needs coins');
-  st.coins = AREA_BY_ID.pond.unlockCost;
-  assert.ok(game.unlockArea('pond').ok);
-  assert.ok(st.areas.pond.unlocked);
-  assert.equal(st.coins, 0);
-  assert.equal(game.unlockArea('woods').ok, false, 'woods needs the pond guardian');
+test('an upgrade bought mid-expedition does not change the running timer', () => {
+  const { game } = makeGame();
+  game.state.coins = 10000;
+  const exp = game.launchExpedition('garden', partyUids(game)).expedition;
+  const end = exp.endsAt;
+  game.buyUpgrade('expedition_efficiency');
+  assert.equal(game.state.expeditions[0].endsAt, end);
 });
 
-test('a full wipe retreats early and keeps loot found so far', () => {
-  const { game, clock } = makeGame({ seed: 3 });
-  game.state.areas.jungle.unlocked = true;
-  const { expedition: exp } = game.launchExpedition('jungle', [game.state.bugs[0].uid]);
-  assert.ok(exp.result.retreated, 'a level 1 bug alone cannot survive the jungle');
-  assert.equal(exp.events.at(-1).kind, 'retreat');
-  assert.ok(exp.durationMs < AREA_BY_ID.jungle.durationMs);
-  const res = finishExpedition(game, clock, exp);
+test('rewards are claimed exactly once and applied in full', () => {
+  const { game, clock, storage } = makeGame();
+  const exp = game.launchExpedition('garden', partyUids(game)).expedition;
+  clock.t = exp.endsAt;
+  const coins = game.state.coins;
+  const total = exp.encounters.reduce((s, e) => s + e.coins, 0);
+  const res = game.claimExpedition(exp.id);
   assert.ok(res.ok);
-  assert.equal(game.state.areas.jungle.runs, 0, 'retreats do not count toward the guardian');
-  assert.ok(game.bug(exp.team[0]).restUntil > clock.t, 'fainted bug must rest');
+  assert.equal(game.state.coins, coins + total);
+  assert.equal(game.claimExpedition(exp.id).ok, false, 'second claim refused');
+  assert.equal(game.state.coins, coins + total);
+  const { game: reopened } = makeGame({ storage, clock });
+  assert.equal(reopened.claimExpedition(exp.id).ok, false, 'still refused after relaunch');
+  assert.equal(reopened.state.coins, coins + total);
+  assert.equal(reopened.state.areas.garden.runs, 1);
+  assert.equal(reopened.state.history[0].id, exp.id, 'kept in history for the log');
+});
+
+test('all five areas run, resolve encounters and pay rewards', () => {
+  const { game, clock } = makeGame();
+  unlockAll(game);
+  game.state.upgrades.improved_exploration = 0;
+  for (const area of AREAS) {
+    const res = game.launchExpedition(area.id, partyUids(game));
+    assert.ok(res.ok, area.id);
+    const exp = res.expedition;
+    for (const e of exp.encounters) {
+      assert.ok(e.intro && e.text, `${area.id}/${e.id} has text`);
+      assert.ok(Number.isInteger(e.coins) && e.coins >= 0);
+    }
+    clock.t = exp.endsAt;
+    const claim = game.claimExpedition(exp.id);
+    assert.ok(claim.ok);
+    assert.ok(claim.report.rewards.coins > 0, `${area.id} pays coins`);
+  }
+});
+
+test('later areas pay more', () => {
+  const { game } = makeGame();
+  const party = game.state.bugs;
+  const avg = (area) => {
+    let c = 0;
+    for (let s = 0; s < 150; s++) c += planExpedition(game.state, area, party, s).encounters.reduce((x, e) => x + e.coins, 0);
+    return c / 150;
+  };
+  let prev = 0;
+  for (const area of AREAS) {
+    const a = avg(area);
+    assert.ok(a > prev, `${area.id} ${a} > ${prev}`);
+    prev = a;
+  }
+});
+
+test('Chest Keys open locked chests, are consumed once, and are credited in the log', () => {
+  const { game, clock } = makeGame();
+  // Find a seed with a chest in the first garden expedition.
+  game.state.bugs[0].item = 'key';
+  let exp;
+  for (let i = 0; i < 300 && !exp; i++) {
+    const e = game.launchExpedition('garden', partyUids(game)).expedition;
+    if (e.encounters.some((x) => x.category === 'chest')) exp = e;
+    else game.state.expeditions = [];
+  }
+  assert.ok(exp, 'found a chest');
+  const chests = exp.encounters.filter((x) => x.category === 'chest');
+  assert.equal(chests[0].outcome, 'opened');
+  assert.equal(chests[0].keyUsedBy, game.state.bugs[0].uid);
+  assert.ok(chests[0].text.includes(game.state.bugs[0].name));
+  if (chests[1]) assert.notEqual(chests[1].outcome, 'opened', 'one key opens one chest');
+  assert.equal(game.state.bugs[0].item, 'key', 'still held until the rewards are claimed');
+  clock.t = exp.endsAt;
+  const res = game.claimExpedition(exp.id);
+  assert.deepEqual(res.report.keysUsed, [game.state.bugs[0].uid]);
+  assert.equal(game.state.bugs[0].item, null, 'key consumed');
+  assert.equal(game.claimExpedition(exp.id).ok, false);
+  assert.equal(game.state.inventory.key, 1, 'the spare key in the bag is untouched');
+});
+
+test('without a key, chests stay locked unless the party can force them with Lift', () => {
+  const { game } = makeGame();
+  const area = AREA_BY_ID.garden;
+  const weak = [addBug(game, 'ant', { dig: 1 }), addBug(game, 'aphid', { cut: 1 }), addBug(game, 'moth', { fly: 1 }), addBug(game, 'tick', { fight: 1 })];
+  const strong = [addBug(game, 'rhino_beetle', { lift: 12 }), addBug(game, 'stag_beetle', { lift: 10 }), addBug(game, 'ant', { lift: 8 }), addBug(game, 'bee', { fly: 1 })];
+  const outcomes = (party) => {
+    const out = { locked: 0, pried: 0, opened: 0 };
+    for (let s = 0; s < 400; s++) for (const e of planExpedition(game.state, area, party, s).encounters) if (e.category === 'chest') out[e.outcome] += 1;
+    return out;
+  };
+  const w = outcomes(weak);
+  const s = outcomes(strong);
+  assert.equal(w.opened + s.opened, 0, 'no keys, no key openings');
+  assert.ok(w.locked > w.pried * 4, 'weak lifters mostly fail');
+  assert.ok(s.pried > s.locked * 4, 'strong lifters usually force it');
 });

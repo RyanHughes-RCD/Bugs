@@ -1,46 +1,51 @@
 # Bug Garden
 
-A pixel-art bug collecting and expedition game, built on the art in this repo:
-the garden map in `BugsMap/` and the 16×16 bug sprites in `pixel_bugs/` and `8x/`.
+A pixel-art bug collecting and idle expedition game built on this repo's art: the garden map in
+`BugsMap/` and the 16×16 bug sprites in `pixel_bugs/` and `8x/`.
+
+> "All bugs come from eggs. Everyone knows this."
 
 ## Play
 
 No build step or dependencies. Serve the folder over HTTP (ES modules don't load from `file://`):
 
-    npm start            # or: node serve.mjs   (any static server works, e.g. python3 -m http.server)
+    npm start            # node serve.mjs, then open http://localhost:8080
 
-Then open <http://localhost:8080>. The layout is made for phones and also works on desktop.
-Add `?debug` to the URL to get time-warp and coin buttons under ⚙ Settings, which is handy for testing timers.
+The layout is designed for phones and also works on desktop.
 
-## Systems
+## The loop
 
-| System | What it does | Code |
-| --- | --- | --- |
-| **Living garden** | Your home bugs wander the `BugsMap` garden (flyers hover, hoppers hop, resting bugs snooze). They earn coins into a capped pot that you tap to collect. Day/night follows your clock, with fireflies and glowing bugs at night. Wild visitors drop by and can be befriended. | `ui/garden-scene.js`, `systems/garden.js` |
-| **Collection & traits** | 55 species across 5 rarities, each with a role and family. Every bug rolls 1–2 of 16 traits, and 1 in 50 is shiny. Bugs gain XP and levels. The Bugdex tracks seen and caught species and pays a reward for each new discovery. | `data/species.js`, `data/traits.js`, `systems/bugs.js` |
-| **Four-bug expeditions** | Pick a team of up to 4 and pack supplies. Each run is a seeded list of random encounters: battles, treasure, hazards, nests, rest spots and friendly wanderers. Events reveal over real time; rewards apply when you collect. Hurt bugs rest afterwards. | `systems/expedition.js`, `systems/battle.js` |
-| **5 progression areas** | Sunny Meadow → Lily Pond → Old Oak Woods → Dusty Dunes → Moonlit Jungle. After 3 runs in an area its Guardian appears. Beat it, then pay the fee to unlock the next area. | `data/areas.js` |
-| **Inventory & equipment** | Consumables (Honey Drop, Nectar, Sugar Cube, Warm Moss), expedition supplies (Net, Trail Mix, Clover, Salts), 9 pieces of gear (one slot per bug), and treasures to sell. | `data/items.js` |
-| **Egg hatching** | 8 egg types incubate in the dirt-patch nursery. Hatches are rolled from rarity odds shown in the UI; a rarity an egg's pool doesn't have rolls into the nearest one that it does. | `systems/eggs.js`, `data/eggs.js` |
-| **Persistent timers** | Expeditions, eggs, rest, garden income, visitors and the shop restock all use timestamps, so they keep running offline. You get a "welcome back" summary. | `game.js` |
-| **Upgrades** | 12 permanent coin upgrades: nursery plots, incubation speed, hatch luck, stats, expedition speed, loot, capture chance, garden income and storage, rest time, extra teams, supply slots. | `data/upgrades.js` |
+1. **Hatchery:** buy eggs in six tiers (Common → Mythic) and incubate them. Base incubation is 4 hours, and it keeps running while the game is closed.
+2. **Hatch:** tap the egg to crack it open. The tier changes the odds (shown exactly in the game) but never guarantees the result.
+3. **Garden:** up to 10 bugs live here. They wander, visit flowers, dig in the dirt, and dig up a few coins. Tap a bug to inspect it.
+4. **Explore:** send a party of exactly 4 bugs to one of five areas: The Garden, Misty Forest, Crystal Caves, Volcano and Aether. Each expedition has a random number of encounters, and each takes 10 minutes before upgrades.
+5. **Traits:** encounters test Lift, Cut, Fight, Fly, Dig and Build. Higher trait levels pass more checks and earn better rewards. A missing trait means worse odds, never a blocked expedition.
+6. **Chests:** equip a Chest Key on a party member to open locked chests. The key is used up.
+7. **Spend coins:** on eggs, equipment (one item per bug), permanent upgrades, and unlocking areas.
 
-Progress auto-saves to `localStorage`. Settings can export or import a save code and reset the game.
+## How it's built
 
-## Architecture
+All rules live in plain, testable modules; the UI only calls `Game` methods, which validate everything.
 
-    index.html, game/style.css
-    game/js/game.js        Game class: state + every player action (pure logic, no DOM)
-    game/js/data/          species, traits, items, eggs, areas, upgrades, item sprites
-    game/js/systems/       bugs/stats, battle, expedition, eggs, garden, shop
-    game/js/core/          seeded RNG, save/migrate/encode
-    game/js/ui/            asset loading, garden canvas, area banners, HTML views, app controller
+| Folder | Contents |
+| --- | --- |
+| `game/js/data/` | **Configuration.** Edit these to add content without touching engine code: `species` (traits per species), `rarities`, `traits`, `eggs` (tiers, odds tables, visuals), `areas` (difficulty, encounter ranges, reward tables), `encounters` (the encounter catalogue), `items`, `upgrades` (cost and effect formulas), `balance` (global tuning) and `sprites`. |
+| `game/js/systems/` | **Engine.** `bugs` (identity, traits, XP), `traits` (trait-check formula), `eggs` (odds, rolls, incubation), `expedition` (encounter generation, timeline), `garden`. |
+| `game/js/core/` | Seeded RNG, saving (with a backup copy) and migration of older saves. |
+| `game/js/game.js` | The `Game` class: every player action, with validation, saved immediately. |
+| `game/js/ui/` | Garden canvas, area banners, screens, dialogs and the app controller. |
 
-Every random roll goes through a seeded RNG stored in the save, so outcomes can be reproduced.
-Item, egg and icon sprites in `game/js/data/sprites.js` use the same text format and
-`pixel_bugs/palette.txt` palette as `pixel_bugs/sprites/*.txt`; the palette is loaded at runtime.
+**Trait checks.** A party's score for a trait is its best bug's level, plus half the second best, a quarter of the third, and an eighth of the fourth. The chance to pass is `0.55 + 0.1 × (score − difficulty)`, clamped to 10–95%; with nobody holding the trait it is 8%. All of these numbers are in `data/balance.js`. The live log shows the trait, score, difficulty and chance for every check.
 
-## Tests
+**Timers.** Eggs store their start and finish timestamps. Expeditions store their start time, encounter length, encounter count and the fully generated encounters. Progress is always computed from those timestamps, so closing the app, reloading or reopening a screen never rerolls or loses anything. Rewards are claimed once; the expedition then moves to history.
 
-    npm test             # 37 unit tests: every system, save/reload with timers, balance guards
-    npm run test:e2e     # headless Chromium playthrough of the real UI (needs Playwright)
+**Saves.** Saved to `localStorage` after every action. A backup copy is used if the main save is damaged, and an unreadable save is set aside rather than overwritten. Saves from the first version of the game are migrated: bugs, eggs and gear carry over, and removed items and upgrades are refunded as coins. Settings can export or import a save code.
+
+**Art.** Only the garden has map art in `BugsMap/`, so the other four areas use generated pixel banners in the shared palette. Each area's art is configurable in `data/areas.js`. Eggs are drawn from configurable patterns and colours per tier; an `EGG_TIERS` entry can point `sprite` at real egg art.
+
+## Testing
+
+    npm test             # 47 unit tests: odds tables, trait checks, timers, keys, claims, saves, economy
+    npm run test:e2e     # headless Chromium playthrough of the core loop (needs Playwright)
+
+**Developer mode:** add `?debug` to the URL. Settings then shows time warp (+10 min, +1 h, +4 h), coin, key and egg grants, and an odds lab that simulates 10,000 hatches without touching your save. None of this appears without the flag.

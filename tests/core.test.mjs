@@ -1,13 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { Rng } from '../game/js/core/rng.js';
-import { SAVE_KEY, newGameState, migrate, encodeSave, decodeSave, memoryStorage } from '../game/js/core/save.js';
+import { SAVE_KEY, BACKUP_KEY, decodeSave, memoryStorage } from '../game/js/core/save.js';
 import { SPECIES_LIST } from '../game/js/data/species.js';
+import { RARITY_ORDER } from '../game/js/data/rarities.js';
+import { TRAIT_IDS } from '../game/js/data/traits.js';
 import { ITEMS } from '../game/js/data/items.js';
 import { AREAS } from '../game/js/data/areas.js';
+import { ENCOUNTERS } from '../game/js/data/encounters.js';
+import { EGG_BY_ID, HATCHERY_MOTTO } from '../game/js/data/eggs.js';
 import { SPRITES } from '../game/js/data/sprites.js';
-import { existsSync } from 'node:fs';
-import { makeGame, T0 } from './helpers.mjs';
+import { makeGame, T0, HOUR, partyUids } from './helpers.mjs';
 
 test('rng is deterministic and in range', () => {
   const a = new Rng(42);
@@ -18,69 +22,98 @@ test('rng is deterministic and in range', () => {
     const n = r.int(3, 7);
     assert.ok(n >= 3 && n <= 7 && Number.isInteger(n));
   }
-  const counts = { x: 0, y: 0 };
-  for (let i = 0; i < 4000; i++) counts[r.weighted([['x', 3], ['y', 1]])]++;
-  assert.ok(counts.x > counts.y * 2.4 && counts.x < counts.y * 3.6);
 });
 
-test('every species and egg sprite asset exists', () => {
-  assert.equal(SPECIES_LIST.length, 55);
-  for (const s of SPECIES_LIST) assert.ok(existsSync(new URL(`../${s.sprite}`, import.meta.url)), s.sprite);
-  assert.ok(existsSync(new URL('../8x/chrysalis.png', import.meta.url)));
-  assert.ok(existsSync(new URL('../BugsMap/pixil-layer-0.png', import.meta.url)));
-  for (const id of Object.keys(ITEMS)) assert.ok(SPRITES[id], `sprite for ${id}`);
+test('game data is valid: species, items, areas, encounters, sprites', () => {
+  for (const s of SPECIES_LIST) {
+    assert.ok(existsSync(new URL(`../${s.sprite}`, import.meta.url)), s.sprite);
+    assert.ok(s.traits.length >= 1, `${s.id} has a trait`);
+    for (const t of s.traits) assert.ok(TRAIT_IDS.includes(t), `${s.id}: ${t}`);
+    assert.ok(RARITY_ORDER.includes(s.rarity));
+  }
+  for (const r of RARITY_ORDER) assert.ok(SPECIES_LIST.some((s) => s.rarity === r), `species for ${r}`);
+  for (const [id, it] of Object.entries(ITEMS)) {
+    assert.ok(SPRITES[id], `sprite for ${id}`);
+    for (const t of Object.keys(it.effects?.traits || {})) assert.ok(TRAIT_IDS.includes(t), `${id}: ${t}`);
+  }
+  for (const a of AREAS) {
+    for (const [id] of [...a.loot, ...a.chest.loot]) assert.ok(ITEMS[id], `${a.id} loot ${id}`);
+    for (const [tier] of [...a.eggs, ...a.chest.eggs]) assert.ok(EGG_BY_ID[tier], `${a.id} egg ${tier}`);
+    assert.ok(a.encounters[0] >= 1 && a.encounters[1] >= a.encounters[0]);
+    assert.ok(ENCOUNTERS.filter((e) => !e.areas || e.areas.includes(a.id)).length >= 10, `${a.id} has an encounter pool`);
+  }
+  for (let i = 1; i < AREAS.length; i++) {
+    assert.ok(AREAS[i].difficulty > AREAS[i - 1].difficulty);
+    assert.ok(AREAS[i].coinBase > AREAS[i - 1].coinBase);
+    assert.ok(AREAS[i].encounters[1] >= AREAS[i - 1].encounters[1]);
+  }
+  for (const e of ENCOUNTERS) {
+    for (const t of e.check?.traits || []) assert.ok(TRAIT_IDS.includes(t), `${e.id}: ${t}`);
+    for (const id of e.areas || []) assert.ok(AREAS.some((a) => a.id === id), `${e.id}: ${id}`);
+    if (e.category !== 'chest') assert.ok(e.check ? e.success && e.fail : e.result, `${e.id} has outcomes`);
+  }
   for (const rows of Object.values(SPRITES)) {
     assert.equal(rows.length, 16);
     for (const row of rows) assert.equal(row.length, 16);
   }
 });
 
-test('every area has species, loot and a guardian', () => {
-  assert.equal(AREAS.length, 5);
-  for (const a of AREAS) {
-    assert.ok(SPECIES_LIST.some((s) => s.habitats.includes(a.id)), a.id);
-    assert.ok(SPECIES_LIST.find((s) => s.id === a.guardian.species));
-    for (const [id] of a.loot) assert.ok(ITEMS[id], `${a.id} loot ${id}`);
-  }
+test('every trait has encounters that test it', () => {
+  for (const t of TRAIT_IDS) assert.ok(ENCOUNTERS.some((e) => e.check?.traits.includes(t)), t);
 });
 
-test('new game starts with four bugs, an incubating egg and starter items', () => {
+test('the hatchery motto appears in the game exactly as written', () => {
+  assert.equal(HATCHERY_MOTTO, 'All bugs come from eggs. Everyone knows this.');
+  const views = readFileSync(new URL('../game/js/ui/views.js', import.meta.url), 'utf8');
+  assert.ok(views.includes('HATCHERY_MOTTO'));
+});
+
+test('a new game starts playable: four bugs in the garden, an egg, a key and coins', () => {
   const { game } = makeGame();
   const st = game.state;
   assert.equal(st.bugs.length, 4);
-  assert.equal(st.coins, 100);
+  assert.ok(st.bugs.every((b) => b.inGarden));
   assert.equal(st.eggs.length, 1);
-  assert.ok(st.eggs[0].startedAt);
-  assert.ok(st.areas.meadow.unlocked);
-  assert.ok(!st.areas.pond.unlocked);
-  for (const b of st.bugs) assert.ok(b.traits.length >= 1);
+  assert.equal(st.inventory.key, 1);
+  assert.ok(st.coins >= EGG_BY_ID.common.price);
+  assert.ok(st.areas.garden.unlocked);
+  assert.equal(new Set(st.bugs.map((b) => b.uid)).size, 4, 'unique ids');
+  for (const b of st.bugs) assert.ok(Object.keys(b.traits).length >= 1);
 });
 
-test('state is saved and restored, including running timers', () => {
+test('state survives a relaunch, including running timers and generated encounters', () => {
   const storage = memoryStorage();
   const clock = { t: T0 };
   const { game } = makeGame({ storage, clock });
-  const res = game.launchExpedition('meadow', game.state.bugs.map((b) => b.uid));
-  assert.ok(res.ok);
-  const json = storage.getItem(SAVE_KEY);
-  assert.ok(json.includes('"expeditions"'));
-
-  clock.t += 10 * 60e3; // ten minutes "offline"
+  game.startIncubation(game.state.eggs[0].uid);
+  const exp = game.launchExpedition('garden', partyUids(game)).expedition;
+  clock.t += 5 * HOUR;
   const { game: again } = makeGame({ storage, clock });
-  assert.equal(again.state.expeditions.length, 1);
-  assert.ok(again.expeditionProgress(again.state.expeditions[0]).done);
+  const exp2 = again.state.expeditions[0];
+  assert.deepEqual(exp2.encounters, exp.encounters, 'encounters are not rerolled');
+  assert.equal(exp2.endsAt, exp.endsAt);
+  assert.ok(again.timeline(exp2).done);
   assert.ok(again.eggProgress(again.state.eggs[0]).ready);
-  assert.ok(again.collectExpedition(again.state.expeditions[0].id).ok);
 });
 
-test('old or partial saves are migrated with defaults', () => {
-  const st = migrate({ coins: 5, bugs: [{ uid: 1, species: 'ant' }], seed: 3 });
-  assert.equal(st.coins, 5);
-  assert.deepEqual(st.bugs[0].traits, []);
-  assert.equal(st.bugs[0].level, 1);
-  assert.equal(st.upgrades.nursery, 0);
-  assert.ok(st.areas.meadow.unlocked);
-  assert.ok(st.garden && st.shop && st.dex);
+test('a corrupted save falls back to the backup copy', () => {
+  const storage = memoryStorage();
+  const { game } = makeGame({ storage });
+  game.state.coins = 4321;
+  game.commit();
+  makeGame({ storage }); // a successful load refreshes the backup
+  storage.setItem(SAVE_KEY, '{ not json');
+  const { game: again } = makeGame({ storage });
+  assert.equal(again.state.coins, 4321);
+  assert.ok(storage.getItem(BACKUP_KEY));
+});
+
+test('an unreadable save with no backup is kept aside, never overwritten', () => {
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, '{ broken');
+  const clock = { t: T0 };
+  makeGame({ storage, clock });
+  assert.equal(storage.getItem(`${SAVE_KEY}-unreadable-${T0}`), '{ broken');
 });
 
 test('save codes round-trip and bad codes are rejected', () => {
@@ -92,5 +125,47 @@ test('save codes round-trip and bad codes are rejected', () => {
   assert.ok(other.importSave(code).ok);
   assert.equal(other.state.coins, 777);
   assert.equal(other.importSave('not a save').ok, false);
-  assert.equal(encodeSave(newGameState(T0, 1)).length > 10, true);
+});
+
+test('saves from the first version are migrated without losing progress', () => {
+  const v1 = {
+    seed: 5, rngState: 99, coins: 50, nextUid: 20, lastSeen: T0,
+    bugs: [
+      { uid: 1, species: 'ant', level: 6, xp: 3, traits: ['fierce'], gear: 'thorn_spear', nickname: 'Sir Ant' },
+      { uid: 2, species: 'bee', level: 1, traits: ['lucky'], gear: null, shiny: true },
+    ],
+    eggs: [{ uid: 3, type: 'golden_egg', startedAt: T0 - HOUR, durationMs: 2 * HOUR, bonusMs: 0 }, { uid: 4, type: 'meadow_egg', startedAt: null }],
+    inventory: { sugar_cube: 2, honey_drop: 1, bug_net: 1 },
+    upgrades: { training: 2 },
+    areas: { meadow: { unlocked: true, runs: 4, guardianDefeated: true }, pond: { unlocked: true, runs: 1 } },
+    expeditions: [{ result: { coins: 30, items: { amber_chunk: 1 }, eggs: ['pond_egg'] } }],
+    dex: { ant: { seen: true, caught: 1 }, bee: { seen: true, caught: 1 } },
+    stats: { expeditions: 7 }, flags: { welcomed: true },
+  };
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify(v1));
+  const { game } = makeGame({ storage, clock: { t: T0 } });
+  const st = game.state;
+  assert.equal(st.version, 2);
+  const ant = st.bugs.find((b) => b.uid === 1);
+  assert.equal(ant.name, 'Sir Ant');
+  assert.equal(ant.level, 6);
+  assert.equal(ant.item, 'thorn_spear');
+  assert.ok(Object.values(ant.traits).reduce((a, b) => a + b, 0) >= 6, 'levels became trait growth');
+  assert.ok(st.bugs.find((b) => b.uid === 2).shiny);
+  assert.ok(st.bugs.every((b) => b.inGarden));
+  const golden = st.eggs.find((e) => e.uid === 3);
+  assert.equal(golden.tier, 'epic');
+  assert.equal(golden.endsAt, T0 + HOUR, 'incubating egg keeps its original timer');
+  assert.equal(st.eggs.find((e) => e.uid === 4).tier, 'common');
+  assert.ok(st.eggs.some((e) => e.tier === 'uncommon'), 'egg from the unfinished expedition');
+  assert.equal(st.inventory.sugar_cube, undefined);
+  assert.equal(st.inventory.bug_net, 1);
+  assert.equal(st.inventory.amber_chunk, 1);
+  const refund = 2 * 24 + 30 + 100 + 175; // removed items + expedition coins + Training Log levels
+  assert.equal(st.flags.migratedFromV1.refund, refund);
+  assert.ok(st.coins >= 50 + refund);
+  assert.ok(st.areas.forest.unlocked);
+  assert.equal(st.areas.garden.runs, 4);
+  assert.equal(st.stats.expeditions, 7);
 });

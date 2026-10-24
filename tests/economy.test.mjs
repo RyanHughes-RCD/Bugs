@@ -1,151 +1,149 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { UPGRADES, upgradeCost } from '../game/js/data/upgrades.js';
-import { computeStats, addXp, xpToNext } from '../game/js/systems/bugs.js';
-import { gardenCap, gardenRatePerMin, VISITOR_STAY_MS } from '../game/js/systems/garden.js';
-import { ROTATION_MS, FIXED_STOCK, priceOf } from '../game/js/systems/shop.js';
-import { sellPrice } from '../game/js/data/items.js';
-import { makeGame } from './helpers.mjs';
+import { UPGRADES, upgradeCost, upgradeValue } from '../game/js/data/upgrades.js';
+import { GARDEN_LIMIT, GARDEN_FORAGE } from '../game/js/data/balance.js';
+import { ITEMS, sellPrice } from '../game/js/data/items.js';
+import { AREA_BY_ID } from '../game/js/data/areas.js';
+import { expeditionSlots } from '../game/js/systems/expedition.js';
+import { gardenRatePerMin } from '../game/js/systems/garden.js';
+import { makeGame, addBug, partyUids, MIN } from './helpers.mjs';
 
-test('upgrade costs grow, spend coins, and stop at max level', () => {
-  const { game } = makeGame();
-  for (const u of UPGRADES) assert.ok(upgradeCost(u.id, 1) > upgradeCost(u.id, 0), u.id);
-  game.state.coins = 1e7;
-  const u = UPGRADES.find((x) => x.id === 'camp');
-  for (let i = 0; i < u.max; i++) assert.ok(game.buyUpgrade('camp').ok);
-  assert.equal(game.buyUpgrade('camp').ok, false);
-  assert.equal(game.state.upgrades.camp, u.max);
-  game.state.coins = 0;
-  assert.equal(game.buyUpgrade('bloom').ok, false, 'not enough coins');
+test('the four required upgrade paths exist with rising costs and levels', () => {
+  for (const id of ['faster_incubation', 'expedition_efficiency', 'better_finds', 'improved_exploration']) {
+    const u = UPGRADES.find((x) => x.id === id);
+    assert.ok(u && u.max > 1, id);
+    for (let l = 1; l < u.max; l++) assert.ok(upgradeCost(id, l) > upgradeCost(id, l - 1));
+    assert.equal(upgradeCost(id, u.max), Infinity);
+  }
 });
 
-test('Training Log raises every bug\'s stats', () => {
+test('upgrade purchases validate coins and max level, never going negative', () => {
   const { game } = makeGame();
-  const bug = game.state.bugs[0];
-  const before = computeStats(bug, game.state);
-  game.state.upgrades.training = 10;
-  const after = computeStats(bug, game.state);
-  for (const k of ['hp', 'atk', 'def', 'spd']) assert.ok(after[k] >= before[k], k);
-  assert.ok(after.hp > before.hp);
+  game.state.coins = upgradeCost('better_finds', 0) - 1;
+  assert.equal(game.buyUpgrade('better_finds').ok, false);
+  assert.equal(game.state.upgrades.better_finds, 0);
+  game.state.coins = 1e9;
+  const u = UPGRADES.find((x) => x.id === 'improved_exploration');
+  for (let i = 0; i < u.max; i++) assert.ok(game.buyUpgrade(u.id).ok);
+  assert.equal(game.buyUpgrade(u.id).ok, false);
+  assert.equal(game.state.upgrades[u.id], u.max);
+  assert.ok(game.state.coins >= 0);
 });
 
-test('levels raise stats and xp carries over', () => {
+test('upgrade effects: better finds, more expedition slots', () => {
   const { game } = makeGame();
-  const bug = game.state.bugs[0];
-  const s1 = computeStats(bug, game.state);
-  const gained = addXp(bug, xpToNext(1) + xpToNext(2) + 3);
-  assert.equal(gained, 2);
-  assert.equal(bug.level, 3);
-  assert.equal(bug.xp, 3);
-  assert.ok(computeStats(bug, game.state).atk > s1.atk);
+  game.state.upgrades.better_finds = 10;
+  assert.equal(upgradeValue(game.state, 'better_finds'), 1);
+  assert.equal(expeditionSlots(game.state), 1);
+  game.state.upgrades.improved_exploration = 1;
+  assert.equal(expeditionSlots(game.state), 2);
+  game.state.upgrades.improved_exploration = 3;
+  assert.equal(expeditionSlots(game.state), 3);
 });
 
-test('garden earns coins over time up to its cap, and only from bugs at home', () => {
+test('Better Finds doubles coins at max level for the same expedition', async () => {
+  const { planExpedition } = await import('../game/js/systems/expedition.js');
+  const { game } = makeGame();
+  const party = game.state.bugs;
+  const base = planExpedition(game.state, AREA_BY_ID.forest, party, 42);
+  game.state.upgrades.better_finds = 10;
+  const boosted = planExpedition(game.state, AREA_BY_ID.forest, party, 42);
+  const sum = (p) => p.encounters.reduce((s, e) => s + e.coins, 0);
+  assert.ok(Math.abs(sum(boosted) - 2 * sum(base)) <= boosted.encounters.length, `${sum(boosted)} ≈ 2 × ${sum(base)}`);
+});
+
+test('the garden holds at most 10 bugs; leaving it never removes a bug', () => {
+  const { game } = makeGame();
+  for (let i = 0; i < 10; i++) addBug(game, 'ant', { lift: 2 });
+  const outside = game.state.bugs.filter((b) => !b.inGarden);
+  for (let i = 0; i < 6; i++) assert.ok(game.setInGarden(outside[i].uid, true).ok);
+  assert.equal(game.state.bugs.filter((b) => b.inGarden).length, GARDEN_LIMIT);
+  const res = game.setInGarden(outside[6].uid, true);
+  assert.equal(res.ok, false);
+  const total = game.state.bugs.length;
+  assert.ok(game.setInGarden(game.state.bugs[0].uid, false).ok);
+  assert.equal(game.state.bugs.length, total, 'still in the collection');
+  assert.ok(game.setInGarden(outside[6].uid, true).ok);
+});
+
+test('garden bugs forage a few coins up to a cap; away bugs do not', () => {
   const { game, clock } = makeGame();
   const rate = gardenRatePerMin(game.state);
   assert.ok(rate > 0);
-  clock.t += 5 * 60e3;
+  clock.t += 10 * MIN;
   game.tick();
-  assert.ok(Math.abs(game.state.garden.pot - rate * 5) < 0.01);
-  clock.t += 24 * 60 * 60e3;
+  assert.ok(Math.abs(game.state.garden.pot - rate * 10) < 1e-6);
+  clock.t += 1000 * MIN;
   game.tick();
-  assert.equal(game.state.garden.pot, gardenCap(game.state));
+  assert.equal(game.state.garden.pot, GARDEN_FORAGE.cap);
   const coins = game.state.coins;
-  const res = game.collectGarden();
-  assert.equal(game.state.coins, coins + res.coins);
-  assert.ok(game.state.garden.pot < 1);
-  game.launchExpedition('meadow', game.state.bugs.map((b) => b.uid));
-  assert.equal(gardenRatePerMin(game.state), 0, 'everyone is away');
-  game.state.upgrades.coin_jar = 2;
-  assert.equal(gardenCap(game.state), 500);
+  assert.equal(game.collectGarden().coins, GARDEN_FORAGE.cap);
+  assert.equal(game.state.coins, coins + GARDEN_FORAGE.cap);
+  game.launchExpedition('garden', partyUids(game));
+  assert.equal(gardenRatePerMin(game.state), 0);
 });
 
-test('offline time accumulates garden coins on load', () => {
-  const { game, clock, storage } = makeGame();
-  game.save();
-  clock.t += 30 * 60e3;
-  const { game: again } = makeGame({ storage, clock });
-  assert.equal(Math.floor(again.state.garden.pot), Math.floor(Math.min(gardenCap(again.state), gardenRatePerMin(again.state) * 30)));
-});
-
-test('wild visitors appear, leave, and can be befriended', () => {
-  const { game, clock } = makeGame();
-  clock.t = game.state.garden.nextVisitorAt;
-  game.tick();
-  const v = game.state.garden.visitor;
-  assert.ok(v, 'visitor arrived');
-  clock.t += VISITOR_STAY_MS + 1;
-  game.tick();
-  assert.notEqual(game.state.garden.visitor, v, 'the first visitor left');
-  game.state.garden.visitor = { ...v, expiresAt: clock.t + 60e3 };
-  game.addItem('honey_drop');
-  const bugs = game.state.bugs.length;
-  const res = game.catchVisitor({ useHoney: true });
-  assert.ok(res.ok && res.caught, 'honey guarantees the catch');
-  assert.equal(game.state.bugs.length, bugs + 1);
-  assert.equal(game.catchVisitor().ok, false, 'no visitor left');
-});
-
-test('shop: fixed stock, once-per-rotation deals, selling', () => {
-  const { game, clock } = makeGame();
-  game.state.coins = 10000;
-  for (const id of FIXED_STOCK) assert.ok(game.buy(id).ok, id);
-  assert.equal(game.state.coins, 10000 - FIXED_STOCK.reduce((s, id) => s + priceOf(id), 0));
-  assert.ok(game.state.eggs.some((e) => e.type === 'garden_egg'), 'eggs go to the egg basket');
-  assert.equal(game.buy('moon_pendant').ok, false, 'not sold in fixed stock');
-
-  const offers = game.shopOffers();
-  assert.equal(offers.length, 3);
-  assert.equal(new Set(offers.map((o) => o.id)).size, 3, 'no duplicate deals');
-  assert.ok(game.buy(offers[0].id, { offerIndex: 0 }).ok);
-  assert.equal(game.buy(offers[0].id, { offerIndex: 0 }).ok, false, 'sold out');
-  clock.t += ROTATION_MS;
-  assert.equal(game.shopOffers()[0].sold, false, 'restocked');
-
-  game.addItem('moon_crystal', 3);
-  const coins = game.state.coins;
-  assert.ok(game.sell('moon_crystal', 3).ok);
-  assert.equal(game.state.coins, coins + sellPrice('moon_crystal') * 3);
-  assert.equal(game.sell('moon_crystal', 1).ok, false);
-});
-
-test('gear equips, swaps and returns to the bag', () => {
+test('one item per bug: equip swaps, nothing is duplicated or lost', () => {
   const { game } = makeGame();
-  const bug = game.state.bugs[0];
-  const base = computeStats(bug, game.state);
+  const [a, b] = game.state.bugs;
   game.addItem('thorn_spear');
-  game.addItem('acorn_cap');
-  assert.ok(game.equip(bug.uid, 'thorn_spear').ok);
-  assert.equal(game.state.inventory.thorn_spear, undefined);
-  assert.equal(computeStats(bug, game.state).atk, base.atk + 5);
-  assert.ok(game.equip(bug.uid, 'acorn_cap').ok, 'swap');
-  assert.equal(game.state.inventory.thorn_spear, 1);
-  assert.ok(game.unequip(bug.uid).ok);
-  assert.equal(game.state.inventory.acorn_cap, 1);
-  assert.equal(game.equip(bug.uid, 'honey_drop').ok, false, 'not gear');
+  const count = () => (game.state.inventory.key || 0) + (game.state.inventory.thorn_spear || 0) + game.state.bugs.filter((x) => x.item).length;
+  const before = count();
+  assert.ok(game.equip(a.uid, 'key').ok);
+  assert.ok(game.equip(a.uid, 'thorn_spear').ok, 'swap');
+  assert.equal(a.item, 'thorn_spear');
+  assert.equal(game.state.inventory.key, 1);
+  assert.ok(game.unequip(a.uid).ok);
+  assert.ok(game.equip(b.uid, 'thorn_spear').ok, 'moved to another bug');
+  assert.equal(game.equip(a.uid, 'thorn_spear').ok, false, 'only one existed');
+  assert.equal(count(), before);
+  assert.equal(game.equip(a.uid, 'honey_drop').ok, false, 'resources are not equipment');
 });
 
-test('releasing a bug pays coins, returns gear, and keeps at least one bug', () => {
+test('equipment and upgrades are separate: removing an item keeps the upgrade', async () => {
+  const { encounterMs } = await import('../game/js/systems/expedition.js');
   const { game } = makeGame();
-  const [a, b, c, d] = game.state.bugs;
-  game.addItem('thorn_spear');
-  game.equip(a.uid, 'thorn_spear');
-  const coins = game.state.coins;
-  const res = game.releaseBug(a.uid);
-  assert.ok(res.ok && res.coins > 0);
-  assert.equal(game.state.coins, coins + res.coins);
-  assert.equal(game.state.inventory.thorn_spear, 1);
-  game.releaseBug(b.uid);
-  game.releaseBug(c.uid);
-  assert.equal(game.releaseBug(d.uid).ok, false);
+  game.state.upgrades.expedition_efficiency = 2;
+  const party = game.state.bugs.slice(0, 4);
+  party[0].item = 'trail_mix';
+  const withItem = encounterMs(game.state, party);
+  party[0].item = null;
+  const without = encounterMs(game.state, party);
+  assert.ok(withItem < without);
+  assert.equal(without, Math.round(10 * MIN * 0.88));
 });
 
-test('nectar grants xp and rename sets a nickname', () => {
+test('shop purchases and sales validate the balance and inventory', () => {
   const { game } = makeGame();
-  const bug = game.state.bugs[0];
-  game.addItem('xp_nectar');
-  assert.ok(game.useItem('xp_nectar', bug.uid).ok);
-  assert.ok(bug.level > 1);
-  game.renameBug(bug.uid, '  Sir Antony  ');
-  assert.equal(bug.nickname, 'Sir Antony');
+  game.state.coins = 100;
+  assert.equal(game.buyItem('power_brace').ok, false);
+  assert.equal(game.buyItem('key').ok, false, 'keys are found, not bought');
+  game.state.coins = 1000;
+  assert.ok(game.buyItem('power_brace').ok);
+  assert.equal(game.state.coins, 1000 - ITEMS.power_brace.buy);
+  game.addItem('ember_stone', 3);
+  const c = game.state.coins;
+  assert.ok(game.sellItem('ember_stone', 3).ok);
+  assert.equal(game.state.coins, c + 3 * sellPrice('ember_stone'));
+  assert.equal(game.sellItem('ember_stone', 1).ok, false);
+});
+
+test('areas unlock with completed expeditions in the previous area plus coins', () => {
+  const { game } = makeGame();
+  game.state.coins = 1e6;
+  assert.equal(game.unlockArea('forest').ok, false);
+  game.state.areas.garden.runs = 3;
+  assert.equal(game.unlockArea('caves').ok, false, 'one at a time');
+  assert.ok(game.unlockArea('forest').ok);
+  assert.equal(game.state.coins, 1e6 - AREA_BY_ID.forest.unlock.coins);
+});
+
+test('the starting resources fund the first eggs, and early expeditions keep them coming', async () => {
+  const { planExpedition } = await import('../game/js/systems/expedition.js');
+  const { game } = makeGame();
+  assert.ok(game.state.coins >= 3 * 100, 'three common eggs from the start');
+  let coins = 0;
+  for (let s = 0; s < 200; s++) coins += planExpedition(game.state, AREA_BY_ID.garden, game.state.bugs, s).encounters.reduce((x, e) => x + e.coins, 0);
+  const perRun = coins / 200;
+  assert.ok(perRun >= 40 && perRun <= 120, `starter garden run pays ${perRun}`);
 });
