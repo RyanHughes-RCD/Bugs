@@ -1,7 +1,6 @@
 import { SPECIES_LIST } from '../data/species.js';
 import { EGG_TIERS } from '../data/eggs.js';
 import { SPRITES } from '../data/sprites.js';
-import { Rng } from '../core/rng.js';
 
 // Copy of pixel_bugs/palette.txt, used only if the file cannot be fetched.
 const FALLBACK_PALETTE = {
@@ -100,7 +99,7 @@ export class Assets {
     if (this.map[0]) this.flowerSpots = this.findFlowers(this.map[0]);
     // The brown patch on the map's second layer is the dirt the rock leaves.
     this.patch = this.map[1] ? this.cropToContent(this.map[1]) : null;
-    this.rock = this.makeRock(this.patch ? Math.round(this.patch.width * 0.92) : 58);
+    this.rock = this.makeRock(this.patch ? this.patch.width : 64);
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
   }
 
@@ -200,61 +199,15 @@ export class Assets {
     return out;
   }
 
-  // A big dome-shaped boulder drawn at the map's own pixel size: flat base,
-  // rounded top, lit from the top left, with an outline, cracks and speckles.
-  makeRock(w) {
-    const h = Math.round(w * 0.68);
-    const c = makeCanvas(w, h);
+  // The rock sprite from data/sprites.js, trimmed and scaled up with crisp
+  // pixels so it is about as wide as the dirt patch it sits on.
+  makeRock(targetWidth) {
+    const art = this.cropToContent(this.sprites.rock);
+    const k = Math.max(1, Math.round(targetWidth / art.width));
+    const c = makeCanvas(art.width * k, art.height * k);
     const ctx = c.getContext('2d');
-    const rng = new Rng(4242);
-    const cx = (w - 1) / 2;
-    const base = h - 1;
-    const bumps = Array.from({ length: 5 }, () => rng.float(-0.035, 0.035));
-    const inside = (x, y) => {
-      if (x < 0 || y < 0 || x >= w || y >= h) return false;
-      const nx = (x - cx) / (w / 2 - 0.5);
-      const ny = (base - y) / (h - 1); // 0 at the base, 1 at the top
-      const ang = Math.atan2(ny, nx);
-      const k = 1 + bumps.reduce((s, b, i) => s + b * Math.sin(ang * (i + 3) + i), 0);
-      if (base - y < 2 && Math.abs(nx) > 0.94) return false; // round off the base corners
-      return nx * nx + ny * ny <= k * k;
-    };
-    const shades = ['W', 'l', 'l', 'l', 'l', 's', 's', 's', 'k', 'k'];
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (!inside(x, y)) continue;
-        const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
-        let ch;
-        if (edge) ch = 'K';
-        else {
-          // Light from the upper left: brightest near the top-left of the
-          // dome, darkening towards the lower right and the base.
-          const nx = (x - cx) / (w / 2);
-          const ny = (base - y) / (h - 1);
-          const lx = -0.55;
-          const ly = 0.75;
-          const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-          const lit = nx * lx + ny * ly + nz * 0.36; // about -0.6 .. 1
-          const band = Math.max(0, Math.min(shades.length - 1, Math.floor((1 - lit) * 6)));
-          ch = shades[band];
-          if (base - y < 3) ch = ch === 'W' ? 'l' : ch === 'l' ? 's' : 'k'; // shadowed base
-          if (rng.chance(0.05)) ch = ch === 'k' ? 's' : 'k';
-        }
-        ctx.fillStyle = this.palette[ch];
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-    // A couple of cracks.
-    ctx.fillStyle = this.palette.K;
-    for (const [sx, sy, len, dx] of [[w * 0.36, h * 0.3, 7, 1], [w * 0.64, h * 0.55, 6, -1]]) {
-      let x = Math.round(sx);
-      let y = Math.round(sy);
-      for (let i = 0; i < len; i++) {
-        if (inside(x, y)) ctx.fillRect(x, y, 1, 1);
-        x += i % 2 ? dx : 0;
-        y += 1;
-      }
-    }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(art, 0, 0, c.width, c.height);
     return c;
   }
 
