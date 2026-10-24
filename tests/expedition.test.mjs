@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { AREAS, AREA_BY_ID } from '../game/js/data/areas.js';
 import { BASE_ENCOUNTER_MS } from '../game/js/data/balance.js';
 import { planExpedition, expeditionTimeline, encounterMs } from '../game/js/systems/expedition.js';
+import { bugName } from '../game/js/systems/bugs.js';
 import { makeGame, addBug, partyUids, MIN, HOUR } from './helpers.mjs';
 
 const unlockAll = (game) => { for (const a of AREAS) game.state.areas[a.id].unlocked = true; };
@@ -46,23 +47,23 @@ test('encounter counts are randomized within each area\'s range, saved at launch
   }
 });
 
-test('every base encounter lasts 10 minutes: five encounters take 50 minutes', () => {
+test('every base encounter lasts 5 minutes: ten encounters take 50 minutes', () => {
   const { game, clock } = makeGame();
-  assert.equal(BASE_ENCOUNTER_MS, 10 * MIN);
+  assert.equal(BASE_ENCOUNTER_MS, 5 * MIN);
   let exp;
   for (let i = 0; i < 40 && !exp; i++) {
     const res = game.launchExpedition('garden', partyUids(game)).expedition;
-    if (res.count === 5) exp = res;
+    if (res.count === 10) exp = res;
     else game.state.expeditions = [];
   }
-  assert.equal(exp.encounterMs, 10 * MIN);
+  assert.equal(exp.encounterMs, 5 * MIN);
   assert.equal(exp.endsAt - exp.startAt, 50 * MIN);
   const tl = (dt) => expeditionTimeline(exp, exp.startAt + dt);
   assert.equal(tl(0).resolved, 0);
-  assert.equal(tl(9 * MIN).current, 0);
-  assert.equal(tl(10 * MIN).resolved, 1);
-  assert.equal(tl(25 * MIN).current, 2);
-  assert.equal(tl(25 * MIN).currentEndsAt, exp.startAt + 30 * MIN);
+  assert.equal(tl(4 * MIN).current, 0);
+  assert.equal(tl(5 * MIN).resolved, 1);
+  assert.equal(tl(26 * MIN).current, 5);
+  assert.equal(tl(26 * MIN).currentEndsAt, exp.startAt + 30 * MIN);
   assert.ok(Math.abs(tl(25 * MIN).fraction - 0.5) < 1e-9);
   assert.ok(!tl(50 * MIN - 1).done);
   assert.ok(tl(50 * MIN).done);
@@ -76,7 +77,7 @@ test('Expedition Efficiency and speed items shorten encounters; the timer matche
   game.state.upgrades.expedition_efficiency = 5;
   game.state.bugs[0].item = 'trail_mix';
   const exp = game.launchExpedition('garden', partyUids(game)).expedition;
-  const expected = Math.round(10 * MIN * (1 - 0.3) * (1 - 0.05));
+  const expected = Math.round(5 * MIN * (1 - 0.3) * (1 - 0.05));
   assert.equal(exp.encounterMs, expected);
   assert.equal(exp.endsAt - exp.startAt, exp.count * expected);
   assert.equal(encounterMs(game.state, game.state.bugs.slice(0, 4)), expected);
@@ -158,7 +159,7 @@ test('Chest Keys open locked chests, are consumed once, and are credited in the 
   const chests = exp.encounters.filter((x) => x.category === 'chest');
   assert.equal(chests[0].outcome, 'opened');
   assert.equal(chests[0].keyUsedBy, game.state.bugs[0].uid);
-  assert.ok(chests[0].text.includes(game.state.bugs[0].name));
+  assert.ok(chests[0].text.includes(bugName(game.state.bugs[0])));
   if (chests[1]) assert.notEqual(chests[1].outcome, 'opened', 'one key opens one chest');
   assert.equal(game.state.bugs[0].item, 'key', 'still held until the rewards are claimed');
   clock.t = exp.endsAt;
@@ -166,7 +167,7 @@ test('Chest Keys open locked chests, are consumed once, and are credited in the 
   assert.deepEqual(res.report.keysUsed, [game.state.bugs[0].uid]);
   assert.equal(game.state.bugs[0].item, null, 'key consumed');
   assert.equal(game.claimExpedition(exp.id).ok, false);
-  assert.equal(game.state.inventory.key, 1, 'the spare key in the bag is untouched');
+  assert.equal(game.state.inventory.key, 1 + (res.report.rewards.items.key || 0), 'the spare key in the bag is untouched');
 });
 
 test('without a key, chests stay locked unless the party can force them with Lift', () => {

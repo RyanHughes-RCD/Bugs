@@ -1,12 +1,12 @@
 import { SPECIES, SPECIES_LIST, FAMILIES } from '../data/species.js';
-import { RARITIES, RARITY_ORDER } from '../data/rarities.js';
+import { RARITIES, RARITY_ORDER, VARIANTS } from '../data/rarities.js';
 import { TRAITS, TRAIT_IDS } from '../data/traits.js';
 import { ITEMS, ITEM_TYPES, sellPrice, itemEffectsText } from '../data/items.js';
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
 import { UPGRADES, upgradeCost } from '../data/upgrades.js';
-import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE } from '../data/balance.js';
-import { effectiveTraits, itemBonus, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
+import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE, BASE_ENCOUNTER_MS } from '../data/balance.js';
+import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs } from '../systems/eggs.js';
 import { expeditionSlots, encounterMs, partyBonuses, sumRewards } from '../systems/expedition.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
@@ -17,8 +17,15 @@ import { esc, fmtTime, fmtNum, pct, fmtClock, fmtDur } from './format.js';
 // ---------- building blocks ----------
 
 const icon = (A, id, cls = '') => `<img class="px icon ${cls}" src="${A.spriteUrl(id)}" alt="">`;
-export const bugImg = (A, bug, cls = '') => `<img class="px bug-img ${bug.shiny ? 'shiny' : ''} ${SPECIES[bug.species].view} ${cls}" src="${A.bugUrl(bug.species, bug.shiny)}" alt="${esc(SPECIES[bug.species].name)}">`;
-const speciesImg = (A, id, cls = '') => `<img class="px bug-img ${cls}" src="${A.bugUrl(id)}" alt="${esc(SPECIES[id].name)}">`;
+// Bug image with its colour variant and any magical aura. Golden bugs get a
+// wrapper so CSS can draw sparkles around them.
+export const bugImg = (A, bug, cls = '') => {
+  const sp = SPECIES[bug.species];
+  const img = `<img class="px bug-img ${bug.variant ? `v-${bug.variant}` : ''} ${sp.aura ? 'aura' : ''} ${sp.view} ${cls}" ${sp.aura ? `style="--aura:${sp.aura}"` : ''} src="${A.bugUrl(bug.species, bug.variant)}" alt="${esc(sp.name)}">`;
+  return bug.variant === 'golden' ? `<span class="sparkle-wrap">${img}</span>` : img;
+};
+const speciesImg = (A, id, cls = '', variant = null) => bugImg(A, { species: id, variant }, cls);
+const variantTag = (bug) => (bug.variant ? `<span class="variant-tag v-${bug.variant}">${VARIANTS[bug.variant].name}</span>` : '');
 export const eggImg = (A, tier, cls = '', stage = 0) => `<span class="egg-wrap t-${tier} ${cls}"><img class="px egg-img" src="${A.eggUrl(tier, stage)}" alt="${esc(EGG_BY_ID[tier].name)}"></span>`;
 export const coins = (A, n) => `<span class="coins">${icon(A, 'coin', 'sm')}${fmtNum(n)}</span>`;
 const rarityTag = (r) => `<span class="rarity r-${r}">${RARITIES[r].name}</span>`;
@@ -45,8 +52,8 @@ function bugCard(v, bug, { act = 'open-bug', selected = false, disabled = false,
   const asg = assignmentOf(bug, st, v.away);
   return `<button class="bug-card r-${r} ${selected ? 'selected' : ''}" data-act="${act}" data-uid="${bug.uid}" ${Object.entries(data).map(([k, val]) => `data-${k}="${esc(val)}"`).join(' ')} ${disabled ? 'disabled' : ''}>
     ${bugImg(v.A, bug)}
-    <span class="bc-name">${esc(bug.name)}</span>
-    <span class="bc-lv">${esc(SPECIES[bug.species].name)} · Lv ${bug.level}</span>
+    <span class="bc-name">${esc(bugName(bug))}</span>
+    <span class="bc-lv">Lv ${bug.level}</span>
     <span class="bc-traits">${traitChips(v.A, bug)}</span>
     ${bug.item ? `<span class="bc-gear">${icon(v.A, bug.item, 'xs')}</span>` : ''}
     <span class="badge a-${asg}">${ASSIGN_LABEL[asg]}</span>${extra}
@@ -76,11 +83,6 @@ export function renderHud(v) {
     chips.push(`<button class="chip ${tl.done ? 'ready' : ''}" data-act="view-exp" data-id="${exp.id}">${icon(A, 'map', 'xs')}${area.name.replace('The ', '')}
       ${tl.done ? '<b>Rewards ready!</b>' : `<small>${tl.resolved + 1}/${exp.count}</small> ${countdown(game, exp.endsAt)}`}</button>`);
   }
-  const eggs = st.eggs.filter((e) => e.startedAt).sort((a, b) => a.endsAt - b.endsAt);
-  for (const egg of eggs) {
-    const p = game.eggProgress(egg);
-    chips.push(`<button class="chip ${p.ready ? 'ready' : ''}" data-act="${p.ready ? 'hatch' : 'nav'}" data-panel="hatchery" data-uid="${egg.uid}">${eggImg(A, egg.tier, 'xs')}${p.ready ? '<b>Ready to hatch!</b>' : countdown(game, egg.endsAt)}</button>`);
-  }
   const garden = gardenCount(st);
   return `<div class="hud-row">
       <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${GARDEN_FORAGE.cap}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
@@ -96,7 +98,7 @@ export function quickBugCard(v, uid) {
   const r = rarityOf(bug);
   return `<div class="quick r-${r}">
     <div class="portrait sm r-${r}">${bugImg(A, bug)}</div>
-    <div class="grow"><b>${esc(bug.name)}</b> ${rarityTag(r)}<small>${esc(SPECIES[bug.species].name)} · Lv ${bug.level}${bug.item ? ` · ${ITEMS[bug.item].name}` : ''}</small>
+    <div class="grow"><b>${esc(bugName(bug))}</b> ${rarityTag(r)}<small>Lv ${bug.level}${bug.item ? ` · ${ITEMS[bug.item].name}` : ''}</small>
       <div class="bc-traits">${traitChips(A, bug)}</div></div>
     ${btn('Details', 'open-bug', { uid }, 'sm go')}
   </div>`;
@@ -113,10 +115,10 @@ export function renderHatchery(v) {
   const full = incubating.length >= slots;
   const nests = Array.from({ length: slots }, (_, i) => {
     const egg = incubating[i];
-    if (!egg) return '<div class="nest empty"><div class="nest-egg">+</div><small>Empty incubator</small></div>';
+    if (!egg) return `<div class="nest empty"><div class="nest-art">${icon(A, 'nest', 'nest-img')}</div><small>Empty nest</small></div>`;
     const p = game.eggProgress(egg);
     return `<div class="nest ${p.ready ? 'ready' : ''}">
-      <div class="nest-egg ${p.ready ? 'wobble' : ''}">${eggImg(A, egg.tier, 'big')}</div>
+      <div class="nest-art ${p.ready ? 'wobble' : ''}">${icon(A, 'nest', 'nest-img')}${eggImg(A, egg.tier, 'big in-nest')}${icon(A, 'nest_front', 'nest-img front')}</div>
       <b>${EGG_BY_ID[egg.tier].name}</b>
       ${bar(p.fraction, 'egg', egg.startedAt, egg.endsAt)}
       ${p.ready ? btn('Hatch!', 'hatch', { uid: egg.uid }, 'go') : `<small>Hatches in ${countdown(game, egg.endsAt)}</small>`}
@@ -125,7 +127,7 @@ export function renderHatchery(v) {
   const groups = {};
   for (const e of basket) (groups[e.tier] = groups[e.tier] || []).push(e);
   return `<div class="motto">${eggImg(A, 'common', 'sm')}<p>"${HATCHERY_MOTTO}"</p></div>
-    <div class="section-title">Incubators <small>${incubating.length}/${slots} in use</small></div>
+    <div class="section-title">Nests <small>${incubating.length}/${slots} in use · more nests in Upgrades</small></div>
     <div class="nests">${nests}</div>
     <div class="section-title">Egg basket <small>${basket.length} waiting</small></div>
     ${EGG_TIERS.filter((t) => groups[t.id]).map((t) => `<div class="list-row">
@@ -147,32 +149,47 @@ export function oddsModal(v, tierId) {
     <table class="odds">${eggOdds(tierId).filter((o) => o.chance > 0).map((o) => `<tr><td>${rarityTag(o.rarity)}</td><td><b>${pct(o.chance, o.chance < 0.01 ? 2 : 1)}</b></td>
       <td class="odds-bugs">${o.species.map((id) => speciesImg(A, id, `xs ${v.game.state.dex[id]?.caught ? '' : 'sil'}`)).join('')}</td></tr>`).join('')}</table>
     <p class="meta">Base incubation ${fmtDur(tier.hatchMs)}. No hidden pity timer: every egg is an independent roll.</p>
+    <p class="meta">On top of rarity, any hatchling can be ${Object.entries(VARIANTS).map(([id, va]) => `<span class="variant-tag v-${id}">${va.name}</span> ${pct(va.chance, 1)}`).join(', ')}.</p>
     <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
 }
 
+const HATCH_HINTS = ['Tap the egg!', 'It moved!', 'Cracks are spreading...', 'One more tap!'];
+
+// Full-screen hatching event: tap the egg four times to crack it open.
 export function hatchModal(v, s) {
   const { A } = v;
+  const tier = EGG_BY_ID[s.res.tier];
   if (s.stage < 4) {
-    return `<div class="hatch-stage"><p class="muted">${EGG_BY_ID[s.res.tier].name}</p>
-      <button class="hatch-egg ${s.stage ? 'shake' : 'idle'}" data-act="crack">${eggImg(A, s.res.tier, 'huge', s.stage)}</button>
-      <p>${['Tap the egg to crack it open!', 'Something is moving...', 'Almost there...', 'One more tap!'][s.stage]}</p></div>`;
+    const shards = s.stage ? Array.from({ length: 6 + s.stage * 3 }, (_, i) => `<i class="shard" style="--a:${(i * 360) / (6 + s.stage * 3) + s.stage * 17}deg;--d:${60 + ((i * 37) % 50)}px"></i>`).join('') : '';
+    return `<div class="hatch-event t-${tier.id} stage-${s.stage}">
+      <div class="rays"></div>
+      <p class="he-title">${tier.name}</p>
+      <button class="he-egg ${s.stage ? 'shake' : 'idle'}" data-act="crack" aria-label="Crack the egg">
+        <img class="px" src="${A.eggUrl(tier.id, s.stage)}" alt="">${shards}
+      </button>
+      <div class="he-pips">${[0, 1, 2, 3].map((i) => `<i class="${i < s.stage ? 'on' : ''}"></i>`).join('')}</div>
+      <p class="he-hint">${HATCH_HINTS[s.stage]}</p>
+    </div>`;
   }
   const { bug, newSpecies, reward, gardenFull } = s.res;
   const r = rarityOf(bug);
   const sp = SPECIES[bug.species];
   const eff = effectiveTraits(bug);
-  return `<div class="hatch-stage reveal r-${r}">
-      <div class="burst"></div>
-      ${bugImg(A, bug, 'huge pop')}
-      <h3>${esc(bug.name)} the ${esc(sp.name)}</h3>
-      <div class="rar-pop">${rarityTag(r)} ${bug.shiny ? '<span class="shiny-tag">SHINY!</span>' : ''}</div>
-      <small>from a ${EGG_BY_ID[s.res.tier].name}</small>
+  return `<div class="hatch-event reveal r-${r} ${bug.variant ? `v-${bug.variant}` : ''}">
+      <div class="rays"></div><div class="flash"></div>
+      <div class="shell left"><img class="px" src="${A.eggUrl(tier.id, 3)}" alt=""></div>
+      <div class="shell right"><img class="px" src="${A.eggUrl(tier.id, 3)}" alt=""></div>
+      <div class="he-bug">${bugImg(A, bug, 'pop')}</div>
+      <h2>${esc(bugName(bug))}</h2>
+      <div class="rar-pop">${rarityTag(r)}</div>
+      ${bug.variant ? `<div class="variant-banner v-${bug.variant}">✦ ${VARIANTS[bug.variant].name.toUpperCase()}! ✦</div>` : ''}
+      <small>from a ${tier.name}</small>
       ${newSpecies ? `<p class="new">New species discovered! +${reward} coins</p>` : ''}
-      <div class="reveal-traits">${Object.keys(eff).map((t, i) => `<div class="rt" style="animation-delay:${0.5 + i * 0.25}s">${traitIcon(A, t, 'sm')} <b>${TRAITS[t].name}</b> ${bar(eff[t] / 10, `t-${t}`)} Lv ${eff[t]}</div>`).join('')}</div>
-    </div>
-    <div class="row sticky-foot">
-      ${btn('Keep in collection', 'close-modal')}
-      ${gardenFull ? `<span class="muted">Garden full (${GARDEN_LIMIT}/${GARDEN_LIMIT})</span>` : btn('Place in garden', 'garden-in', { uid: bug.uid, close: 1 }, 'go big')}
+      <div class="reveal-traits">${Object.keys(eff).map((t, i) => `<div class="rt" style="animation-delay:${1 + i * 0.25}s">${traitIcon(A, t, 'sm')} <b>${TRAITS[t].name}</b> ${bar(eff[t] / 12, `t-${t}`)} Lv ${eff[t]}</div>`).join('')}</div>
+      <div class="row he-actions">
+        ${btn('Keep in collection', 'close-modal')}
+        ${gardenFull ? `<span class="muted">Garden full (${GARDEN_LIMIT}/${GARDEN_LIMIT})</span>` : btn('Place in garden', 'garden-in', { uid: bug.uid, close: 1 }, 'go big')}
+      </div>
     </div>`;
 }
 
@@ -217,6 +234,7 @@ function renderDex(v) {
         ${speciesImg(v.A, s.id, d?.caught ? '' : 'sil')}
         <span class="dex-name">${d?.caught ? esc(s.name) : '???'}</span>
         ${d?.caught ? `<span class="dex-count">x${d.caught}</span>` : ''}
+        ${d?.variants ? `<span class="dex-vars">${Object.keys(VARIANTS).filter((k) => d.variants[k]).map((k) => `<i class="v-${k}" title="${VARIANTS[k].name}"></i>`).join('')}</span>` : ''}
       </button>`;
     }).join('')}</div>`;
 }
@@ -228,7 +246,12 @@ export function speciesModal(v, id) {
       <div><h3>#${sp.index + 1} ${esc(sp.name)}</h3>${rarityTag(sp.rarity)}<small>${FAMILIES[sp.family]}</small></div></div>
     <p class="flavor">"${esc(sp.desc)}"</p>
     <p><b>Natural traits:</b> ${sp.traits.map((t) => `${traitIcon(A, t)} ${TRAITS[t].name}`).join(', ')}</p>
-    <p class="meta">Signature trait first. Common and Uncommon hatchlings get only their signature trait; rarer ones get more traits at higher levels.</p>
+    <h4>Variants found</h4>
+    <div class="variant-row">${Object.entries(VARIANTS).map(([k, va]) => {
+      const found = v.game.state.dex[id]?.variants?.[k];
+      return `<div class="variant-cell ${found ? '' : 'missing'}">${found ? speciesImg(A, id, 'big', k) : speciesImg(A, id, 'big sil')}<span class="variant-tag v-${k}">${va.name}</span><small>${found ? 'Found!' : `${pct(va.chance, 1)} per hatch`}</small></div>`;
+    }).join('')}</div>
+    <p class="meta">Signature trait first. Drab and Common hatchlings get only their signature trait; rarer ones get more traits at higher levels.</p>
     <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
 }
 
@@ -246,8 +269,8 @@ export function bugModal(v, uid) {
   const away = asg === 'expedition';
   return `<div class="modal-head">
       <div class="portrait r-${r}">${bugImg(A, bug, 'big')}</div>
-      <div><h3>${esc(bug.name)} ${btn('rename', 'rename', { uid }, 'link')}</h3>
-        <div>${rarityTag(r)} ${bug.shiny ? '<span class="shiny-tag">SHINY</span>' : ''}</div>
+      <div><h3>${esc(bugName(bug))}</h3>
+        <div>${rarityTag(r)} ${variantTag(bug)}</div>
         <small>${esc(sp.name)} · ${FAMILIES[sp.family]} · #${bug.uid}</small></div>
     </div>
     <div class="lvl-line"><b>Lv ${bug.level}</b>${bug.level < MAX_BUG_LEVEL ? `${bar(bug.xp / next, 'xp')}<small>${bug.xp}/${next} XP</small>` : '<small>MAX</small>'}</div>
@@ -331,7 +354,7 @@ export function plannerModal(v0) {
     <div class="section-title">Party <small>${party.length}/${PARTY_SIZE} — exactly ${PARTY_SIZE} needed</small>${btn('Auto-pick', 'plan-auto', {}, 'sm')}</div>
     <div class="team-slots">${Array.from({ length: PARTY_SIZE }, (_, i) => {
       const b = party[i];
-      return b ? `<button class="slot filled" data-act="plan-toggle" data-uid="${b.uid}">${bugImg(A, b)}<small>${esc(b.name)}</small></button>` : '<div class="slot">+</div>';
+      return b ? `<button class="slot filled" data-act="plan-toggle" data-uid="${b.uid}">${bugImg(A, b)}<small>${esc(bugName(b))}</small></button>` : '<div class="slot">+</div>';
     }).join('')}</div>
     <div class="coverage">${TRAIT_IDS.map((t) => {
       const s = scores[t];
@@ -339,7 +362,7 @@ export function plannerModal(v0) {
       const chance = checkChance(score, area.difficulty);
       return `<div class="cov-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(score / (area.difficulty * 2 + 2), `t-${t}`)}<span>${score ? score.toFixed(1) : '—'}</span><small>${pct(chance)}</small></div>`;
     }).join('')}<small class="muted">Party score per trait (best bug counts fully, helpers less) and the chance to pass an average ${area.name} check.</small></div>
-    <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(b.name)).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
+    <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(bugName(b))).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
     <div class="meta">${area.encounters[0]}–${area.encounters[1]} encounters × ${fmtDur(encMs)}${bonus.encounterSpeed ? ` (items -${pct(bonus.encounterSpeed)})` : ''} = <b>${fmtDur(area.encounters[0] * encMs)}–${fmtDur(area.encounters[1] * encMs)}</b>${bonus.coinBonus ? ` · +${pct(bonus.coinBonus)} coins` : ''}${bonus.specialFind ? ` · +${pct(bonus.specialFind)} special finds` : ''}</div>
     <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid) })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Launch expedition', 'launch', {}, 'go big', party.length !== PARTY_SIZE)}</div>`;
@@ -374,10 +397,10 @@ export function expeditionLogModal(v, id, fromHistory = false) {
   const shown = exp.encounters.slice(0, tl.resolved);
   const soFar = sumRewards(shown);
   const cur = tl.current !== null ? exp.encounters[tl.current] : null;
-  const party = exp.party.map((uid, i) => game.bug(uid) || { name: exp.partyNames[i], species: 'ant', shiny: false });
+  const party = exp.party.map((uid, i) => game.bug(uid) || { gone: exp.partyNames[i], species: 'ant', variant: null });
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>${area.name}</span>
       <div class="march" style="--p:${tl.fraction}">${party.map((b) => bugImg(A, b, 'sm walk')).join('')}</div></div>
-    <div class="party-line">${party.map((b) => `<span>${bugImg(A, b, 'xs')}${esc(b.name)}</span>`).join('')}</div>
+    <div class="party-line">${party.map((b) => `<span>${bugImg(A, b, 'xs')}${esc(b.gone || bugName(b))}</span>`).join('')}</div>
     ${fromHistory ? '' : `${bar(tl.fraction, 'exp', exp.startAt, exp.endsAt)}
     <div class="timing"><span>Encounter <b>${tl.done ? exp.count : tl.resolved + 1}</b> of ${exp.count}</span><span>Elapsed ${tl.done ? fmtTime(exp.endsAt - exp.startAt) : since(game, exp.startAt)}</span><span>Remaining ${tl.done ? '0s' : countdown(game, exp.endsAt)}</span></div>`}
     ${cur ? `<div class="current"><b>Now:</b> ${esc(cur.intro)}<small>Resolves in ${countdown(game, tl.currentEndsAt)}</small></div>` : ''}
@@ -399,7 +422,7 @@ export function claimModal(v, report) {
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>Back from ${area.name}</span></div>
     ${chests.map((c, i) => `<div class="chest-reveal" style="animation-delay:${i * 0.4}s">
       <div class="chest-anim">${icon(A, 'chest', 'big closed')}${icon(A, 'chest_open', 'big open')}</div>
-      <div><b>Chest opened by ${esc(v.game.bug(c.keyUsedBy)?.name || 'a party member')}!</b><small>The Chest Key was used up.</small>${rewardInline(A, c)}</div></div>`).join('')}
+      <div><b>Chest opened by ${esc(v.game.bug(c.keyUsedBy) ? bugName(v.game.bug(c.keyUsedBy)) : 'a party member')}!</b><small>The Chest Key was used up.</small>${rewardInline(A, c)}</div></div>`).join('')}
     <div class="section-title">Rewards</div>
     <div class="rewards">
       <div class="reward">${coins(A, rewards.coins)}</div>
@@ -435,7 +458,7 @@ export function renderItems(v) {
     }).join('')}`;
   }).join('');
   return `${tabs}${sections || '<p class="muted center">Your inventory is empty.</p>'}
-    ${equipped.length ? `<div class="section-title">Equipped on bugs</div>${equipped.map((b) => `<div class="list-row">${icon(A, b.item)}<div class="grow"><b>${ITEMS[b.item].name}</b><small>on ${esc(b.name)}${game.assignment(b) === 'expedition' ? ' (exploring)' : ''}</small></div>${btn('Unequip', 'unequip', { uid: b.uid }, 'sm', game.assignment(b) === 'expedition')}</div>`).join('')}` : ''}`;
+    ${equipped.length ? `<div class="section-title">Equipped on bugs</div>${equipped.map((b) => `<div class="list-row">${icon(A, b.item)}<div class="grow"><b>${ITEMS[b.item].name}</b><small>on ${esc(bugName(b))}${game.assignment(b) === 'expedition' ? ' (exploring)' : ''}</small></div>${btn('Unequip', 'unequip', { uid: b.uid }, 'sm', game.assignment(b) === 'expedition')}</div>`).join('')}` : ''}`;
 }
 
 export function pickBugModal(v0, itemId) {
@@ -507,8 +530,9 @@ export function welcomeModal(v) {
     <p class="center motto-inline">"${HATCHERY_MOTTO}"</p>
     <ol>
       <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here. Tap one to meet it, and tap coins they dig up.</li>
-      <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs, incubate them (4 hours), and crack them open. Higher tiers improve the odds but guarantee nothing.</li>
-      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter takes 10 minutes and tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}.</li>
+      <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
+      <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi.</li>
+      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter takes ${fmtDur(BASE_ENCOUNTER_MS)} and tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}.</li>
       <li>${icon(A, 'key', 'sm')} <b>Keys:</b> equip a Chest Key on a party member to open locked chests.</li>
       <li>${icon(A, 'hammer', 'sm')} <b>Upgrades:</b> permanent boosts bought with coins.</li>
     </ol>

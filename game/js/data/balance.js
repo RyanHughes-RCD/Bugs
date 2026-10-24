@@ -4,7 +4,7 @@ export const MINUTE = 60e3;
 export const HOUR = 60 * MINUTE;
 
 export const BASE_INCUBATION_MS = 4 * HOUR;
-export const BASE_ENCOUNTER_MS = 10 * MINUTE;
+export const BASE_ENCOUNTER_MS = 5 * MINUTE;
 export const GARDEN_LIMIT = 10;
 export const PARTY_SIZE = 4;
 export const BASE_INCUBATOR_SLOTS = 2;
@@ -41,15 +41,11 @@ export const STARTING = {
   items: { key: 1 },
 };
 
-// Coins dug up by garden bugs, per minute, by rarity. A small bonus on top of
-// expedition income so the garden feels alive.
-export const GARDEN_FORAGE = { perMinute: { common: 0.1, uncommon: 0.15, rare: 0.2, epic: 0.3, legendary: 0.4, mythic: 0.5 }, cap: 100 };
+// Coins dug up by garden bugs (per-rarity rates are in rarities.js).
+export const GARDEN_FORAGE = { cap: 100 };
+
+// The garden rock. Some bugs like to hide under it. Where it rests, a dirt
+// patch slowly forms; after the rock is moved the patch lingers, then fades.
+export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 112, y: 128 } };
 
 export const BIG_SPEND = { coins: 500, fraction: 0.5 }; // ask for confirmation above either
-
-export const BUG_NAMES = [
-  'Pip', 'Bramble', 'Clover', 'Nib', 'Moss', 'Pebble', 'Juniper', 'Fig', 'Sprout', 'Bean', 'Hazel', 'Tansy', 'Dot',
-  'Thistle', 'Wren', 'Basil', 'Poppy', 'Twig', 'Acorn', 'Maple', 'Sorrel', 'Fern', 'Button', 'Biscuit', 'Pudding',
-  'Nutmeg', 'Saffron', 'Rowan', 'Willow', 'Ember', 'Sage', 'Olive', 'Mochi', 'Pickle', 'Tofu', 'Waffle', 'Ziggy',
-  'Barnaby', 'Marigold', 'Dandelion', 'Pepper', 'Cosmo', 'Luna', 'Orbit', 'Quill', 'Rumble', 'Skipper', 'Tumble',
-];

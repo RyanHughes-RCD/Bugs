@@ -4,7 +4,7 @@ import { ITEMS, MAX_ITEM_SPEED } from '../data/items.js';
 import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, PARTY_SIZE, XP } from '../data/balance.js';
 import { upgradeValue } from '../data/upgrades.js';
 import { partyTraitScores, resolveCheck } from './traits.js';
-import { effectiveTraits } from './bugs.js';
+import { effectiveTraits, bugName } from './bugs.js';
 
 export function expeditionSlots(state) {
   return BASE_EXPEDITION_SLOTS + upgradeValue(state, 'improved_exploration').slots;
@@ -59,7 +59,7 @@ export function planExpedition(state, area, party, seed) {
   const keys = [...bonus.keys];
   const used = {};
   const pool = encounterPool(area, party);
-  const names = Object.fromEntries(party.map((b) => [b.uid, b.name]));
+  const names = Object.fromEntries(party.map((b) => [b.uid, bugName(b)]));
   const xp = Object.fromEntries(party.map((b) => [b.uid, 0]));
 
   const rollCoins = (range) => (range ? Math.round(rng.float(range[0], range[1]) * area.coinBase * coinMult) : 0);
@@ -103,7 +103,7 @@ export function planExpedition(state, area, party, seed) {
         if (chk.success) {
           rec.outcome = 'pried';
           if (chk.bug) rec.bugUid = chk.bug.uid;
-          rec.text = `No key, but ${chk.bug ? chk.bug.name : 'the whole party'} forces the lid open${chk.bug ? ' with sheer Lift' : ' by sheer luck'}! Only the coins are reachable.`;
+          rec.text = `No key, but ${chk.bug ? bugName(chk.bug) : 'the whole party'} forces the lid open${chk.bug ? ' with sheer Lift' : ' by sheer luck'}! Only the coins are reachable.`;
           rec.coins = Math.round(rng.float(0.8, 1.2) * area.coinBase * area.chest.coins * CHEST.pryCoinFraction * coinMult);
         } else {
           rec.outcome = 'locked';
@@ -116,7 +116,7 @@ export function planExpedition(state, area, party, seed) {
       rec.outcome = chk.great ? 'great' : chk.success ? 'success' : 'fail';
       Object.assign(rec, { trait: chk.trait, options: def.check.traits, score: chk.score, difficulty: chk.difficulty, chance: chk.chance });
       if (chk.success && chk.bug) rec.bugUid = chk.bug.uid;
-      rec.text = fill(o.text, { bug: chk.bug?.name, trait: chk.trait[0].toUpperCase() + chk.trait.slice(1) });
+      rec.text = fill(o.text, { bug: chk.bug && bugName(chk.bug), trait: chk.trait[0].toUpperCase() + chk.trait.slice(1) });
       applyOutcome(o, rec);
       if (chk.great && !def.great) { rec.coins = Math.round(rec.coins * 1.5); rec.text += ' A great result!'; }
       if (chk.success) {
@@ -160,8 +160,8 @@ export function validateParty(state, uids, away) {
   for (const uid of uids) {
     const b = state.bugs.find((x) => x.uid === uid);
     if (!b) return 'Unknown bug.';
-    if (away.has(uid)) return `${b.name} is already on an expedition.`;
-    if (!Object.values(effectiveTraits(b)).some((v) => v > 0)) return `${b.name} has no traits.`;
+    if (away.has(uid)) return `${bugName(b)} is already on an expedition.`;
+    if (!Object.values(effectiveTraits(b)).some((v) => v > 0)) return `${bugName(b)} has no traits.`;
   }
   return null;
 }

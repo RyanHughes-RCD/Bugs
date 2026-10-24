@@ -6,7 +6,7 @@ import { EGG_BY_ID, EGG_TIERS } from '../data/eggs.js';
 import { AREA_BY_ID } from '../data/areas.js';
 import { UPGRADE_BY_ID, upgradeCost } from '../data/upgrades.js';
 import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
-import { bugsOnExpedition, traitTotal } from '../systems/bugs.js';
+import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { simulateHatches } from '../systems/eggs.js';
 
@@ -54,6 +54,14 @@ export class App {
       onEgg: (egg) => (egg && this.game.eggProgress(egg).ready ? this.hatch(egg.uid) : this.openPanel('hatchery')),
       onBug: (uid) => this.showQuick(uid),
       onEmpty: () => this.hideQuick(),
+      onRockLift: (found) => {
+        this.hideQuick();
+        if (found.length) {
+          const names = found.map((uid) => this.game.bug(uid)).filter(Boolean).map(bugName);
+          this.toast(`You lift the rock... ${names.join(' and ')} ${names.length > 1 ? 'were' : 'was'} hiding underneath! Say hi!`, 'good');
+        }
+      },
+      onRockMoved: (x, y) => this.game.moveRock(x, y),
     });
     this.scene.start();
 
@@ -281,7 +289,8 @@ export class App {
     if (!this.result(res)) return;
     const s = { res, stage: 0 };
     this.hatchState = s;
-    this.openModal(() => V.hatchModal(this.v, s), { cls: 'hatch', locked: true });
+    this.hideQuick();
+    this.openModal(() => V.hatchModal(this.v, s), { cls: 'hatch-full', locked: true, static: true });
   }
 
   autoParty(areaId) {
@@ -307,26 +316,20 @@ export class App {
       case 'sort': ui.sort = d.sort; this.renderPanel(); break;
       case 'open-bug': this.hideQuick(); this.openModal(() => V.bugModal(this.v, uid)); break;
       case 'open-species': this.openModal(() => V.speciesModal(this.v, d.id)); break;
-      case 'rename': {
-        const bug = g.bug(uid);
-        const name = prompt('New name for this bug:', bug?.name || '');
-        if (name !== null) this.result(g.renameBug(uid, name), 'Renamed!');
-        break;
-      }
       case 'release': {
         const bug = g.bug(uid);
-        this.ask({ title: `Release ${bug.name}?`, body: '<p>It goes back to the wild and leaves you some coins as thanks. This cannot be undone.</p>', yes: 'Release', danger: true }, () => {
+        this.ask({ title: `Release this ${bugName(bug)}?`, body: '<p>It goes back to the wild and leaves you some coins as thanks. This cannot be undone.</p>', yes: 'Release', danger: true }, () => {
           const res = g.releaseBug(uid);
-          this.result(res, `${bug.name} waved goodbye. +${res.coins} coins.`);
+          this.result(res, `The ${bugName(bug)} waved goodbye. +${res.coins} coins.`);
         });
         break;
       }
       case 'garden-in': {
         const res = g.setInGarden(uid, true);
-        if (this.result(res, `${g.bug(uid).name} moved into the garden.`) && d.close) this.closeModal();
+        if (this.result(res, `${bugName(g.bug(uid))} moved into the garden.`) && d.close) this.closeModal();
         break;
       }
-      case 'garden-out': this.result(g.setInGarden(uid, false), `${g.bug(uid).name} moved to storage. It's still in your collection.`); break;
+      case 'garden-out': this.result(g.setInGarden(uid, false), `${bugName(g.bug(uid))} moved to storage. It's still in your collection.`); break;
       case 'equip':
         if (this.result(g.equip(uid, d.item), `Equipped ${ITEMS[d.item].name}.`) && this.modal?.kind === 'pick') this.dispatch('open-bug', { uid });
         break;
@@ -354,7 +357,12 @@ export class App {
         s.stage = Math.min(4, s.stage + 1);
         if (s.stage === 4) this.modal.locked = false;
         this.renderModal();
-        this.el.modalRoot.querySelector('.modal-x').hidden = s.stage < 4;
+        this.el.modalRoot.querySelector('.modal-x').hidden = true;
+        const modal = this.el.modalRoot.querySelector('.modal');
+        modal.classList.remove('quake');
+        void modal.offsetWidth; // restart the shake animation
+        if (s.stage >= 3) modal.classList.add('quake');
+        navigator.vibrate?.(s.stage === 4 ? [30, 40, 80] : 20);
         break;
       }
       case 'upgrade': {
@@ -384,7 +392,7 @@ export class App {
       case 'plan-auto': ui.plan.party = this.autoParty(ui.plan.areaId); this.renderModal(); break;
       case 'launch': {
         const area = AREA_BY_ID[ui.plan.areaId];
-        const names = ui.plan.party.map((u) => g.bug(u).name).join(', ');
+        const names = ui.plan.party.map((u) => bugName(g.bug(u))).join(', ');
         const plan = { ...ui.plan, party: [...ui.plan.party] };
         this.ask({ title: `Send the party to ${area.name}?`, body: `<p>${names} will be away until the expedition ends. Their items can't be changed while they're exploring.</p>`, yes: 'Set off!' }, () => {
           const res = g.launchExpedition(plan.areaId, plan.party);

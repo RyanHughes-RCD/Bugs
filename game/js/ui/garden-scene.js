@@ -4,16 +4,18 @@ import { GARDEN_FORAGE } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
+import { dirtPatches } from '../systems/garden.js';
+import { fmtTime } from './format.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
 export const WORLD_W = 150;
 export const WORLD_H = 300;
-// The dirt patch in BugsMap/pixil-layer-1.png doubles as the incubator bed.
-export const NURSERY = { x: 4, y: 166, w: 60, h: 42 };
-const EGG_SLOTS = [[20, 182], [36, 178], [51, 186], [28, 197], [45, 198]];
+// The dirt patch in BugsMap/pixil-layer-1.png, where diggers like to dig.
+export const DIRT = { x: 4, y: 166, w: 60, h: 42 };
 const BOUNDS = { x0: 8, x1: 142, y0: 14, y1: 292 };
 const MOVE = { wriggler: 4, crawler: 11, beetle: 8, arachnid: 13, hopper: 9, flyer: 16 };
 const PERSONAL_SPACE = 11;
+const ROCK_RADIUS = 11;
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -39,16 +41,17 @@ export class GardenScene {
     this.particles = [];
     this.fireflies = Array.from({ length: 10 }, () => ({ x: rand(0, WORLD_W), y: rand(0, WORLD_H), p: rand(0, 6.28) }));
     const coinRng = new Rng(7);
-    this.coinSpots = Array.from({ length: 10 }, () => [coinRng.int(20, 130), coinRng.int(40, 270)]);
+    this.coinSpots = Array.from({ length: 10 }, () => [coinRng.int(20, 130), coinRng.int(40, 250)]);
     this.flowers = assets.flowerSpots.filter((f) => f.x > BOUNDS.x0 && f.x < BOUNDS.x1 && f.y > BOUNDS.y0 && f.y < BOUNDS.y1);
     this.camY = null;
     this.t = 0;
     this.last = performance.now();
     this.drag = null;
+    this.rockDrag = null;
     canvas.addEventListener('pointerdown', (e) => this.onDown(e));
     canvas.addEventListener('pointermove', (e) => this.onMove(e));
     canvas.addEventListener('pointerup', (e) => this.onUp(e));
-    canvas.addEventListener('pointercancel', () => { this.drag = null; });
+    canvas.addEventListener('pointercancel', () => { this.drag = null; this.rockDrag = null; });
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     this.resize();
   }
@@ -80,7 +83,7 @@ export class GardenScene {
     this.viewH = ch / this.scale;
     this.camX = (WORLD_W - this.viewW) / 2;
     const maxCam = Math.max(0, WORLD_H - this.viewH);
-    if (this.camY === null) this.camY = clamp(NURSERY.y + NURSERY.h / 2 - this.viewH * 0.55, 0, maxCam);
+    if (this.camY === null) this.camY = clamp(DIRT.y + DIRT.h / 2 - this.viewH * 0.55, 0, maxCam);
     this.camY = clamp(this.camY, 0, maxCam);
     this.bugPx = Math.max(1, Math.round(this.scale * 0.8));
   }
@@ -90,8 +93,17 @@ export class GardenScene {
   }
 
   toWorld(clientX, clientY) {
+    const [sx, sy] = this.toCanvas(clientX, clientY);
+    return [sx / this.scale + this.camX, sy / this.scale + this.camY];
+  }
+
+  toCanvas(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect();
-    return [((clientX - r.left) * this.dpr) / this.scale + this.camX, ((clientY - r.top) * this.dpr) / this.scale + this.camY];
+    return [(clientX - r.left) * this.dpr, (clientY - r.top) * this.dpr];
+  }
+
+  rock() {
+    return this.rockDrag ? { x: this.rockDrag.x, y: this.rockDrag.y } : this.game.state.garden.rock;
   }
 
   // ---------- bugs ----------
@@ -109,35 +121,71 @@ export class GardenScene {
         e.uid = b.uid;
         this.entities.set(b.uid, e);
       }
+      const sp = SPECIES[b.species];
       e.species = b.species;
-      e.shiny = b.shiny;
+      e.variant = b.variant;
+      e.aura = sp.aura;
       e.digger = (effectiveTraits(b).dig || 0) > 0;
-      e.glowing = b.species === 'firefly' || b.species === 'luna_moth';
+      e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
     }
   }
 
   spawn(species) {
-    const fam = SPECIES[species].family;
+    const sp = SPECIES[species];
+    const fam = sp.family;
+    const side = sp.view === 'side';
     const x = rand(BOUNDS.x0, BOUNDS.x1);
-    const y = rand(Math.max(BOUNDS.y0, this.camY + 10), Math.min(BOUNDS.y1, this.camY + this.viewH - 10));
-    const side = SPECIES[species].view === 'side';
-    // Top-down sprites face up and rotate to their heading. Side views face
-    // right, so they mirror to face left and only tilt a little.
-    return { species, family: fam, side, flip: Math.random() < 0.5 ? -1 : 1, x, y, tx: x, ty: y, angle: side ? 0 : rand(0, Math.PI * 2), wait: rand(0, 2), speed: MOVE[fam] * rand(0.8, 1.2), phase: rand(0, 6.28), act: null, actTime: 0, bubble: 0, hearts: 0 };
+    const y = rand(Math.max(BOUNDS.y0, this.camY + 10), Math.min(BOUNDS.y1, this.camY + this.viewH - 30));
+    const e = {
+      species, family: fam, side, likesRock: sp.likesRock, flip: Math.random() < 0.5 ? -1 : 1,
+      x, y, tx: x, ty: y, angle: side ? 0 : rand(0, Math.PI * 2), wait: rand(0, 2),
+      speed: MOVE[fam] * rand(0.8, 1.2), phase: rand(0, 6.28), act: null, actTime: 0, bubble: 0, hearts: 0, surprised: 0,
+    };
+    // Shade-lovers often start the day tucked under the rock.
+    if (e.likesRock && Math.random() < 0.5) this.hide(e, rand(20, 90));
+    return e;
   }
 
-  // Picks the next thing to do: wander nearby, visit a flower, or (diggers) dig in the dirt.
+  hide(e, seconds) {
+    const r = this.game.state.garden.rock;
+    e.hidden = seconds;
+    e.x = r.x + rand(-3, 3);
+    e.y = r.y + rand(-2, 2);
+    e.act = null;
+  }
+
+  // Lifting the rock uncovers anyone hiding underneath.
+  reveal() {
+    const found = [];
+    for (const e of this.entities.values()) {
+      if (!e.hidden) continue;
+      e.hidden = 0;
+      e.surprised = 2.5;
+      e.hearts = 1.6;
+      e.wait = rand(2.5, 4);
+      e.actTime = 0;
+      found.push(e.uid);
+    }
+    return found;
+  }
+
+  // Picks the next thing to do: wander, visit a flower, dig, or hide under the rock.
   pickTarget(e) {
     e.act = null;
     const roll = Math.random();
-    if (roll < 0.22 && this.flowers.length) {
+    if (e.likesRock && !this.rockDrag && roll < 0.3) {
+      const r = this.game.state.garden.rock;
+      e.tx = r.x;
+      e.ty = r.y;
+      e.act = 'hide';
+    } else if (roll < 0.5 && this.flowers.length) {
       const f = this.flowers[Math.floor(Math.random() * this.flowers.length)];
       e.tx = f.x + rand(-2, 2);
       e.ty = f.y + 4;
       e.act = 'sniff';
-    } else if (roll < 0.32 && e.digger) {
-      e.tx = rand(NURSERY.x + 8, NURSERY.x + NURSERY.w - 8);
-      e.ty = rand(NURSERY.y + 26, NURSERY.y + NURSERY.h - 4);
+    } else if (roll < 0.6 && e.digger) {
+      e.tx = rand(DIRT.x + 8, DIRT.x + DIRT.w - 8);
+      e.ty = rand(DIRT.y + 20, DIRT.y + DIRT.h - 4);
       e.act = 'dig';
     } else {
       const range = e.family === 'flyer' ? 60 : 32;
@@ -150,10 +198,22 @@ export class GardenScene {
     e.phase += dt * (e.family === 'flyer' ? 8 : 12);
     e.bubble = Math.max(0, e.bubble - dt);
     e.hearts = Math.max(0, e.hearts - dt);
+    e.surprised = Math.max(0, e.surprised - dt);
     e.moving = false;
-    // Gentle push away from neighbours so bugs don't stack.
+    if (e.hidden) {
+      e.hidden = Math.max(0, e.hidden - dt);
+      if (!e.hidden) {
+        // Crawl back out beside the rock.
+        const r = this.game.state.garden.rock;
+        const a = rand(0, Math.PI * 2);
+        e.x = clamp(r.x + Math.cos(a) * 12, BOUNDS.x0, BOUNDS.x1);
+        e.y = clamp(r.y + Math.sin(a) * 8, BOUNDS.y0, BOUNDS.y1);
+        e.wait = rand(0.5, 2);
+      }
+      return;
+    }
     for (const o of others) {
-      if (o === e) continue;
+      if (o === e || o.hidden) continue;
       const dx = e.x - o.x;
       const dy = e.y - o.y;
       const d = Math.hypot(dx, dy);
@@ -182,11 +242,17 @@ export class GardenScene {
       if (e.wait <= 0) this.pickTarget(e);
       return;
     }
+    if (e.act === 'hide') {
+      const r = this.rock();
+      e.tx = r.x;
+      e.ty = r.y;
+    }
     const dx = e.tx - e.x;
     const dy = e.ty - e.y;
     const d = Math.hypot(dx, dy);
-    if (d < 0.8) {
-      if (e.act) e.actTime = rand(1.5, 3);
+    if (d < (e.act === 'hide' ? 4 : 0.8)) {
+      if (e.act === 'hide' && !this.rockDrag) this.hide(e, rand(25, 120));
+      else if (e.act === 'sniff' || e.act === 'dig') e.actTime = rand(1.5, 3);
       else e.wait = e.family === 'flyer' ? rand(0.2, 1.2) : rand(0.6, 3.5);
       return;
     }
@@ -239,11 +305,14 @@ export class GardenScene {
     const [mx, my] = this.toScreen(0, 0);
     for (const layer of this.assets.map) ctx.drawImage(layer, Math.round(mx), Math.round(my), WORLD_W * scale, WORLD_H * scale);
 
-    this.drawEggs();
+    this.drawPatches();
     this.drawCoins();
-    const all = [...this.entities.values()].sort((a, b) => a.y - b.y);
+    const all = [...this.entities.values()].filter((e) => !e.hidden).sort((a, b) => a.y - b.y);
     for (const e of all) this.drawShadow(e);
+    for (const e of all) if (e.aura) this.glow(e.x, e.y - this.bob(e), 11 + Math.sin(this.t * 3 + e.phase) * 2, hexA(e.aura, 0.55));
+    for (const e of all) if (e.variant === 'shiny') this.glow(e.x, e.y - this.bob(e), 12 + Math.sin(this.t * 2 + e.phase), 'rgba(220, 245, 255, 0.55)');
     for (const e of all) this.drawBug(e);
+    this.drawRock();
     for (const p of this.particles) {
       const [sx, sy] = this.toScreen(p.x, p.y);
       ctx.globalAlpha = Math.min(1, p.life * 2);
@@ -270,6 +339,7 @@ export class GardenScene {
       this.text(f.text, sx, sy, f.color || '#ffcd75', 6);
       ctx.globalAlpha = 1;
     }
+    this.drawNests();
   }
 
   glow(x, y, r, color) {
@@ -293,6 +363,15 @@ export class GardenScene {
     ctx.fillText(str, sx, sy);
   }
 
+  // A tiny four-point pixel sparkle.
+  sparkle(sx, sy, size, color) {
+    const { ctx } = this;
+    const p = Math.max(1, Math.round(size));
+    ctx.fillStyle = color;
+    ctx.fillRect(sx - p / 2, sy - p * 1.5, p, p * 3);
+    ctx.fillRect(sx - p * 1.5, sy - p / 2, p * 3, p);
+  }
+
   bob(e) {
     return e.family === 'flyer' ? 5 + Math.sin(e.phase * 0.6) * 1.5 - (e.actTime > 0 ? 4 : 0) : 0;
   }
@@ -308,7 +387,7 @@ export class GardenScene {
 
   drawBug(e) {
     const { ctx } = this;
-    const img = this.assets.bug(e.species, e.shiny);
+    const img = this.assets.bug(e.species, e.variant);
     const size = 16 * this.bugPx;
     const [sx, sy] = this.toScreen(e.x, e.y - this.bob(e));
     const wig = e.moving || e.actTime > 0 ? 1 + Math.sin(e.phase * (e.act === 'dig' ? 2 : 1)) * 0.06 : 1;
@@ -323,56 +402,122 @@ export class GardenScene {
 
   drawOverlay(e) {
     const [sx, sy] = this.toScreen(e.x, e.y - this.bob(e) - 11);
-    if (e.shiny && Math.sin(this.t * 4 + e.phase) > 0.6) this.text('+', sx + 6 * this.scale, sy + 4 * this.scale, '#ffcd75', 5);
+    if (e.variant === 'golden') {
+      for (let k = 0; k < 3; k++) {
+        const ph = this.t * 2.5 + e.phase + k * 2.1;
+        const a = Math.sin(ph);
+        if (a <= 0.3) continue;
+        const ox = Math.sin(k * 7.3 + Math.floor(ph / 6.283) * 1.7) * 6;
+        const oy = Math.cos(k * 3.1 + Math.floor(ph / 6.283) * 2.3) * 6 + 11;
+        const [px, py] = this.toScreen(e.x + ox, e.y - this.bob(e) - 11 + oy);
+        this.ctx.globalAlpha = a;
+        this.sparkle(px, py, this.scale * 0.8, '#fff3b8');
+        this.ctx.globalAlpha = 1;
+      }
+    }
+    if (e.surprised > 0) this.text('!', sx, sy - 2 * this.scale + Math.sin(this.t * 12) * this.scale, '#ffcd75', 7);
     if (e.bubble > 0 && e.label) this.text(e.label, sx, sy - 2 * this.scale, '#f4f4f4', 5);
     if (e.hearts > 0) {
       const s = 8 * this.scale;
-      const [hx, hy] = this.toScreen(e.x + 6, e.y - 14 - (1.2 - e.hearts) * 8);
+      const [hx, hy] = this.toScreen(e.x + 6, e.y - 14 - (1.6 - e.hearts) * 8);
       this.ctx.globalAlpha = Math.min(1, e.hearts * 2);
       this.ctx.drawImage(this.assets.sprites.heart, hx - s / 2, hy - s / 2, s, s);
       this.ctx.globalAlpha = 1;
     }
   }
 
-  eggSlots() {
-    const st = this.game.state;
-    const eggs = st.eggs.filter((e) => e.startedAt).sort((a, b) => a.startedAt - b.startedAt);
-    const n = Math.min(EGG_SLOTS.length, Math.max(incubatorCount(st), eggs.length));
-    return EGG_SLOTS.slice(0, n).map(([x, y], i) => ({ x, y, egg: eggs[i] || null }));
+  drawPatches() {
+    const { ctx, scale } = this;
+    for (const p of dirtPatches(this.game.state.garden, this.game.now())) {
+      if (p.alpha <= 0.01) continue;
+      const [sx, sy] = this.toScreen(p.x, p.y + 2);
+      ctx.save();
+      ctx.globalAlpha = p.alpha * 0.85;
+      // Pixel-y ellipse of churned earth with a darker centre.
+      ctx.fillStyle = '#6b4a2b';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 11 * scale, 6 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4e3520';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 7 * scale, 3.5 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#8a643c';
+      for (const [dx, dy] of [[-8, -3], [6, -4], [-3, 4], [8, 2], [-10, 1], [2, -1]]) ctx.fillRect(sx + dx * scale, sy + dy * scale, scale, scale);
+      ctx.restore();
+    }
   }
 
-  drawEggs() {
+  drawRock() {
+    const r = this.rock();
+    const lifted = this.rockDrag ? 5 : 0;
+    const size = 16 * this.bugPx * 1.5;
+    const [sx, sy] = this.toScreen(r.x, r.y);
+    if (lifted) {
+      this.ctx.fillStyle = 'rgba(26, 28, 44, 0.3)';
+      this.ctx.beginPath();
+      this.ctx.ellipse(sx, sy + 4 * this.scale, 10 * this.scale, 4 * this.scale, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.drawImage(this.assets.sprites.rock, sx - size / 2, sy - size * 0.62 - lifted * this.scale, size, size);
+  }
+
+  // ---------- nests (screen space, along the bottom) ----------
+
+  nestLayout() {
+    const st = this.game.state;
+    const eggs = st.eggs.filter((e) => e.startedAt).sort((a, b) => a.startedAt - b.startedAt);
+    const n = Math.max(incubatorCount(st), eggs.length);
+    const px = Math.max(2, Math.round(this.scale * 1.1));
+    const size = 16 * px;
+    const cw = this.canvas.width;
+    const gap = cw / n;
+    const cy = this.canvas.height - size * 0.45;
+    return Array.from({ length: n }, (_, i) => ({ x: gap * (i + 0.5), y: cy, size, px, egg: eggs[i] || null }));
+  }
+
+  drawNests() {
     const { ctx } = this;
-    const s = this.scale;
-    for (const slot of this.eggSlots()) {
-      const [sx, sy] = this.toScreen(slot.x, slot.y);
-      if (!slot.egg) {
-        ctx.strokeStyle = 'rgba(244, 244, 244, 0.45)';
-        ctx.setLineDash([s, s]);
-        ctx.lineWidth = Math.max(1, s * 0.6);
-        ctx.beginPath();
-        ctx.ellipse(sx, sy + 2 * s, 5 * s, 3 * s, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        continue;
+    const now = this.game.now();
+    for (const n of this.nestLayout()) {
+      const left = n.x - n.size / 2;
+      const top = n.y - n.size / 2;
+      ctx.drawImage(this.assets.sprites.nest, left, top, n.size, n.size);
+      if (n.egg) {
+        const p = this.game.eggProgress(n.egg);
+        const v = EGG_BY_ID[n.egg.tier].visual;
+        const eggSize = n.size * 0.95;
+        const ex = n.x;
+        const ey = top + n.size * 0.36;
+        if (v.glow) {
+          const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, eggSize * 0.7);
+          g.addColorStop(0, v.glow);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(ex - eggSize, ey - eggSize, eggSize * 2, eggSize * 2);
+        }
+        ctx.save();
+        ctx.translate(ex, ey + eggSize * 0.3);
+        if (p.ready) ctx.rotate(Math.sin(this.t * 10) * 0.15 * (Math.sin(this.t * 1.5) > 0 ? 1 : 0.2));
+        ctx.drawImage(this.assets.eggs[n.egg.tier][0], -eggSize / 2, -eggSize * 0.8, eggSize, eggSize);
+        ctx.restore();
+        ctx.drawImage(this.assets.sprites.nest_front, left, top, n.size, n.size);
+        if (v.sparkles && Math.sin(this.t * 3 + n.x) > 0.6) this.sparkle(ex + eggSize * 0.3, ey - eggSize * 0.35, n.px, '#ffffff');
+        const label = p.ready ? 'Hatch!' : fmtTime(p.remainingMs);
+        const ly = top + n.size * 0.2 - eggSize * 0.25;
+        ctx.font = `${Math.round(n.px * 5.5)}px "Jersey 10", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(2, n.px);
+        ctx.strokeStyle = '#1a1c2c';
+        ctx.strokeText(label, n.x, ly);
+        ctx.fillStyle = p.ready ? '#a7f070' : '#f4f4f4';
+        ctx.fillText(label, n.x, ly);
+      } else {
+        ctx.globalAlpha = 0.7;
+        ctx.drawImage(this.assets.sprites.nest_front, left, top, n.size, n.size);
+        ctx.globalAlpha = 1;
       }
-      const p = this.game.eggProgress(slot.egg);
-      const v = EGG_BY_ID[slot.egg.tier].visual;
-      if (v.glow) this.glow(slot.x, slot.y, 9 + Math.sin(this.t * 3), v.glow);
-      const img = this.assets.eggs[slot.egg.tier][0];
-      const size = 12 * this.bugPx;
-      ctx.save();
-      ctx.translate(sx, sy);
-      if (p.ready) ctx.rotate(Math.sin(this.t * 10) * 0.18 * (Math.sin(this.t * 1.5) > 0 ? 1 : 0.2));
-      ctx.drawImage(img, -size / 2, -size / 2, size, size);
-      ctx.restore();
-      if (v.sparkles && Math.sin(this.t * 3 + slot.x) > 0.7) this.text('+', sx + 5 * s, sy - 5 * s, '#f4f4f4', 4);
-      const bw = 12 * s;
-      ctx.fillStyle = '#1a1c2c';
-      ctx.fillRect(sx - bw / 2 - s * 0.5, sy + 7 * s, bw + s, 2.5 * s);
-      ctx.fillStyle = p.ready ? '#a7f070' : '#ffcd75';
-      ctx.fillRect(sx - bw / 2, sy + 7.5 * s, bw * p.fraction, 1.5 * s);
-      if (p.ready && Math.sin(this.t * 5) > 0) this.text('!', sx + 6 * s, sy - 6 * s, '#a7f070', 6);
     }
   }
 
@@ -382,8 +527,7 @@ export class GardenScene {
   }
 
   drawCoins() {
-    const n = this.coinCount();
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < this.coinCount(); i++) {
       const [sx, sy] = this.toScreen(...this.coinSpots[i]);
       const w = Math.abs(Math.cos(this.t * 2 + i)) * 0.7 + 0.3;
       const size = 9 * this.scale;
@@ -398,11 +542,29 @@ export class GardenScene {
   // ---------- input ----------
 
   onDown(e) {
-    this.drag = { y: e.clientY, cam: this.camY, moved: 0, x: e.clientX };
+    const [wx, wy] = this.toWorld(e.clientX, e.clientY);
+    const [cx, cy] = this.toCanvas(e.clientX, e.clientY);
     this.canvas.setPointerCapture?.(e.pointerId);
+    const onNest = this.nestLayout().some((n) => Math.abs(cx - n.x) < n.size / 2 && Math.abs(cy - n.y) < n.size / 2);
+    const r = this.game.state.garden.rock;
+    if (!onNest && Math.hypot(wx - r.x, wy - (r.y - 3)) < ROCK_RADIUS) {
+      this.rockDrag = { x: r.x, y: r.y, grabX: wx - r.x, grabY: wy - r.y, moved: 0, startX: e.clientX, startY: e.clientY };
+      const found = this.reveal();
+      this.handlers.onRockLift?.(found);
+      return;
+    }
+    this.drag = { y: e.clientY, cam: this.camY, moved: 0, x: e.clientX };
   }
 
   onMove(e) {
+    if (this.rockDrag) {
+      const [wx, wy] = this.toWorld(e.clientX, e.clientY);
+      const d = this.rockDrag;
+      d.moved = Math.max(d.moved, Math.hypot(e.clientX - d.startX, e.clientY - d.startY));
+      d.x = clamp(wx - d.grabX, 10, 140);
+      d.y = clamp(wy - d.grabY, 16, 290);
+      return;
+    }
     if (!this.drag) return;
     const dy = e.clientY - this.drag.y;
     this.drag.moved = Math.max(this.drag.moved, Math.hypot(e.clientX - this.drag.x, dy));
@@ -410,9 +572,19 @@ export class GardenScene {
   }
 
   onUp(e) {
+    if (this.rockDrag) {
+      const d = this.rockDrag;
+      this.rockDrag = null;
+      if (d.moved > 6) this.handlers.onRockMoved?.(d.x, d.y);
+      return;
+    }
     const d = this.drag;
     this.drag = null;
     if (!d || d.moved > 8) return;
+    const [cx, cy] = this.toCanvas(e.clientX, e.clientY);
+    for (const n of this.nestLayout()) {
+      if (Math.abs(cx - n.x) < n.size / 2 && Math.abs(cy - n.y) < n.size / 2) return this.handlers.onEgg(n.egg);
+    }
     this.tap(...this.toWorld(e.clientX, e.clientY));
   }
 
@@ -425,9 +597,9 @@ export class GardenScene {
         return;
       }
     }
-    for (const slot of this.eggSlots()) if (near(slot.x, slot.y, 9)) return this.handlers.onEgg(slot.egg);
     let best = null;
     for (const e of this.entities.values()) {
+      if (e.hidden) continue;
       const d = Math.hypot(e.x - x, e.y - this.bob(e) - y);
       if (d < 11 && (!best || d < best.d)) best = { e, d };
     }
@@ -438,7 +610,11 @@ export class GardenScene {
       e.actTime = 0;
       return this.handlers.onBug(e.uid);
     }
-    if (x >= NURSERY.x && x <= NURSERY.x + NURSERY.w && y >= NURSERY.y && y <= NURSERY.y + NURSERY.h) this.handlers.onEgg(null);
-    else this.handlers.onEmpty?.();
+    this.handlers.onEmpty?.();
   }
+}
+
+function hexA(hex, a) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
