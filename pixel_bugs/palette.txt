@@ -17,3 +17,9 @@ P  #5d275d  purple
 N  #7a4a2a  brown
 n  #b07a4a  light brown
 p  #f4a0b0  pink
+v  #c06ad8  violet glow
+m  #ff5fa8  magenta glow
+f  #ff9b3d  flame orange
+y  #fff07a  bright yellow glow
+i  #d6f6ff  icy white
+V  #2b1b4a  deep void purple

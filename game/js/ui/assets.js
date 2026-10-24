@@ -6,7 +6,7 @@ import { SPRITES } from '../data/sprites.js';
 const FALLBACK_PALETTE = {
   K: '#1a1c2c', k: '#333c57', s: '#566c86', l: '#94b0c2', W: '#f4f4f4', R: '#b13e53', r: '#ef7d57', Y: '#ffcd75',
   G: '#38b764', g: '#a7f070', T: '#257179', b: '#3b5dc9', c: '#41a6f6', C: '#73eff7', P: '#5d275d', N: '#7a4a2a',
-  n: '#b07a4a', p: '#f4a0b0',
+  n: '#b07a4a', p: '#f4a0b0', v: '#c06ad8', m: '#ff5fa8', f: '#ff9b3d', y: '#fff07a', i: '#d6f6ff', V: '#2b1b4a',
 };
 const MAP_LAYERS = ['BugsMap/pixil-layer-0.png', 'BugsMap/pixil-layer-1.png'];
 
@@ -106,12 +106,13 @@ export class Assets {
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
   }
 
-  // 8x sprites are exact nearest-neighbour upscales of 16x16 art.
+  // 8x sprites are exact nearest-neighbour upscales of their art: usually
+  // 16x16, but a big bug can be drawn larger (the Atlas Moth is 32x32).
   downscale(img) {
-    const c = makeCanvas();
+    const c = makeCanvas(Math.max(1, Math.round(img.width / 8)), Math.max(1, Math.round(img.height / 8)));
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, 0, 0, 16, 16);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
     return c;
   }
 

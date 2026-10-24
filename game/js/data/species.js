@@ -70,6 +70,31 @@ const RAW = [
 
   ['mantis', 'Moon Mantis', 'mythic', 'crawler', ['cut', 'fight', 'fly'], 'Prays to the moon, strikes like lightning.'],
   ['luna_moth', 'Luna Moth', 'mythic', 'flyer', ['fly', 'build', 'lift'], 'A pale green spirit of the midnight sky.'],
+
+  // A real giant: its sprite is 32x32, twice the size of everyone else.
+  ['atlas_moth', 'Atlas Moth', 'epic', 'flyer', ['fly', 'lift'], 'Its wingtips look like snake heads.'],
+
+  // Elemental and magical bugs.
+  ['boulder_pill_bug', 'Boulder Pill Bug', 'uncommon', 'crawler', ['lift', 'dig'], 'Rolls up into a mossy stone. Nobody can tell the difference.'],
+  ['ice_worm', 'Ice Worm', 'uncommon', 'wriggler', ['dig', 'cut'], 'Tunnels through glaciers, leaving icicles behind.'],
+  ['spore_beetle', 'Spore Beetle', 'uncommon', 'beetle', ['dig', 'build'], 'Grows a little mushroom garden on its back.'],
+  ['bubble_ladybug', 'Bubble Ladybug', 'nice', 'beetle', ['fly', 'build'], 'Floats everywhere in its own perfect bubble.'],
+  ['on_firefly', 'On-Firefly', 'rare', 'flyer', ['fly', 'fight', 'build'], 'Its tail is not a lantern. It is actually on fire.'],
+  ['magma_snail', 'Magma Snail', 'rare', 'wriggler', ['build', 'lift', 'dig'], 'Carries a shell of glowing lava and leaves a trail of smoke.'],
+  ['frost_moth', 'Frost Moth', 'rare', 'flyer', ['fly', 'cut'], 'Each wingbeat scatters a flurry of snowflakes.'],
+  ['thornvine_mantis', 'Thornvine Mantis', 'rare', 'crawler', ['cut', 'fight'], 'Half insect, half bramble, all patience.'],
+  ['acid_wasp', 'Acid Wasp', 'rare', 'flyer', ['fight', 'cut'], 'Its sting fizzes. Best admired from a distance.'],
+  ['gust_cicada', 'Gust Cicada', 'rare', 'flyer', ['fly', 'dig'], 'Its song is a howling wind that bends the grass.'],
+  ['psychic_jumping_spider', 'Psychic Jumping Spider', 'epic', 'arachnid', ['fight', 'fly', 'build'], 'Reads your mind, then pounces before you finish the thought.'],
+  ['thunder_beetle', 'Thunder Beetle', 'epic', 'beetle', ['lift', 'fight', 'fly'], 'Its stripes crackle before every storm.'],
+  ['crystal_beetle', 'Crystal Beetle', 'epic', 'beetle', ['dig', 'lift', 'build'], 'Grows a shell of living crystal deep underground.'],
+  ['magma_centipede', 'Magma Centipede', 'epic', 'wriggler', ['fight', 'dig', 'cut'], 'A hundred glowing legs, each one hot enough to melt rock.'],
+  ['iron_stag_beetle', 'Iron Stag Beetle', 'epic', 'beetle', ['lift', 'fight', 'cut'], 'Forged, not hatched. Or so the legends say.'],
+  ['storm_dragonfly', 'Storm Dragonfly', 'legendary', 'flyer', ['fly', 'fight', 'cut'], 'Flies on wings of cloud with lightning for a body.'],
+  ['halo_bee', 'Halo Bee', 'legendary', 'flyer', ['fly', 'build', 'lift'], 'Wears a golden halo and makes the sweetest honey there is.'],
+  ['ghost_spider', 'Ghost Spider', 'legendary', 'arachnid', ['cut', 'build', 'fly'], 'Spins webs you can only see by moonlight.'],
+  ['void_ant', 'Void Ant', 'mythic', 'crawler', ['lift', 'build', 'dig', 'fight'], 'Its body holds a sky full of tiny stars.'],
+  ['cosmic_butterfly', 'Cosmic Butterfly', 'celestial', 'flyer', ['fly', 'build', 'cut', 'lift', 'dig'], 'Born where two galaxies touched.'],
 ];
 
 // Relatives reuse another species' sprite with its palette colours swapped
@@ -121,7 +146,6 @@ const RELATIVES = [
   ['hercules_beetle', 'Hercules Beetle', 'rhino_beetle', 'epic', ['lift', 'fight', 'dig'], { k: 'n', P: 'N', l: 'W' }, 'Its horn is longer than its body.'],
   ['goliath_beetle', 'Goliath Beetle', 'stag_beetle', 'epic', ['lift', 'fight', 'cut'], { N: 'W', n: 'l' }, 'One of the heaviest insects on Earth.'],
   ['orchid_mantis', 'Orchid Mantis', 'mantis', 'epic', ['cut', 'fight', 'build'], { G: 'p', g: 'W' }, 'Pretends to be a flower. Very convincingly.'],
-  ['atlas_moth', 'Atlas Moth', 'moth', 'epic', ['fly', 'lift'], { n: 'r', N: 'R', W: 'Y' }, 'Its wingtips look like snake heads.'],
   ['cobalt_tarantula', 'Cobalt Tarantula', 'tarantula', 'epic', ['dig', 'fight', 'build'], { k: 'b', N: 'c', r: 'C' }, 'Electric blue and famously grumpy.'],
   ['rainbow_scarab', 'Rainbow Scarab', 'jewel_beetle', 'epic', ['dig', 'fly', 'lift'], { G: 'P', T: 'b', g: 'C' }, 'Shifts colour with every step.'],
 
@@ -149,17 +173,18 @@ const DRAWN = [
 
 // Shade-lovers that like to hide under the garden rock (relatives inherit
 // this from their base species).
-const ROCK_LOVERS = new Set(['pill_bug', 'earwig', 'cockroach', 'centipede', 'millipede', 'silverfish', 'worm', 'slug', 'grub', 'snail', 'cricket', 'mole_cricket', 'termite', 'spider', 'weevil', 'harvestman', 'tick']);
+const ROCK_LOVERS = new Set(['boulder_pill_bug', 'ice_worm', 'spore_beetle', 'pill_bug', 'earwig', 'cockroach', 'centipede', 'millipede', 'silverfish', 'worm', 'slug', 'grub', 'snail', 'cricket', 'mole_cricket', 'termite', 'spider', 'weevil', 'harvestman', 'tick']);
 
 // Glowing auras for magical species (drawn behind the sprite).
 const AURAS = {
   arcane_mite: '#c86ee0', will_o_wisp: '#73eff7', flame_beetle: '#ef7d57', shadow_mantis: '#5d275d',
   star_moth: '#73eff7', comet_dragonfly: '#41a6f6', nebula_beetle: '#f4a0b0',
+  psychic_jumping_spider: '#c06ad8', on_firefly: '#ff9b3d', magma_snail: '#ff9b3d', halo_bee: '#fff07a',
 };
 
 // How each sprite is drawn. Most are top-down with the head pointing up; these
 // are side views facing right, so they mirror and tilt instead of rotating.
-const SIDE_VIEW = new Set(['caterpillar', 'cricket', 'dung_beetle', 'grub', 'mantis', 'millipede', 'mole_cricket', 'slug', 'snail', 'weevil', 'worm']);
+const SIDE_VIEW = new Set(['magma_snail', 'caterpillar', 'cricket', 'dung_beetle', 'grub', 'mantis', 'millipede', 'mole_cricket', 'slug', 'snail', 'weevil', 'worm']);
 
 const BASES = RAW.map(([id, name, rarity, family, traits, desc]) => ({
   id, name, rarity, family, traits, desc, base: id, recolor: null, sprite: `8x/${id}.png`, view: SIDE_VIEW.has(id) ? 'side' : 'top',

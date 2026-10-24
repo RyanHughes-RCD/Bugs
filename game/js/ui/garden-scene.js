@@ -435,14 +435,15 @@ export class GardenScene {
     const [sx, sy] = this.toScreen(e.x, e.y + 5);
     this.ctx.fillStyle = 'rgba(26, 28, 44, 0.22)';
     this.ctx.beginPath();
-    this.ctx.ellipse(sx, sy, 5 * this.scale, 2 * this.scale, 0, 0, Math.PI * 2);
+    const big = this.assets.bug(e.species).width / 16;
+    this.ctx.ellipse(sx, sy, 5 * big * this.scale, 2 * big * this.scale, 0, 0, Math.PI * 2);
     this.ctx.fill();
   }
 
   drawBug(e) {
     const { ctx } = this;
     const img = this.assets.bug(e.species, e.variant);
-    const size = 16 * this.bugPx;
+    const size = img.width * this.bugPx; // drawn at its own pixel size, so big bugs look big
     const [sx, sy] = this.toScreen(e.x, e.y - this.bob(e));
     const wig = e.moving || e.actTime > 0 ? 1 + Math.sin(e.phase * (e.act === 'dig' ? 2 : 1)) * 0.06 : 1;
     ctx.save();
