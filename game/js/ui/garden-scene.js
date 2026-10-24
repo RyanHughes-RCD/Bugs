@@ -200,6 +200,8 @@ export class GardenScene {
     e.bubble = Math.max(0, e.bubble - dt);
     e.hearts = Math.max(0, e.hearts - dt);
     e.surprised = Math.max(0, e.surprised - dt);
+    e.squish = Math.max(0, (e.squish || 0) - dt);
+    e.slow = Math.max(0, (e.slow || 0) - dt);
     e.moving = false;
     if (e.hidden) {
       e.hidden = Math.max(0, e.hidden - dt);
@@ -257,7 +259,7 @@ export class GardenScene {
       else e.wait = e.family === 'flyer' ? rand(0.2, 1.2) : rand(0.6, 3.5);
       return;
     }
-    let sp = e.speed;
+    let sp = e.speed * (e.slow > 0 ? 0.35 : 1); // a squished bug limps for a bit
     if (e.family === 'hopper') sp *= Math.sin(e.phase * 0.5) > 0.3 ? 3.2 : 0.2;
     const step = Math.min(d, sp * dt);
     e.x += (dx / d) * step;
@@ -397,7 +399,9 @@ export class GardenScene {
     ctx.translate(Math.round(sx), Math.round(sy));
     if (e.side) ctx.scale(e.flip, 1);
     ctx.rotate(e.angle);
-    ctx.scale(wig, 2 - wig);
+    // Squished flat by the rock, then springing back into shape.
+    const flat = e.squish > 1.6 ? 1 : (e.squish || 0) / 1.6;
+    ctx.scale(wig * (1 + 0.35 * flat), (2 - wig) * (1 - 0.55 * flat));
     ctx.drawImage(img, -size / 2, -size / 2, size, size);
     ctx.restore();
   }
@@ -418,7 +422,7 @@ export class GardenScene {
       }
     }
     if (e.surprised > 0) this.text('!', sx, sy - 2 * this.scale + Math.sin(this.t * 12) * this.scale, '#ffcd75', 7);
-    if (e.bubble > 0 && e.label) this.text(e.label, sx, sy - 2 * this.scale, '#f4f4f4', 5);
+    if (e.bubble > 0 && e.label) this.text(e.label, sx, sy - 2 * this.scale, e.labelColor || '#f4f4f4', 6);
     if (e.hearts > 0) {
       const s = 8 * this.scale;
       const [hx, hy] = this.toScreen(e.x + 6, e.y - 14 - (1.6 - e.hearts) * 8);
@@ -466,13 +470,32 @@ export class GardenScene {
     ctx.drawImage(art, Math.round(sx - (art.width * scale) / 2), Math.round(sy - (art.height * 0.62 + lifted) * scale), art.width * scale, art.height * scale);
   }
 
-  // Whether a world point is on the rock.
-  onRock(wx, wy) {
-    const r = this.game.state.garden.rock;
+  // Whether a world point is on the rock (at its saved spot, or at r).
+  onRock(wx, wy, r = this.game.state.garden.rock) {
     const art = this.assets.rock;
     const dx = (wx - r.x) / (art.width / 2);
     const dy = (wy - (r.y - art.height * 0.12)) / (art.height / 2);
     return dx * dx + dy * dy <= 1.1;
+  }
+
+  // Cosmetic only: bugs caught under a dropped rock get squashed, complain,
+  // pop out from under it and move slowly for a few seconds.
+  squishUnder(x, y) {
+    const art = this.assets.rock;
+    for (const e of this.entities.values()) {
+      if (e.hidden || !this.onRock(e.x, e.y - this.bob(e), { x, y })) continue;
+      e.squish = 2.4;
+      e.slow = 6;
+      e.label = Math.random() < 0.5 ? 'Ouch!' : 'Ow\u2026';
+      e.bubble = 1.8;
+      e.labelColor = '#ef7d57';
+      e.act = null;
+      e.actTime = 0;
+      e.wait = 1.2;
+      const a = Math.atan2(e.y - y, e.x - x) || rand(0, Math.PI * 2);
+      e.x = clamp(x + Math.cos(a) * (art.width / 2 + 8), BOUNDS.x0, BOUNDS.x1);
+      e.y = clamp(y - art.height * 0.12 + Math.sin(a) * (art.height / 2 + 9), BOUNDS.y0, BOUNDS.y1);
+    }
   }
 
   // ---------- nests (screen space, along the bottom) ----------
@@ -588,7 +611,10 @@ export class GardenScene {
     if (this.rockDrag) {
       const d = this.rockDrag;
       this.rockDrag = null;
-      if (d.moved > 6) this.handlers.onRockMoved?.(d.x, d.y);
+      if (d.moved > 6) {
+        this.squishUnder(d.x, d.y);
+        this.handlers.onRockMoved?.(d.x, d.y);
+      }
       return;
     }
     const d = this.drag;
