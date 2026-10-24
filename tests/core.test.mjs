@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { Rng } from '../game/js/core/rng.js';
 import { SAVE_KEY, BACKUP_KEY, decodeSave, memoryStorage } from '../game/js/core/save.js';
-import { SPECIES_LIST } from '../game/js/data/species.js';
-import { RARITY_ORDER } from '../game/js/data/rarities.js';
+import { SPECIES_LIST, SPECIES } from '../game/js/data/species.js';
+import { RARITY_ORDER, RARITIES } from '../game/js/data/rarities.js';
 import { TRAIT_IDS } from '../game/js/data/traits.js';
 import { ITEMS } from '../game/js/data/items.js';
 import { AREAS } from '../game/js/data/areas.js';
@@ -39,7 +39,7 @@ test('game data is valid: species, items, areas, encounters, sprites', () => {
   }
   for (const a of AREAS) {
     for (const [id] of [...a.loot, ...a.chest.loot]) assert.ok(ITEMS[id], `${a.id} loot ${id}`);
-    for (const [tier] of [...a.eggs, ...a.chest.eggs]) assert.ok(EGG_BY_ID[tier], `${a.id} egg ${tier}`);
+    assert.ok(EGG_BY_ID[a.eggTier], `${a.id} egg tier ${a.eggTier}`);
     assert.ok(a.encounters[0] >= 1 && a.encounters[1] >= a.encounters[0]);
     assert.ok(ENCOUNTERS.filter((e) => !e.areas || e.areas.includes(a.id)).length >= 10, `${a.id} has an encounter pool`);
   }
@@ -147,12 +147,12 @@ test('saves from the first version are migrated without losing progress', () => 
   storage.setItem(SAVE_KEY, JSON.stringify(v1));
   const { game } = makeGame({ storage, clock: { t: T0 } });
   const st = game.state;
-  assert.equal(st.version, 2);
+  assert.equal(st.version, 3);
   const ant = st.bugs.find((b) => b.uid === 1);
   assert.equal(ant.name, undefined, 'old nicknames are dropped');
-  assert.equal(ant.level, 6);
+  assert.equal(ant.level, undefined, 'no more levels');
   assert.equal(ant.item, 'thorn_spear');
-  assert.ok(Object.values(ant.traits).reduce((a, b) => a + b, 0) >= 6, 'levels became trait growth');
+  assert.deepEqual(Object.values(ant.traits), [2], 'a Common has one trait at level 2');
   assert.equal(st.bugs.find((b) => b.uid === 2).variant, 'shiny');
   assert.ok(st.bugs.every((b) => b.inGarden));
   const golden = st.eggs.find((e) => e.uid === 3);
@@ -169,4 +169,23 @@ test('saves from the first version are migrated without losing progress', () => 
   assert.ok(st.areas.forest.unlocked);
   assert.equal(st.areas.garden.runs, 4);
   assert.equal(st.stats.expeditions, 7);
+});
+
+test('v2 saves lose levels and get traits set by rarity, keeping their trait types', () => {
+  const { game, storage } = makeGame();
+  const st = JSON.parse(JSON.stringify(game.state));
+  st.version = 2;
+  st.bugs[0] = { ...st.bugs[0], level: 14, xp: 50, traits: { lift: 15 } };
+  st.bugs.push({ ...st.bugs[0], uid: 900, species: 'bumblebee', level: 1, xp: 0, traits: { lift: 9, fight: 8, dig: 7 } });
+  storage.setItem(SAVE_KEY, JSON.stringify(st));
+  const { game: again } = makeGame({ storage });
+  const [ant] = again.state.bugs;
+  assert.equal(again.state.version, 3);
+  assert.equal(ant.level, undefined);
+  assert.deepEqual(ant.traits, { lift: 2 }, 'a maxed-out Common is back to Common strength');
+  const big = again.bug(900);
+  const [lo, hi] = RARITIES[SPECIES.bumblebee.rarity].traitLevels;
+  assert.ok(Object.values(big.traits).every((l) => l >= lo && l <= hi));
+  assert.ok(Object.keys(big.traits).includes('lift'));
+  assert.equal(again.state.flags.rebalanced, true, 'the player is told once');
 });

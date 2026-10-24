@@ -9,7 +9,6 @@ export const GARDEN_LIMIT = 10;
 export const PARTY_SIZE = 4;
 export const BASE_INCUBATOR_SLOTS = 2;
 export const BASE_EXPEDITION_SLOTS = 1;
-export const MAX_BUG_LEVEL = 20;
 export const MAX_TRAIT_LEVEL = 15;
 export const HISTORY_LIMIT = 15;
 
@@ -32,25 +31,33 @@ export const TRAIT_CHECK = {
   greatMargin: 4, // score this far above difficulty earns a great result
 };
 
-export const XP = {
-  perEncounter: 6,
-  successBonus: 6,
-  toNext: (level) => Math.round(30 * Math.pow(level, 1.5)),
-};
+// Expedition pace. Each area suits a party of a certain power (the party's
+// total trait levels, so mostly its rarity). A weaker party takes longer per
+// encounter, a stronger one less: time x (suited power / party power) ^
+// steepness, kept within [min, max]. Areas set their own steepness, so
+// being under-powered hurts more in harder places.
+export const PACE = { min: 0.5, max: 8 };
 
 export const STARTING = {
-  coins: 300,
+  coins: 500,
   bugs: ['ant', 'ladybug', 'pill_bug', 'caterpillar'],
   eggs: ['common'],
   items: { key: 1 },
 };
 
 // Coins dug up by garden bugs (per-rarity rates are in rarities.js).
-export const GARDEN_FORAGE = { cap: 100 };
+export const GARDEN_FORAGE = { cap: 200 };
 
 // The garden rock. Some bugs like to hide under it. Where it rests, a dirt
 // patch slowly forms; after the rock is moved the patch lingers, then fades.
 export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 34, y: 187 } }; // the patch's spot on the map
+
+// Eggs found on expeditions: the tier is rolled up from the area's egg tier.
+// [tiers above, weight]. Chests lean higher but never pass +3.
+export const EGG_DROPS = {
+  find: [[0, 85], [1, 11], [2, 3], [3, 1]],
+  chest: [[0, 55], [1, 30], [2, 11], [3, 4]],
+};
 
 // Wild bugs wander into the garden while it has room (say, while the party is
 // away). Say hi before they leave and they give a small gift: usually coins,

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AREAS, AREA_BY_ID } from '../game/js/data/areas.js';
-import { BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../game/js/data/balance.js';
-import { planExpedition, expeditionTimeline, encounterMs, encountersForHours, defaultEncounterCount } from '../game/js/systems/expedition.js';
+import { BASE_ENCOUNTER_MS, EXPEDITION_LENGTH, PACE } from '../game/js/data/balance.js';
+import { planExpedition, expeditionTimeline, encounterMs, encountersForHours, defaultEncounterCount, partyPower, paceFactor } from '../game/js/systems/expedition.js';
 import { bugName } from '../game/js/systems/bugs.js';
 import { makeGame, addBug, partyUids, MIN, HOUR } from './helpers.mjs';
 
@@ -51,7 +51,7 @@ test('players choose the trip length, up to an overnight run', () => {
   const { game } = makeGame();
   const uids = partyUids(game);
   const party = uids.map((u) => game.bug(u));
-  const overnight = encountersForHours(game.state, party, 8);
+  const overnight = encountersForHours(game.state, AREA_BY_ID.garden, party, 8);
   assert.equal(overnight, 96, '8 hours of 5-minute encounters');
   assert.equal(game.launchExpedition('garden', uids, EXPEDITION_LENGTH.max + 1).ok, false);
   assert.equal(game.launchExpedition('garden', uids, 2.5).ok, false);
@@ -105,10 +105,38 @@ test('Expedition Efficiency and speed items shorten encounters; the timer matche
   game.state.upgrades.expedition_efficiency = 5;
   game.state.bugs[0].item = 'trail_mix';
   const exp = game.launchExpedition('garden', partyUids(game)).expedition;
-  const expected = Math.round(5 * MIN * (1 - 0.3) * (1 - 0.05));
+  const expected = Math.round(5 * MIN * (1 - 0.2) * (1 - 0.05));
   assert.equal(exp.encounterMs, expected);
   assert.equal(exp.endsAt - exp.startAt, exp.count * expected);
-  assert.equal(encounterMs(game.state, game.state.bugs.slice(0, 4)), expected);
+  assert.equal(encounterMs(game.state, AREA_BY_ID.garden, game.state.bugs.slice(0, 4)), expected);
+});
+
+test('party power sets the pace: weaker parties are slower, more so in harder areas', () => {
+  const { game } = makeGame();
+  const starters = game.state.bugs.slice(0, 4);
+  assert.equal(partyPower(starters), 8, 'four Commons with one level-2 trait each');
+  assert.equal(paceFactor(AREA_BY_ID.garden, starters), 1, 'the Garden suits the starters');
+  const slow = AREAS.map((a) => paceFactor(a, starters));
+  for (let i = 1; i < slow.length; i++) assert.ok(slow[i] > slow[i - 1] || slow[i] === PACE.max, `${AREAS[i].id} is slower than ${AREAS[i - 1].id}`);
+  assert.ok(slow.every((f) => f >= PACE.min && f <= PACE.max));
+  // The same shortfall (half the suited power) costs more in harder areas.
+  const half = AREAS.map((a) => Math.pow(2, a.pace.steep));
+  for (let i = 1; i < half.length; i++) assert.ok(half[i] > half[i - 1]);
+  // Strong parties go faster, down to the floor.
+  const strong = [0, 1, 2, 3].map(() => addBug(game, 'ant', { lift: 15, cut: 15, fight: 15, fly: 15, dig: 15 }));
+  assert.ok(paceFactor(AREA_BY_ID.aether, strong) < 1);
+  assert.equal(paceFactor(AREA_BY_ID.garden, strong), PACE.min);
+  assert.equal(encounterMs(game.state, AREA_BY_ID.aether, starters), BASE_ENCOUNTER_MS * PACE.max);
+});
+
+test('expeditions no longer change bugs: there is no XP', () => {
+  const { game, clock } = makeGame();
+  const before = JSON.stringify(game.state.bugs.map((b) => b.traits));
+  const exp = game.launchExpedition('garden', partyUids(game), 50).expedition;
+  clock.t = exp.endsAt;
+  assert.ok(game.claimExpedition(exp.id).ok);
+  assert.equal(JSON.stringify(game.state.bugs.map((b) => b.traits)), before);
+  assert.ok(game.state.bugs.every((b) => b.level === undefined && b.xp === undefined));
 });
 
 test('an upgrade bought mid-expedition does not change the running timer', () => {

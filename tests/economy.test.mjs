@@ -33,15 +33,15 @@ test('upgrade purchases validate coins and max level, never going negative', () 
 test('upgrade effects: better finds, more expedition slots', () => {
   const { game } = makeGame();
   game.state.upgrades.better_finds = 10;
-  assert.equal(upgradeValue(game.state, 'better_finds'), 1);
+  assert.equal(upgradeValue(game.state, 'better_finds'), 0.5);
   assert.equal(expeditionSlots(game.state), 1);
   game.state.upgrades.improved_exploration = 1;
   assert.equal(expeditionSlots(game.state), 2);
-  game.state.upgrades.improved_exploration = 3;
-  assert.equal(expeditionSlots(game.state), 3);
+  game.state.upgrades.improved_exploration = 2;
+  assert.equal(expeditionSlots(game.state), 2, 'two slots at most');
 });
 
-test('Better Finds doubles coins at max level for the same expedition', async () => {
+test('Better Finds adds half again the coins at max level for the same expedition', async () => {
   const { planExpedition } = await import('../game/js/systems/expedition.js');
   const { game } = makeGame();
   const party = game.state.bugs;
@@ -49,7 +49,7 @@ test('Better Finds doubles coins at max level for the same expedition', async ()
   game.state.upgrades.better_finds = 10;
   const boosted = planExpedition(game.state, AREA_BY_ID.forest, party, 42);
   const sum = (p) => p.encounters.reduce((s, e) => s + e.coins, 0);
-  assert.ok(Math.abs(sum(boosted) - 2 * sum(base)) <= boosted.encounters.length, `${sum(boosted)} ≈ 2 × ${sum(base)}`);
+  assert.ok(Math.abs(sum(boosted) - 1.5 * sum(base)) <= boosted.encounters.length, `${sum(boosted)} ≈ 1.5 × ${sum(base)}`);
 });
 
 test('the garden holds at most 10 bugs; leaving it never removes a bug', () => {
@@ -110,11 +110,11 @@ test('equipment and upgrades are separate: removing an item keeps the upgrade', 
   game.state.upgrades.expedition_efficiency = 2;
   const party = game.state.bugs.slice(0, 4);
   party[0].item = 'trail_mix';
-  const withItem = encounterMs(game.state, party);
+  const withItem = encounterMs(game.state, AREA_BY_ID.garden, party);
   party[0].item = null;
-  const without = encounterMs(game.state, party);
+  const without = encounterMs(game.state, AREA_BY_ID.garden, party);
   assert.ok(withItem < without);
-  assert.equal(without, Math.round(5 * MIN * 0.88));
+  assert.equal(without, Math.round(5 * MIN * 0.92));
 });
 
 test('shop purchases and sales validate the balance and inventory', () => {

@@ -2,7 +2,8 @@ import { Rng } from '../core/rng.js';
 import { EGG_TIERS, EGG_BY_ID } from '../data/eggs.js';
 import { SPECIES_LIST } from '../data/species.js';
 import { RARITY_ORDER } from '../data/rarities.js';
-import { BASE_INCUBATOR_SLOTS } from '../data/balance.js';
+import { BASE_INCUBATOR_SLOTS, EGG_DROPS } from '../data/balance.js';
+import { AREA_BY_ID } from '../data/areas.js';
 import { upgradeValue } from '../data/upgrades.js';
 
 // Returns a list of problems with the egg tables (empty when valid).
@@ -60,4 +61,21 @@ export function eggProgress(egg, now) {
   const total = egg.endsAt - egg.startedAt;
   const remainingMs = Math.max(0, egg.endsAt - now);
   return { incubating: true, ready: now >= egg.endsAt, fraction: total > 0 ? Math.min(1, Math.max(0, (now - egg.startedAt) / total)) : 1, remainingMs, endsAt: egg.endsAt };
+}
+
+// Whether the egg shop stocks this tier yet. Better eggs appear as you explore.
+export function shopStock(state, tierId) {
+  const shop = EGG_BY_ID[tierId].shop;
+  const area = AREA_BY_ID[shop.area];
+  if (!state.areas[area.id].unlocked) return { ok: false, reason: `Unlocks with ${area.name}` };
+  const runs = state.areas[area.id].runs;
+  if (shop.runs && runs < shop.runs) return { ok: false, reason: `After ${shop.runs} expeditions in ${area.name} (${runs}/${shop.runs})` };
+  return { ok: true };
+}
+
+// The tier of an egg found in this area: usually the area's own, rarely up
+// to 3 tiers better. kind: 'find' (encounters) or 'chest'.
+export function rollDropTier(area, kind, rng) {
+  const up = rng.weighted(EGG_DROPS[kind]);
+  return EGG_TIERS[Math.min(EGG_TIERS.length - 1, EGG_BY_ID[area.eggTier].index + up)].id;
 }

@@ -1,6 +1,6 @@
 # 16x16 Pixel Bugs
 
-14 sprites, 16x16 px, 18-colour palette.
+14 sprites, 16x16 px, 24-colour palette (18 originals plus 6 glow colours).
 
 ## Editing
 **Text (source of truth):** each sprite is a 16x16 grid in `sprites/<name>.txt`.

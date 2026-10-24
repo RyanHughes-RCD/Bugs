@@ -5,8 +5,8 @@ import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
 import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
-import { createBug, addXp, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
-import { incubationMs, incubatorCount, rollEgg, eggProgress } from './systems/eggs.js';
+import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
+import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden, moveRock } from './systems/garden.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
@@ -246,6 +246,8 @@ export class Game {
   buyEgg(tier) {
     const t = EGG_BY_ID[tier];
     if (!t) return fail('Unknown egg.');
+    const stock = shopStock(this.state, tier);
+    if (!stock.ok) return fail(`Not in the shop yet. ${stock.reason}.`);
     if (!this.spend(t.price)) return fail('Not enough coins.');
     const egg = this.addEgg(tier, 'shop');
     this.state.stats.eggsBought += 1;
@@ -397,11 +399,11 @@ export class Game {
     const seed = this.rng.seed();
     const plan = planExpedition(st, area, party, seed, count);
     const now = this.now();
-    const encMs = encounterMs(st, party);
+    const encMs = encounterMs(st, area, party);
     const exp = {
       id: st.nextUid++, areaId, party: [...uids], partyNames: party.map(bugName), seed,
       startAt: now, encounterMs: encMs, count: plan.count, endsAt: now + plan.count * encMs,
-      encounters: plan.encounters, xp: plan.xp, claimed: false,
+      encounters: plan.encounters, claimed: false,
     };
     st.expeditions.push(exp);
     this.commit();
@@ -431,13 +433,6 @@ export class Game {
       }
       st.stats.chestsOpened += 1;
     }
-    const levelUps = [];
-    for (const uid of exp.party) {
-      const bug = this.bug(uid);
-      if (!bug) continue;
-      const gains = addXp(bug, exp.xp[uid] || 0);
-      if (gains.length) levelUps.push({ uid, name: bugName(bug), level: bug.level, traits: gains.map((g) => g.trait) });
-    }
     st.areas[area.id].runs += 1;
     st.stats.expeditions += 1;
     st.expeditions = st.expeditions.filter((e) => e !== exp);
@@ -447,6 +442,6 @@ export class Game {
     this.commit();
     const nextArea = AREAS[area.index + 1];
     const unlockable = nextArea && !st.areas[nextArea.id].unlocked && st.areas[area.id].runs === nextArea.unlock.runs ? nextArea : null;
-    return { ok: true, report: { expedition: record, area, rewards, eggs, keysUsed, levelUps, unlockable } };
+    return { ok: true, report: { expedition: record, area, rewards, eggs, keysUsed, unlockable } };
   }
 }

@@ -11,9 +11,9 @@ import { eggOdds } from '../game/js/systems/eggs.js';
 import { dirtPatches, patchStrength } from '../game/js/systems/garden.js';
 import { makeGame, MIN, HOUR } from './helpers.mjs';
 
-test('110 species across nine rarities, from Drab to Celestial', () => {
-  assert.equal(SPECIES_LIST.length, 110);
-  assert.equal(new Set(SPECIES_LIST.map((s) => s.id)).size, 110);
+test('130 species across nine rarities, from Drab to Celestial', () => {
+  assert.equal(SPECIES_LIST.length, 130);
+  assert.equal(new Set(SPECIES_LIST.map((s) => s.id)).size, 130);
   assert.deepEqual(RARITY_ORDER, ['drab', 'common', 'uncommon', 'nice', 'rare', 'epic', 'legendary', 'mythic', 'celestial']);
   for (const r of RARITY_ORDER) assert.ok(SPECIES_LIST.some((s) => s.rarity === r), r);
   // Rarer tiers are scarcer.

@@ -28,13 +28,13 @@ export const ITEMS = {
   firefly_lantern: { name: 'Firefly Lantern', type: 'gear', buy: 1800, effects: { traits: { lift: 1, cut: 1, fight: 1, fly: 1, dig: 1, build: 1 } }, desc: 'A warm glow that steadies every task.' },
   moon_pendant:    { name: 'Moon Pendant',    type: 'gear', sell: 1500, effects: { traits: { lift: 2, cut: 2, fight: 2, fly: 2, dig: 2, build: 2 }, specialFind: 0.1 }, desc: 'Pulses with Aether light. Only found, never sold.' },
 
-  honey_drop:    { name: 'Honey Drop',    type: 'resource', sell: 8,   desc: 'Sweet food gathered on the trail.' },
-  shiny_pebble:  { name: 'Shiny Pebble',  type: 'resource', sell: 12,  desc: 'Smooth and sparkly.' },
-  dewdrop_pearl: { name: 'Dewdrop Pearl', type: 'resource', sell: 30,  desc: 'Morning mist, frozen solid.' },
-  amber_chunk:   { name: 'Amber Chunk',   type: 'resource', sell: 45,  desc: 'Ancient tree sap with something inside.' },
-  desert_glass:  { name: 'Crystal Shard', type: 'resource', sell: 80,  desc: 'Hums when tapped. Grows in the deep caves.' },
-  ember_stone:   { name: 'Ember Stone',   type: 'resource', sell: 140, desc: 'Still warm from the volcano.' },
-  moon_crystal:  { name: 'Aether Crystal', type: 'resource', sell: 260, desc: 'Weightless and faintly singing.' },
+  honey_drop:    { name: 'Honey Drop',    type: 'resource', sell: 5,   desc: 'Sweet food gathered on the trail.' },
+  shiny_pebble:  { name: 'Shiny Pebble',  type: 'resource', sell: 5,  desc: 'Smooth and sparkly.' },
+  dewdrop_pearl: { name: 'Dewdrop Pearl', type: 'resource', sell: 10,  desc: 'Morning mist, frozen solid.' },
+  amber_chunk:   { name: 'Amber Chunk',   type: 'resource', sell: 15,  desc: 'Ancient tree sap with something inside.' },
+  desert_glass:  { name: 'Crystal Shard', type: 'resource', sell: 27,  desc: 'Hums when tapped. Grows in the deep caves.' },
+  ember_stone:   { name: 'Ember Stone',   type: 'resource', sell: 47, desc: 'Still warm from the volcano.' },
+  moon_crystal:  { name: 'Aether Crystal', type: 'resource', sell: 87, desc: 'Weightless and faintly singing.' },
 };
 
 export const ITEM_TYPES = { gear: 'Equipment', resource: 'Resources' };

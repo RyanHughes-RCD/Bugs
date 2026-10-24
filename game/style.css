@@ -372,6 +372,7 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .egg-offer { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; background: var(--paper); border: 2px solid var(--ink); border-radius: 8px; box-shadow: 2px 2px 0 var(--ink); text-align: center; }
 .egg-offer.t-epic { background: #f6ecfb; } .egg-offer.t-legendary { background: #fff6dd; } .egg-offer.t-mythic { background: linear-gradient(160deg, #fff0f4, #e9fbfd); }
 .egg-offer small { font-size: 0.75rem; flex: 1; }
+.egg-offer.locked { opacity: 0.6; filter: grayscale(0.6); }
 .hatch-egg { background: none; border: none; padding: 10px; }
 .hatch-egg.idle { animation: wobble 1.6s ease-in-out infinite; }
 .reveal-traits { display: grid; gap: 4px; width: 100%; max-width: 300px; }

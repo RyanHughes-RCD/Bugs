@@ -1,11 +1,11 @@
 // Converts saves from the first version of Bug Garden (combat stats, 16
 // traits, area eggs) to the current format. Nothing the player earned is
-// silently lost: bugs keep species, level, name and gear; eggs map to tiers;
+// silently lost: bugs keep species and gear; eggs map to tiers;
 // removed items and old upgrades are refunded as coins.
 import { Rng } from './rng.js';
 import { SPECIES } from '../data/species.js';
 import { ITEMS } from '../data/items.js';
-import { GARDEN_LIMIT, MAX_BUG_LEVEL, BASE_INCUBATION_MS } from '../data/balance.js';
+import { GARDEN_LIMIT, BASE_INCUBATION_MS } from '../data/balance.js';
 import { rollTraits } from '../systems/bugs.js';
 
 const EGG_MAP = {
@@ -42,14 +42,9 @@ export function migrateV1(old) {
     if (!SPECIES[ob.species]) continue;
     const bug = {
       uid: ob.uid, species: ob.species,
-      level: 1, xp: 0, traits: rollTraits(ob.species, rng), variant: ob.shiny ? 'shiny' : null, item: null,
+      traits: rollTraits(ob.species, rng), variant: ob.shiny ? 'shiny' : null, item: null,
       inGarden: false, origin: ob.origin || 'hatched', obtainedAt: ob.obtainedAt || now,
     };
-    // Re-grant old levels as trait growth.
-    const target = Math.min(MAX_BUG_LEVEL, ob.level || 1);
-    const keys = Object.keys(bug.traits);
-    for (let l = 1; l < target; l++) bug.traits[keys[(l - 1) % keys.length]] += 1;
-    bug.level = target;
     if (ob.gear) {
       if (ITEMS[ob.gear]?.type === 'gear') bug.item = ob.gear;
       else addItem(ob.gear);

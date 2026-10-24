@@ -6,7 +6,6 @@ import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
 import { dirtPatches } from '../systems/garden.js';
 import { rockFindReady } from '../systems/visitors.js';
-import { AREA_BY_ID } from '../data/areas.js';
 import { fmtTime } from './format.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
@@ -15,7 +14,6 @@ export const WORLD_H = 300;
 const BOUNDS = { x0: 8, x1: 142, y0: 14, y1: 292 };
 const MOVE = { wriggler: 4, crawler: 11, beetle: 8, arachnid: 13, hopper: 9, flyer: 16 };
 const PERSONAL_SPACE = 11;
-const SIGN = { right: 26, bottom: 82 }; // away board position from the view's top-right, in map pixels
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -369,7 +367,6 @@ export class GardenScene {
     for (const e of all) this.drawBug(e);
     this.drawRock();
     this.drawRockHint();
-    this.drawSign();
     for (const p of this.particles) {
       const [sx, sy] = this.toScreen(p.x, p.y);
       ctx.globalAlpha = Math.min(1, p.life * 2);
@@ -438,14 +435,15 @@ export class GardenScene {
     const [sx, sy] = this.toScreen(e.x, e.y + 5);
     this.ctx.fillStyle = 'rgba(26, 28, 44, 0.22)';
     this.ctx.beginPath();
-    this.ctx.ellipse(sx, sy, 5 * this.scale, 2 * this.scale, 0, 0, Math.PI * 2);
+    const big = this.assets.bug(e.species).width / 16;
+    this.ctx.ellipse(sx, sy, 5 * big * this.scale, 2 * big * this.scale, 0, 0, Math.PI * 2);
     this.ctx.fill();
   }
 
   drawBug(e) {
     const { ctx } = this;
     const img = this.assets.bug(e.species, e.variant);
-    const size = 16 * this.bugPx;
+    const size = img.width * this.bugPx; // drawn at its own pixel size, so big bugs look big
     const [sx, sy] = this.toScreen(e.x, e.y - this.bob(e));
     const wig = e.moving || e.actTime > 0 ? 1 + Math.sin(e.phase * (e.act === 'dig' ? 2 : 1)) * 0.06 : 1;
     ctx.save();
@@ -542,58 +540,6 @@ export class GardenScene {
       this.sparkle(sx, sy, this.scale * 0.8, '#fff3b8');
       this.ctx.globalAlpha = 1;
     }
-  }
-
-  // ---------- the away board ----------
-
-  // A signpost showing the party that is out exploring.
-  signLayout() {
-    const exps = this.game.state.expeditions;
-    if (!exps.length) return null;
-    // Pinned to the top-right of the view, below the HUD, so it is always in sight.
-    return { x: this.camX + this.viewW - SIGN.right, y: this.camY + SIGN.bottom, w: 44, h: 26, exp: exps[0], more: exps.length - 1 };
-  }
-
-  drawSign() {
-    const s = this.signLayout();
-    if (!s) return;
-    const { ctx, scale } = this;
-    const px = (x, y, w, h, c) => {
-      const [sx, sy] = this.toScreen(x, y);
-      ctx.fillStyle = c;
-      ctx.fillRect(Math.round(sx), Math.round(sy), Math.round(w * scale), Math.round(h * scale));
-    };
-    const left = s.x - s.w / 2;
-    const top = s.y - s.h;
-    // Posts, board with planks and an outline.
-    px(left + 5, top + 4, 3, s.h + 6, '#1a1c2c');
-    px(left + 6, top + 4, 1, s.h + 5, '#7a4a2a');
-    px(left + s.w - 8, top + 4, 3, s.h + 6, '#1a1c2c');
-    px(left + s.w - 7, top + 4, 1, s.h + 5, '#7a4a2a');
-    px(left, top, s.w, s.h, '#1a1c2c');
-    px(left + 1, top + 1, s.w - 2, s.h - 2, '#b07a4a');
-    for (const y of [9, 18]) px(left + 1, top + y, s.w - 2, 1, '#7a4a2a');
-    const tl = this.game.timeline(s.exp);
-    const area = AREA_BY_ID[s.exp.areaId];
-    const [cx] = this.toScreen(s.x, 0);
-    this.text(area.name.replace('The ', ''), cx, this.toScreen(0, top + 5)[1], '#f4f4f4', 5);
-    // The party, small.
-    const size = 8 * scale;
-    s.exp.party.forEach((uid, i) => {
-      const b = this.game.bug(uid);
-      if (!b) return;
-      const [bx, by] = this.toScreen(left + 7 + i * 10, top + 13.5);
-      const hop = tl.done ? Math.abs(Math.sin(this.t * 6 + i)) * scale * 1.5 : 0;
-      ctx.drawImage(this.assets.bug(b.species, b.variant), Math.round(bx - size / 2), Math.round(by - size / 2 - hop), size, size);
-    });
-    const label = tl.done ? 'Back! Tap' : fmtTime(tl.remaining);
-    this.text(label, cx, this.toScreen(0, top + 22.5)[1], tl.done ? '#a7f070' : '#ffcd75', 5);
-    if (s.more) this.text(`+${s.more}`, this.toScreen(left + s.w, 0)[0], this.toScreen(0, top)[1], '#ffcd75', 5);
-  }
-
-  onSign(wx, wy) {
-    const s = this.signLayout();
-    return s && wx > s.x - s.w / 2 - 2 && wx < s.x + s.w / 2 + 2 && wy > s.y - s.h - 2 && wy < s.y + 6 ? s : null;
   }
 
   // The rock's size in map pixels.
@@ -780,8 +726,6 @@ export class GardenScene {
         return;
       }
     }
-    const sign = this.onSign(x, y);
-    if (sign) return this.handlers.onSign?.(sign.exp.id);
     let best = null;
     for (const e of this.entities.values()) {
       if (e.hidden || e.leaving) continue;

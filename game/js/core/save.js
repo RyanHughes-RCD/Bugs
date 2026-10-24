@@ -3,10 +3,14 @@ import { UPGRADES } from '../data/upgrades.js';
 import { STARTING } from '../data/balance.js';
 import { migrateV1 } from './migrate-v1.js';
 import { defaultRock } from '../systems/garden.js';
+import { rollTraits } from '../systems/bugs.js';
+import { RARITIES } from '../data/rarities.js';
+import { SPECIES } from '../data/species.js';
+import { Rng } from './rng.js';
 
 export const SAVE_KEY = 'bug-garden-save';
 export const BACKUP_KEY = 'bug-garden-save-backup';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export function newGameState(now, seed) {
   return migrate({
@@ -35,6 +39,7 @@ export function newGameState(now, seed) {
 export function migrate(raw) {
   let s = raw && typeof raw === 'object' ? raw : {};
   if (!s.version || s.version < 2) s = migrateV1(s);
+  const fromVersion = s.version || SAVE_VERSION;
   s.version = SAVE_VERSION;
   s.coins = Number.isFinite(s.coins) && s.coins >= 0 ? Math.floor(s.coins) : 0;
   s.nextUid = s.nextUid || 1;
@@ -55,15 +60,31 @@ export function migrate(raw) {
   s.flags = s.flags || {};
   for (const b of s.bugs) {
     b.traits = b.traits && typeof b.traits === 'object' && !Array.isArray(b.traits) ? b.traits : {};
-    b.level = b.level || 1;
-    b.xp = b.xp || 0;
     b.item = b.item || null;
     b.inGarden = !!b.inGarden;
     if (b.variant === undefined) b.variant = b.shiny ? 'shiny' : null;
     delete b.shiny;
     delete b.name; // bugs no longer have nicknames
+    delete b.level; // v3: no more levels, rarity sets strength
+    delete b.xp;
   }
+  if (fromVersion < 3) rebalanceTraits(s);
   return s;
+}
+
+// v3 made rarity, not levels, decide a bug's strength. Each bug keeps the
+// traits it had where it can, re-rolled at its rarity's new levels.
+function rebalanceTraits(s) {
+  for (const b of s.bugs) {
+    if (!SPECIES[b.species]) continue;
+    const rng = new Rng((s.seed || 1) * 31 + b.uid);
+    const fresh = rollTraits(b.species, rng);
+    const [lo, hi] = RARITIES[SPECIES[b.species].rarity].traitLevels;
+    const keys = [...new Set([...Object.keys(b.traits), ...Object.keys(fresh)])].slice(0, Object.keys(fresh).length);
+    b.traits = Object.fromEntries(keys.map((t) => [t, rng.int(lo, hi)]));
+  }
+  for (const e of s.expeditions) delete e.xp;
+  s.flags.rebalanced = true;
 }
 
 export function serialize(state) {

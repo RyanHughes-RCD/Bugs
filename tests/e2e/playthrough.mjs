@@ -80,30 +80,50 @@ try {
   await act('[data-act="plan"][data-area="garden"]');
   assert.equal(await page.locator('.team-slots .slot.filled').count(), 4);
   await act('[data-act="plan-count"]:has-text("8h overnight")');
-  assert.ok((await page.textContent('.modal')).includes('96 encounters'));
+  const trip = await st(async () => {
+    const { encounterMs } = await import('./game/js/systems/expedition.js');
+    const { AREA_BY_ID } = await import('./game/js/data/areas.js');
+    const g = window.bugGarden.game;
+    const { plan } = window.bugGarden.app.ui;
+    return { count: plan.count, ms: plan.count * encounterMs(g.state, AREA_BY_ID[plan.areaId], plan.party.map((u) => g.bug(u))) };
+  });
+  assert.ok(Math.abs(trip.ms - 8 * HOUR) <= 5 * 60e3, `8h preset gives ${trip.count} encounters = ${trip.ms / HOUR}h`);
+  assert.ok((await page.textContent('.modal')).includes(`${trip.count} encounters`));
   await snap('planner');
   await act('[data-act="plan-count"]:has-text("Short")');
   await act('[data-act="launch"]');
   await act('[data-act="confirm-yes"]');
   const exp = await st(() => window.bugGarden.game.state.expeditions[0]);
-  assert.equal(exp.endsAt - exp.startAt, exp.count * 5 * 60e3, 'five minutes per encounter');
+  assert.equal(exp.endsAt - exp.startAt, exp.count * exp.encounterMs, 'the timer matches the encounters');
+  assert.ok(exp.encounterMs <= 5 * 60e3, 'starters or better are on pace in the Garden: 5 minutes or less each');
   await warp(15 * 60e3);
   assert.ok((await page.textContent('.modal')).includes(`of ${exp.count}`));
   await snap('live-log');
-  // While the party is away: the away board, and wild visitors to greet.
+  // While the party is away: wild visitors to greet.
   await act('.modal [data-act="close-modal"]');
   await act('#nav [data-panel="garden"]');
   await warp(2 * HOUR);
-  assert.ok(await st(() => window.bugGarden.app.scene.signLayout()), 'away board is up');
-  const visitor = await st(() => { const s = window.bugGarden.app.scene; const e = [...s.entities.values()].find((x) => x.visitor && !x.hidden && x.x > 12 && x.x < 138); if (!e) return null; const [x, y] = s.toScreen(e.x, e.y); const b = s.canvas.getBoundingClientRect(); return { id: e.visitor, at: [b.left + x / s.dpr, b.top + y / s.dpr] }; });
+  // Pick a visitor that is still here and not under the HUD, and hold it still for the tap.
+  const visitor = await st(() => {
+    const s = window.bugGarden.app.scene;
+    const b = s.canvas.getBoundingClientRect();
+    for (const e of s.entities.values()) {
+      if (!e.visitor || e.hidden || e.leaving || e.greeted || e.x < 12 || e.x > 138) continue;
+      const [x, y] = s.toScreen(e.x, e.y);
+      const at = [b.left + x / s.dpr, b.top + y / s.dpr];
+      if (document.elementFromPoint(...at) !== s.canvas) continue;
+      Object.assign(e, { wait: 30, act: null, actTime: 0 });
+      return { id: e.visitor, at };
+    }
+    return null;
+  });
   if (visitor) {
     await page.mouse.click(...visitor.at);
     await page.waitForTimeout(300);
     assert.ok(await st(() => window.bugGarden.game.state.stats.visitorsGreeted >= 1), 'greeted a visitor');
   }
   await snap('visitors');
-  const sign = await st(() => { const s = window.bugGarden.app.scene; const l = s.signLayout(); const [x, y] = s.toScreen(l.x, l.y - 13); const b = s.canvas.getBoundingClientRect(); return [b.left + x / s.dpr, b.top + y / s.dpr]; });
-  await page.mouse.click(...sign);
+  await act('#hud [data-act="view-exp"]', { force: true });
   await page.waitForSelector('.modal [data-act="claim"]');
   await act('.modal [data-act="claim"]');
   await snap('claimed');
