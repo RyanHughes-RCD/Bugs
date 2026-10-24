@@ -1,5 +1,5 @@
-// End-to-end playthrough in headless Chromium: drives the real UI through
-// every major system and fails on any console error.
+// End-to-end playthrough in headless Chromium: drives the real UI through the
+// core loop and fails on any console error.
 // Usage: node tests/e2e/playthrough.mjs [screenshot-dir]
 import { spawn, execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -15,6 +15,7 @@ try {
 }
 
 const PORT = 8123;
+const HOUR = 3600e3;
 const shots = process.argv[2];
 if (shots) mkdirSync(shots, { recursive: true });
 const server = spawn(process.execPath, ['serve.mjs'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
@@ -29,91 +30,73 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('dialog', (d) => d.accept());
   const snap = async (name) => { if (shots) await page.screenshot({ path: `${shots}/${String(++step).padStart(2, '0')}-${name}.png` }); };
-  const state = (fn) => page.evaluate(fn);
-  const act = async (selector) => { await page.click(selector); await page.waitForTimeout(250); };
+  const st = (fn) => page.evaluate(fn);
+  const act = async (selector, opts = {}) => { await page.click(selector, opts); await page.waitForTimeout(250); };
   const warp = async (ms) => { await page.evaluate((m) => window.bugGarden.game.warp(m), ms); await page.waitForTimeout(1200); };
 
   await page.goto(`http://localhost:${PORT}/?debug`);
   await page.waitForSelector('#loading', { state: 'detached' });
-  await snap('welcome');
   await act('[data-act="welcome-done"]');
-  assert.equal(await state(() => window.bugGarden.game.state.bugs.length), 4, 'starts with four bugs');
-  await page.waitForTimeout(800);
+  assert.equal(await st(() => window.bugGarden.game.state.bugs.length), 4);
+  assert.equal(await st(() => window.bugGarden.app.scene.entities.size), 4, 'garden shows the four starter bugs');
   await snap('garden');
 
-  // Bugs panel and a bug's detail sheet.
-  await act('#nav [data-panel="bugs"]');
-  await snap('bugs');
-  await act('.bug-card');
-  await snap('bug-detail');
-  await act('[data-act="close-modal"]');
-  await act('[data-act="bugs-tab"][data-tab="dex"]');
-  await snap('bugdex');
+  // Hatchery: motto, incubate, four hours, crack, reveal, place in garden.
+  await act('#nav [data-panel="hatchery"]');
+  assert.ok((await page.textContent('#sheet')).includes('"All bugs come from eggs. Everyone knows this."'));
+  await act('#sheet [data-act="incubate"]');
+  await snap('incubating');
+  await warp(4 * HOUR);
+  await act('#sheet [data-act="hatch"]');
+  for (let i = 0; i < 4; i++) await act('[data-act="crack"]', { force: true });
+  await page.waitForTimeout(1500);
+  await snap('hatched');
+  await act('.modal [data-act="garden-in"]');
+  assert.equal(await st(() => window.bugGarden.game.state.bugs.filter((b) => b.inGarden).length), 5);
 
-  // Expedition: plan with auto-picked team, pack a supply, launch.
+  // Equip the starter Chest Key from the inventory.
+  await act('#nav [data-panel="items"]');
+  await act('[data-act="items-tab"][data-tab="inventory"]');
+  await act('[data-act="item-equip"][data-item="key"]');
+  await act('.modal .bug-card:not([disabled])');
+  assert.equal(await st(() => window.bugGarden.game.state.bugs.filter((b) => b.item === 'key').length), 1);
+  await act('.modal [data-act="close-modal"]');
+
+  // Expedition: exactly four, confirm, live log, claim once.
   await act('#nav [data-panel="explore"]');
-  await snap('explore');
-  await act('[data-act="plan"][data-area="meadow"]');
-  assert.equal(await page.locator('.team-slots .slot.filled').count(), 4, 'auto-pick fills four slots');
-  await act('[data-act="plan-supply-add"][data-item="bug_net"]');
+  await act('[data-act="plan"][data-area="garden"]');
+  assert.equal(await page.locator('.team-slots .slot.filled').count(), 4);
   await snap('planner');
   await act('[data-act="launch"]');
-  assert.equal(await state(() => window.bugGarden.game.state.expeditions.length), 1, 'expedition launched');
-  await warp(30e3);
-  await snap('expedition-progress');
-  await warp(60e3);
-  await act('.modal [data-act="collect-exp"]');
-  await snap('report');
-  assert.equal(await state(() => window.bugGarden.game.state.stats.expeditions), 1, 'expedition collected');
+  await act('[data-act="confirm-yes"]');
+  const exp = await st(() => window.bugGarden.game.state.expeditions[0]);
+  assert.equal(exp.endsAt - exp.startAt, exp.count * 10 * 60e3, 'ten minutes per encounter');
+  await warp(15 * 60e3);
+  assert.ok((await page.textContent('.modal')).includes(`of ${exp.count}`));
+  await snap('live-log');
+  await warp(2 * HOUR);
+  await act('.modal [data-act="claim"]');
+  await snap('claimed');
+  const claimed = await st(() => ({ runs: window.bugGarden.game.state.areas.garden.runs, again: window.bugGarden.game.claimExpedition(window.bugGarden.game.state.history[0].id).ok }));
+  assert.deepEqual(claimed, { runs: 1, again: false }, 'claimed exactly once');
   await act('.modal [data-act="close-modal"]');
 
-  // Nursery: the starter egg hatches after its timer.
-  await act('#nav [data-panel="nursery"]');
-  await warp(3 * 60e3);
-  await snap('nursery-ready');
-  const bugsBefore = await state(() => window.bugGarden.game.state.bugs.length);
-  await act('[data-act="hatch"]');
-  await page.waitForTimeout(1800);
-  await snap('hatched');
-  assert.equal(await state(() => window.bugGarden.game.state.bugs.length), bugsBefore + 1, 'egg hatched into a bug');
-  await act('.modal [data-act="close-modal"]');
-
-  // Shop: buy an egg and an upgrade.
-  await page.evaluate(() => { window.bugGarden.game.earn(2000); window.bugGarden.game.commit(); });
-  await act('#nav [data-panel="shop"]');
-  await snap('shop');
-  await act('[data-act="buy"][data-id="garden_egg"]');
-  await act('[data-act="shop-tab"][data-tab="upgrades"]');
-  await act('[data-act="upgrade"][data-id="nursery"]');
+  // Upgrades with a big-purchase confirmation.
+  await page.evaluate(() => { window.bugGarden.game.earn(5000); window.bugGarden.game.commit(); });
+  await act('#nav [data-panel="upgrades"]');
+  await act('[data-act="upgrade"][data-id="improved_exploration"]');
+  await act('[data-act="confirm-yes"]');
+  assert.equal(await st(() => window.bugGarden.game.state.upgrades.improved_exploration), 1);
   await snap('upgrades');
-  assert.equal(await state(() => window.bugGarden.game.state.upgrades.nursery), 1, 'upgrade bought');
 
-  // Bag: equip gear from the bag.
-  await page.evaluate(() => { window.bugGarden.game.addItem('thorn_spear'); window.bugGarden.game.commit(); });
-  await act('#nav [data-panel="bag"]');
-  await snap('bag');
-  await act('[data-act="item-equip"][data-item="thorn_spear"]');
-  await act('.modal .bug-card:not([disabled])');
-  assert.equal(await state(() => window.bugGarden.game.state.bugs.filter((b) => b.gear === 'thorn_spear').length), 1, 'gear equipped');
-  await snap('equipped');
-  await act('.modal [data-act="close-modal"]');
-
-  // Garden: coins accumulate over time and can be collected.
-  await act('#nav [data-panel="garden"]');
-  await warp(10 * 60e3);
-  const coinsBefore = await state(() => window.bugGarden.game.state.coins);
-  await act('.pot');
-  assert.ok((await state(() => window.bugGarden.game.state.coins)) > coinsBefore, 'garden coins collected');
-  await snap('garden-later');
-
-  // Persistence: reload and confirm progress is still there.
-  const before = await state(() => JSON.stringify({ c: window.bugGarden.game.state.coins, b: window.bugGarden.game.state.bugs.length, u: window.bugGarden.game.state.upgrades.nursery }));
+  // Persistence across a reload.
+  const sig = () => JSON.stringify({ c: window.bugGarden.game.state.coins, b: window.bugGarden.game.state.bugs.map((x) => [x.uid, x.item, x.inGarden, x.traits]), u: window.bugGarden.game.state.upgrades, h: window.bugGarden.game.state.history.length });
+  const before = await st(sig);
   await page.reload();
   await page.waitForSelector('#loading', { state: 'detached' });
-  const after = await state(() => JSON.stringify({ c: window.bugGarden.game.state.coins, b: window.bugGarden.game.state.bugs.length, u: window.bugGarden.game.state.upgrades.nursery }));
-  assert.equal(after, before, 'state survives reload');
-  await act('[data-act="settings"]');
-  await snap('settings');
+  assert.equal(await st(sig), before, 'state survives reload');
+  await act('#nav [data-panel="bugs"]');
+  await snap('collection');
 
   assert.deepEqual(errors, [], 'no console errors');
   console.log(`E2E playthrough passed${shots ? ` (screenshots in ${shots})` : ''}.`);

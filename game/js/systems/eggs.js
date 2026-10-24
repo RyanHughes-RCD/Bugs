@@ -1,74 +1,63 @@
-import { EGGS, BASE_SHINY_CHANCE } from '../data/eggs.js';
-import { SPECIES_LIST, RARITIES, RARITY_ORDER } from '../data/species.js';
-import { AREAS } from '../data/areas.js';
-import { rollTraits } from './bugs.js';
+import { Rng } from '../core/rng.js';
+import { EGG_TIERS, EGG_BY_ID } from '../data/eggs.js';
+import { SPECIES_LIST } from '../data/species.js';
+import { RARITY_ORDER } from '../data/rarities.js';
+import { BASE_INCUBATOR_SLOTS } from '../data/balance.js';
+import { upgradeValue } from '../data/upgrades.js';
 
-export function nurseryCapacity(state) {
-  return 1 + (state.upgrades.nursery || 0);
-}
-
-export function incubationMs(state, type) {
-  return Math.round(EGGS[type].hatchMs * (1 - 0.1 * (state.upgrades.warm_soil || 0)));
-}
-
-export function hatchLuck(state, type) {
-  return EGGS[type].rarityBonus + 0.08 * (state.upgrades.clover_patch || 0);
-}
-
-export function eggPool(state, type) {
-  const egg = EGGS[type];
-  if (egg.pool === 'area') return SPECIES_LIST.filter((s) => s.habitats.includes(egg.area));
-  if (egg.pool === 'unlocked') {
-    const open = AREAS.filter((a) => state.areas[a.id]?.unlocked).map((a) => a.id);
-    return SPECIES_LIST.filter((s) => s.habitats.some((h) => open.includes(h)));
-  }
-  return SPECIES_LIST;
-}
-
-// Effective hatch odds per rarity, after redirecting rarities the pool lacks
-// to the nearest rarity it has (lower first). These are exactly the odds used
-// by rollHatch and the numbers shown in the UI.
-export function hatchOdds(state, type) {
-  const egg = EGGS[type];
-  const pool = eggPool(state, type);
-  const luck = hatchLuck(state, type);
-  const minIdx = egg.minRarity ? RARITY_ORDER.indexOf(egg.minRarity) : 0;
-  const byRarity = Object.fromEntries(RARITY_ORDER.map((r) => [r, pool.filter((s) => s.rarity === r).map((s) => s.id)]));
-  const weights = Object.fromEntries(RARITY_ORDER.map((r) => [r, 0]));
-  RARITY_ORDER.forEach((r, i) => {
-    if (i < minIdx) return;
-    const w = RARITIES[r].weight * Math.exp(luck * i);
-    let target = null;
-    for (let d = 0; d < RARITY_ORDER.length && !target; d++) {
-      for (const j of [i - d, i + d]) {
-        if (j >= minIdx && j < RARITY_ORDER.length && byRarity[RARITY_ORDER[j]].length) { target = RARITY_ORDER[j]; break; }
-      }
+// Returns a list of problems with the egg tables (empty when valid).
+export function validateEggTiers(tiers = EGG_TIERS) {
+  const errors = [];
+  for (const t of tiers) {
+    const sum = RARITY_ORDER.reduce((s, r) => s + (t.odds[r] || 0), 0);
+    if (Math.abs(sum - 100) > 1e-6) errors.push(`${t.id}: odds sum to ${sum}, not 100`);
+    for (const [r, v] of Object.entries(t.odds)) {
+      if (!RARITY_ORDER.includes(r)) errors.push(`${t.id}: unknown rarity ${r}`);
+      if (!(v >= 0)) errors.push(`${t.id}: negative odds for ${r}`);
     }
-    if (target) weights[target] += w;
-  });
-  const total = Object.values(weights).reduce((a, b) => a + b, 0);
-  const odds = RARITY_ORDER.map((r) => ({ rarity: r, chance: total ? weights[r] / total : 0, species: byRarity[r] }));
-  return { odds, shinyChance: shinyChance(type) };
+    if ((t.odds[t.id] ?? 0) >= 100) errors.push(`${t.id}: guarantees its own rarity`);
+    if (!(t.hatchMs > 0)) errors.push(`${t.id}: bad hatch time`);
+    for (const r of RARITY_ORDER) if (t.odds[r] > 0 && !poolFor(t, r).length) errors.push(`${t.id}: no ${r} species in pool`);
+  }
+  return errors;
 }
 
-export function shinyChance(type) {
-  return BASE_SHINY_CHANCE * (EGGS[type].shinyMult || 1);
+function poolFor(tier, rarity) {
+  return SPECIES_LIST.filter((s) => s.rarity === rarity && (!tier.pool || tier.pool.includes(s.id))).map((s) => s.id);
 }
 
-export function rollHatch(state, type, rng) {
-  const { odds } = hatchOdds(state, type);
-  const rarity = rng.weighted(odds.filter((o) => o.chance > 0).map((o) => [o.rarity, o.chance]));
-  const options = odds.find((o) => o.rarity === rarity).species;
-  const speciesId = rng.pick(options);
-  const traits = rollTraits(rng, rarity, EGGS[type].traitBonus || 0);
-  const shiny = rng.chance(shinyChance(type));
-  return { speciesId, traits, shiny, rarity };
+// Hatch odds as fractions, with the species each rarity can produce.
+export function eggOdds(tierId) {
+  const tier = EGG_BY_ID[tierId];
+  return RARITY_ORDER.map((r) => ({ rarity: r, chance: (tier.odds[r] || 0) / 100, species: poolFor(tier, r) }));
+}
+
+export function rollEgg(tierId, rng) {
+  const odds = eggOdds(tierId).filter((o) => o.chance > 0 && o.species.length);
+  const rarity = rng.weighted(odds.map((o) => [o.rarity, o.chance]));
+  const speciesId = rng.pick(odds.find((o) => o.rarity === rarity).species);
+  return { rarity, speciesId };
+}
+
+// Developer tool: hatch n eggs on a private RNG without touching game state.
+export function simulateHatches(tierId, n, seed = 1) {
+  const rng = new Rng(seed);
+  const counts = Object.fromEntries(RARITY_ORDER.map((r) => [r, 0]));
+  for (let i = 0; i < n; i++) counts[rollEgg(tierId, rng).rarity]++;
+  return counts;
+}
+
+export function incubationMs(state, tierId) {
+  return Math.round(EGG_BY_ID[tierId].hatchMs * (1 - upgradeValue(state, 'faster_incubation')));
+}
+
+export function incubatorCount(state) {
+  return BASE_INCUBATOR_SLOTS + upgradeValue(state, 'incubator_slots');
 }
 
 export function eggProgress(egg, now) {
-  if (!egg.startedAt) return { incubating: false, ready: false, fraction: 0, remainingMs: egg.durationMs || 0, endsAt: null };
-  const elapsed = now - egg.startedAt + (egg.bonusMs || 0);
-  const fraction = Math.min(1, Math.max(0, elapsed / egg.durationMs));
-  const remainingMs = Math.max(0, egg.durationMs - elapsed);
-  return { incubating: true, ready: fraction >= 1, fraction, remainingMs, endsAt: now + remainingMs };
+  if (!egg.startedAt) return { incubating: false, ready: false, fraction: 0, remainingMs: 0, endsAt: null };
+  const total = egg.endsAt - egg.startedAt;
+  const remainingMs = Math.max(0, egg.endsAt - now);
+  return { incubating: true, ready: now >= egg.endsAt, fraction: total > 0 ? Math.min(1, Math.max(0, (now - egg.startedAt) / total)) : 1, remainingMs, endsAt: egg.endsAt };
 }

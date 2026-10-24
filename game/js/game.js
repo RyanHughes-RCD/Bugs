@@ -1,25 +1,24 @@
 import { Rng } from './core/rng.js';
-import { SAVE_KEY, newGameState, serialize, deserialize, encodeSave, decodeSave } from './core/save.js';
+import { SAVE_KEY, BACKUP_KEY, newGameState, serialize, deserialize, encodeSave, decodeSave } from './core/save.js';
 import { AREAS, AREA_BY_ID } from './data/areas.js';
-import { SPECIES } from './data/species.js';
+import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice } from './data/items.js';
-import { EGGS } from './data/eggs.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { addBug, addXp, bugName, bugStatus, bugsOnExpedition, recordDex, releaseValue } from './systems/bugs.js';
-import { nurseryCapacity, incubationMs, rollHatch, eggProgress } from './systems/eggs.js';
-import {
-  MAX_TEAM, expeditionSlots, supplySlots, expeditionDurationMs, planExpedition, expeditionProgress, restDurationMs,
-} from './systems/expedition.js';
+import { GARDEN_LIMIT, HISTORY_LIMIT, STARTING } from './data/balance.js';
+import { createBug, addXp, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
+import { incubationMs, incubatorCount, rollEgg, eggProgress } from './systems/eggs.js';
+import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden } from './systems/garden.js';
-import { FIXED_STOCK, rotatingOffers, rotationId, priceOf } from './systems/shop.js';
 
 const fail = (error) => ({ ok: false, error });
 
+// Owns the game state. Every change goes through a method here that checks the
+// rules, then saves, so the UI can never put the save into an invalid state.
 export class Game {
   constructor({ storage = null, clock = () => Date.now(), seed = null } = {}) {
     this.storage = storage;
     this.clock = clock;
-    this.timeOffset = 0; // debug time-warp only
+    this.timeOffset = 0; // developer time-warp only (?debug)
     this.seedOverride = seed;
     this.listeners = new Set();
     this.state = null;
@@ -42,22 +41,28 @@ export class Game {
   // ---------- persistence ----------
 
   load() {
-    const raw = this.storage?.getItem(SAVE_KEY);
-    if (raw) {
+    for (const key of [SAVE_KEY, BACKUP_KEY]) {
+      const raw = this.storage?.getItem(key);
+      if (!raw) continue;
       try {
         this.state = deserialize(raw);
+        if (key === SAVE_KEY) this.storage.setItem(BACKUP_KEY, raw);
+        break;
       } catch (e) {
-        console.warn('Save could not be read, starting fresh', e);
-        this.state = null;
+        console.warn(`Save "${key}" could not be read`, e);
       }
     }
-    if (!this.state) return this.newGame();
+    if (!this.state) {
+      // Keep any unreadable save instead of overwriting it with a new game.
+      const raw = this.storage?.getItem(SAVE_KEY);
+      if (raw) this.storage.setItem(`${SAVE_KEY}-unreadable-${this.now()}`, raw);
+      return this.newGame();
+    }
     this.rng = new Rng(this.state.rngState);
-    const coinsBefore = this.state.garden.pot;
     const awayMs = this.now() - (this.state.lastSeen || this.now());
-    tickGarden(this.state, this.now(), this.rng);
+    tickGarden(this.state, this.now());
     this.commit();
-    return { fresh: false, awayMs, gardenEarned: Math.floor(this.state.garden.pot - coinsBefore) };
+    return { fresh: false, awayMs };
   }
 
   newGame() {
@@ -65,11 +70,10 @@ export class Game {
     const seed = this.seedOverride ?? Math.floor(Math.random() * 0x7fffffff);
     this.state = newGameState(now, seed);
     this.rng = new Rng(seed);
-    for (const id of ['ant', 'ladybug', 'pill_bug', 'caterpillar']) addBug(this.state, id, { origin: 'starter', now }, this.rng);
-    this.state.coins = 100;
+    for (const id of STARTING.bugs) createBug(this.state, id, this.rng, { now, origin: 'starter', placeInGarden: true, shiny: false });
+    for (const tier of STARTING.eggs) this.addEgg(tier, 'starter');
+    this.state.coins = STARTING.coins;
     this.state.stats.coinsEarned = 0;
-    const egg = this.makeEgg('meadow_egg');
-    this.startEgg(egg.uid, { silent: true });
     this.commit();
     return { fresh: true };
   }
@@ -77,7 +81,7 @@ export class Game {
   save() {
     if (!this.state) return;
     this.state.rngState = this.rng.state;
-    this.state.lastSeen = this.now();
+    this.state.lastSeen = Math.max(this.state.lastSeen || 0, this.now());
     this.storage?.setItem(SAVE_KEY, serialize(this.state));
   }
 
@@ -96,7 +100,7 @@ export class Game {
       const st = decodeSave(code);
       if (!Array.isArray(st.bugs) || st.seed === undefined) return fail('That save code is not valid.');
       this.state = st;
-      this.rng = new Rng(st.rngState || st.seed);
+      this.rng = new Rng(st.rngState ?? st.seed);
       this.commit();
       return { ok: true };
     } catch {
@@ -106,32 +110,21 @@ export class Game {
 
   reset() {
     this.storage?.removeItem(SAVE_KEY);
+    this.storage?.removeItem(BACKUP_KEY);
     this.seedOverride = null;
     this.newGame();
     return { ok: true };
   }
 
-  toast(text, kind = 'info') {
-    this.emit('toast', { text, kind });
-  }
-
-  // ---------- time ----------
-
-  // Called every second by the UI. Saves only when something visible changed.
   tick() {
-    const st = this.state;
-    const hadVisitor = !!st.garden.visitor;
-    tickGarden(st, this.now(), this.rng);
-    if (!!st.garden.visitor !== hadVisitor) {
-      if (st.garden.visitor) this.toast(`A wild ${SPECIES[st.garden.visitor.species].name} is visiting your garden!`);
-      this.commit();
-    }
+    tickGarden(this.state, this.now());
   }
 
+  // Developer tool: moves the game clock forward. Only exposed with ?debug.
   warp(ms) {
     this.timeOffset += ms;
     this.tick();
-    this.emit('change');
+    this.commit();
   }
 
   // ---------- queries ----------
@@ -140,42 +133,30 @@ export class Game {
     return this.state.bugs.find((b) => b.uid === uid);
   }
 
-  statusOf(bug) {
-    return bugStatus(bug, this.state, this.now());
+  assignment(bug) {
+    return assignmentOf(bug, this.state);
   }
 
-  readyBugs() {
-    const away = bugsOnExpedition(this.state);
-    return this.state.bugs.filter((b) => bugStatus(b, this.state, this.now(), away) === 'ready');
-  }
-
-  incubatingEggs() {
-    return this.state.eggs.filter((e) => e.startedAt);
+  egg(uid) {
+    return this.state.eggs.find((e) => e.uid === uid);
   }
 
   eggProgress(egg) {
     return eggProgress(egg, this.now());
   }
 
-  expeditionProgress(exp) {
-    return expeditionProgress(exp, this.now());
+  timeline(exp) {
+    return expeditionTimeline(exp, this.now());
   }
 
   canUnlock(areaId) {
     const area = AREA_BY_ID[areaId];
-    if (!area || area.index === 0) return fail('Unknown area.');
+    if (!area) return fail('Unknown area.');
     if (this.state.areas[areaId].unlocked) return fail('Already unlocked.');
     const prev = AREAS[area.index - 1];
-    if (!this.state.areas[prev.id].guardianDefeated) return fail(`Defeat the ${prev.name} Guardian first.`);
-    if (this.state.coins < area.unlockCost) return fail(`Needs ${area.unlockCost} coins.`);
+    if (this.state.areas[prev.id].runs < area.unlock.runs) return fail(`Complete ${area.unlock.runs} expeditions in ${prev.name} first.`);
+    if (this.state.coins < area.unlock.coins) return fail(`Needs ${area.unlock.coins} coins.`);
     return { ok: true };
-  }
-
-  shopOffers() {
-    const st = this.state;
-    const rid = rotationId(this.now());
-    if (st.shop.rotationId !== rid) st.shop = { rotationId: rid, bought: [] };
-    return rotatingOffers(st, this.now()).map((o) => ({ ...o, sold: st.shop.bought.includes(o.index) }));
   }
 
   // ---------- coins ----------
@@ -186,13 +167,13 @@ export class Game {
   }
 
   spend(n) {
-    if (this.state.coins < n) return false;
+    if (!(n >= 0) || this.state.coins < n) return false;
     this.state.coins -= n;
     return true;
   }
 
   collectGarden() {
-    tickGarden(this.state, this.now(), this.rng);
+    this.tick();
     const n = Math.floor(this.state.garden.pot);
     if (n < 1) return fail('Nothing to collect yet.');
     this.state.garden.pot -= n;
@@ -201,296 +182,225 @@ export class Game {
     return { ok: true, coins: n };
   }
 
-  // ---------- garden visitor ----------
+  // ---------- eggs ----------
 
-  catchVisitor({ useHoney = false } = {}) {
+  addEgg(tier, source) {
+    const egg = { uid: this.state.nextUid++, tier, startedAt: null, endsAt: null, source };
+    this.state.eggs.push(egg);
+    return egg;
+  }
+
+  buyEgg(tier) {
+    const t = EGG_BY_ID[tier];
+    if (!t) return fail('Unknown egg.');
+    if (!this.spend(t.price)) return fail('Not enough coins.');
+    const egg = this.addEgg(tier, 'shop');
+    this.state.stats.eggsBought += 1;
+    this.commit();
+    return { ok: true, egg };
+  }
+
+  startIncubation(eggUid) {
+    const egg = this.egg(eggUid);
+    if (!egg) return fail('Unknown egg.');
+    if (egg.startedAt) return fail('That egg is already incubating.');
+    if (this.state.eggs.filter((e) => e.startedAt).length >= incubatorCount(this.state)) return fail('All incubators are busy. Buy Extra Incubators in Upgrades.');
+    const now = this.now();
+    egg.startedAt = now;
+    egg.endsAt = now + incubationMs(this.state, egg.tier);
+    this.commit();
+    return { ok: true, egg };
+  }
+
+  hatchEgg(eggUid) {
     const st = this.state;
-    tickGarden(st, this.now(), this.rng);
-    const v = st.garden.visitor;
-    if (!v) return fail('The visitor has already left.');
-    if (useHoney && !this.takeItem('honey_drop')) return fail('You have no Honey Drops.');
-    st.garden.visitor = null;
-    recordDex(st, v.species, 'seen');
-    const chance = useHoney ? 1 : 0.6 + 0.05 * (st.upgrades.silk_nets || 0);
-    if (!this.rng.chance(chance)) {
-      this.commit();
-      return { ok: true, caught: false, species: v.species };
-    }
-    const res = addBug(st, v.species, { level: v.level, shiny: v.shiny, origin: 'visitor', now: this.now() }, this.rng);
-    st.stats.captured += 1;
+    const egg = this.egg(eggUid);
+    if (!egg) return fail('Unknown egg.');
+    if (!this.eggProgress(egg).ready) return fail('This egg is not ready yet.');
+    const roll = rollEgg(egg.tier, this.rng);
+    st.eggs = st.eggs.filter((e) => e !== egg);
+    const res = createBug(st, roll.speciesId, this.rng, { now: this.now(), origin: 'hatched', eggTier: egg.tier });
+    st.stats.hatched += 1;
     this.commit();
-    return { ok: true, caught: true, ...res };
+    return { ok: true, tier: egg.tier, rarity: roll.rarity, gardenFull: gardenCount(st) >= GARDEN_LIMIT, ...res };
   }
 
-  // ---------- inventory ----------
+  // ---------- bugs ----------
 
-  addItem(id, n = 1) {
-    this.state.inventory[id] = (this.state.inventory[id] || 0) + n;
-  }
-
-  takeItem(id, n = 1) {
-    if ((this.state.inventory[id] || 0) < n) return false;
-    this.state.inventory[id] -= n;
-    if (!this.state.inventory[id]) delete this.state.inventory[id];
-    return true;
-  }
-
-  useItem(itemId, target) {
-    const st = this.state;
-    const item = ITEMS[itemId];
-    if (!item || item.type !== 'consumable') return fail('That item cannot be used like that.');
-    if (!(st.inventory[itemId] > 0)) return fail(`You have no ${item.name}.`);
-    let message;
-    if (itemId === 'honey_drop') {
-      const bug = this.bug(target);
-      if (!bug) return fail('Choose a bug.');
-      if (this.statusOf(bug) !== 'resting') return fail(`${bugName(bug)} is not resting.`);
-      bug.restUntil = 0;
-      message = `${bugName(bug)} is wide awake!`;
-    } else if (itemId === 'xp_nectar') {
-      const bug = this.bug(target);
-      if (!bug) return fail('Choose a bug.');
-      const lv = addXp(bug, item.xp);
-      message = `${bugName(bug)} gained ${item.xp} XP` + (lv ? ` and reached Lv${bug.level}!` : '.');
-    } else if (itemId === 'sugar_cube') {
-      const exp = st.expeditions.find((e) => e.id === target);
-      if (!exp) return fail('Choose an expedition.');
-      const p = this.expeditionProgress(exp);
-      if (p.done) return fail('That expedition is already back.');
-      exp.bonusMs = (exp.bonusMs || 0) + Math.ceil(p.remainingMs / 2);
-      message = 'The team speeds up!';
-    } else if (itemId === 'warm_moss') {
-      const egg = st.eggs.find((e) => e.uid === target);
-      if (!egg || !egg.startedAt) return fail('Choose an incubating egg.');
-      const p = this.eggProgress(egg);
-      if (p.ready) return fail('That egg is ready to hatch.');
-      egg.bonusMs = (egg.bonusMs || 0) + Math.ceil(p.remainingMs / 2);
-      message = 'The egg feels toasty.';
-    } else {
-      return fail('Nothing happens.');
-    }
-    this.takeItem(itemId);
-    this.commit();
-    return { ok: true, message };
-  }
-
-  equip(bugUid, itemId) {
-    const bug = this.bug(bugUid);
-    const item = ITEMS[itemId];
-    if (!bug) return fail('Unknown bug.');
-    if (!item || item.type !== 'gear') return fail('That is not gear.');
-    if (this.statusOf(bug) === 'expedition') return fail(`${bugName(bug)} is away exploring.`);
-    if (!this.takeItem(itemId)) return fail(`You have no ${item.name}.`);
-    if (bug.gear) this.addItem(bug.gear);
-    bug.gear = itemId;
-    this.commit();
-    return { ok: true };
-  }
-
-  unequip(bugUid) {
-    const bug = this.bug(bugUid);
-    if (!bug?.gear) return fail('Nothing equipped.');
-    if (this.statusOf(bug) === 'expedition') return fail(`${bugName(bug)} is away exploring.`);
-    this.addItem(bug.gear);
-    bug.gear = null;
-    this.commit();
-    return { ok: true };
-  }
-
-  sell(itemId, qty = 1) {
-    const price = sellPrice(itemId);
-    if (!price) return fail('Nobody wants to buy that.');
-    if (!this.takeItem(itemId, qty)) return fail('You do not have that many.');
-    this.earn(price * qty);
-    this.commit();
-    return { ok: true, coins: price * qty };
-  }
-
-  releaseBug(uid) {
-    const st = this.state;
+  setInGarden(uid, inGarden) {
     const bug = this.bug(uid);
     if (!bug) return fail('Unknown bug.');
-    if (this.statusOf(bug) === 'expedition') return fail('That bug is away exploring.');
-    if (st.bugs.length <= 1) return fail('Your garden needs at least one bug.');
-    if (bug.gear) this.addItem(bug.gear);
-    const coins = releaseValue(bug);
-    st.bugs = st.bugs.filter((b) => b.uid !== uid);
-    this.earn(coins);
+    if (inGarden && !bug.inGarden && gardenCount(this.state) >= GARDEN_LIMIT) return fail(`The garden holds ${GARDEN_LIMIT} bugs. Move one out first.`);
+    bug.inGarden = !!inGarden;
     this.commit();
-    return { ok: true, coins };
+    return { ok: true };
   }
 
   renameBug(uid, name) {
     const bug = this.bug(uid);
     if (!bug) return fail('Unknown bug.');
     const clean = String(name || '').trim().slice(0, 16);
-    bug.nickname = clean || undefined;
+    if (!clean) return fail('A name cannot be empty.');
+    bug.name = clean;
     this.commit();
     return { ok: true };
   }
 
-  // ---------- eggs ----------
-
-  makeEgg(type) {
-    const egg = { uid: this.state.nextUid++, type, startedAt: null, durationMs: null, bonusMs: 0 };
-    this.state.eggs.push(egg);
-    return egg;
-  }
-
-  startEgg(eggUid, { silent = false } = {}) {
-    const egg = this.state.eggs.find((e) => e.uid === eggUid);
-    if (!egg) return fail('Unknown egg.');
-    if (egg.startedAt) return fail('Already incubating.');
-    if (this.incubatingEggs().length >= nurseryCapacity(this.state)) return fail('The nursery is full. Upgrade Nursery Plots for more room.');
-    egg.startedAt = this.now();
-    egg.durationMs = incubationMs(this.state, egg.type);
-    egg.bonusMs = 0;
-    if (!silent) this.commit();
-    return { ok: true };
-  }
-
-  hatchEgg(eggUid) {
+  releaseBug(uid) {
     const st = this.state;
-    const egg = st.eggs.find((e) => e.uid === eggUid);
-    if (!egg) return fail('Unknown egg.');
-    if (!this.eggProgress(egg).ready) return fail('This egg is not ready yet.');
-    const roll = rollHatch(st, egg.type, this.rng);
-    st.eggs = st.eggs.filter((e) => e !== egg);
-    const res = addBug(st, roll.speciesId, { traits: roll.traits, shiny: roll.shiny, origin: 'hatched', now: this.now() }, this.rng);
-    st.stats.hatched += 1;
+    const bug = this.bug(uid);
+    if (!bug) return fail('Unknown bug.');
+    if (this.assignment(bug) === 'expedition') return fail(`${bug.name} is away exploring.`);
+    if (st.bugs.length <= 1) return fail('You need to keep at least one bug.');
+    if (bug.item) this.addItem(bug.item);
+    const coins = releaseValue(bug);
+    st.bugs = st.bugs.filter((b) => b !== bug);
+    this.earn(coins);
     this.commit();
-    return { ok: true, eggType: egg.type, rarity: roll.rarity, ...res };
+    return { ok: true, coins };
+  }
+
+  // ---------- items ----------
+
+  addItem(id, n = 1) {
+    this.state.inventory[id] = (this.state.inventory[id] || 0) + n;
+  }
+
+  takeItem(id, n = 1) {
+    if (!((this.state.inventory[id] || 0) >= n)) return false;
+    this.state.inventory[id] -= n;
+    if (!this.state.inventory[id]) delete this.state.inventory[id];
+    return true;
+  }
+
+  buyItem(id) {
+    const it = ITEMS[id];
+    if (!it?.buy) return fail('That item is not for sale.');
+    if (!this.spend(it.buy)) return fail('Not enough coins.');
+    this.addItem(id);
+    this.commit();
+    return { ok: true };
+  }
+
+  sellItem(id, qty = 1) {
+    const price = sellPrice(id);
+    if (!price) return fail('Nobody wants to buy that.');
+    if (!(qty >= 1) || !this.takeItem(id, qty)) return fail('You do not have that many.');
+    this.earn(price * qty);
+    this.commit();
+    return { ok: true, coins: price * qty };
+  }
+
+  // One item per bug. Equipping onto a bug that already holds something swaps
+  // the old item back into the inventory, so nothing is duplicated or lost.
+  equip(uid, itemId) {
+    const bug = this.bug(uid);
+    if (!bug) return fail('Unknown bug.');
+    if (ITEMS[itemId]?.type !== 'gear') return fail('That cannot be equipped.');
+    if (this.assignment(bug) === 'expedition') return fail(`${bug.name} is away exploring.`);
+    if (!this.takeItem(itemId)) return fail(`You have no ${ITEMS[itemId].name}.`);
+    if (bug.item) this.addItem(bug.item);
+    bug.item = itemId;
+    this.commit();
+    return { ok: true };
+  }
+
+  unequip(uid) {
+    const bug = this.bug(uid);
+    if (!bug?.item) return fail('Nothing is equipped.');
+    if (this.assignment(bug) === 'expedition') return fail(`${bug.name} is away exploring.`);
+    this.addItem(bug.item);
+    bug.item = null;
+    this.commit();
+    return { ok: true };
+  }
+
+  // ---------- upgrades & areas ----------
+
+  buyUpgrade(id) {
+    const u = UPGRADE_BY_ID[id];
+    if (!u) return fail('Unknown upgrade.');
+    const level = this.state.upgrades[id] || 0;
+    if (level >= u.max) return fail('Already at max level.');
+    if (!this.spend(upgradeCost(id, level))) return fail('Not enough coins.');
+    this.state.upgrades[id] = level + 1;
+    this.commit();
+    return { ok: true, level: level + 1 };
+  }
+
+  unlockArea(areaId) {
+    const check = this.canUnlock(areaId);
+    if (!check.ok) return check;
+    this.spend(AREA_BY_ID[areaId].unlock.coins);
+    this.state.areas[areaId].unlocked = true;
+    this.commit();
+    return { ok: true };
   }
 
   // ---------- expeditions ----------
 
-  launchExpedition(areaId, uids, supplies = []) {
+  launchExpedition(areaId, uids) {
     const st = this.state;
     const area = AREA_BY_ID[areaId];
     if (!area) return fail('Unknown area.');
     if (!st.areas[areaId].unlocked) return fail(`${area.name} is locked.`);
-    if (st.expeditions.length >= expeditionSlots(st)) return fail('All expedition slots are busy. Upgrade Base Camp for more.');
-    if (st.expeditions.some((e) => e.areaId === areaId)) return fail(`A team is already exploring ${area.name}.`);
-    const unique = [...new Set(uids)];
-    if (!unique.length) return fail('Pick at least one bug.');
-    if (unique.length > MAX_TEAM) return fail(`A team has at most ${MAX_TEAM} bugs.`);
-    const team = unique.map((u) => this.bug(u));
-    if (team.some((b) => !b)) return fail('Unknown bug.');
-    const away = bugsOnExpedition(st);
-    for (const b of team) {
-      const s = bugStatus(b, st, this.now(), away);
-      if (s !== 'ready') return fail(`${bugName(b)} is ${s === 'resting' ? 'resting' : 'already exploring'}.`);
-    }
-    if (supplies.length > supplySlots(st)) return fail(`You can pack ${supplySlots(st)} supplies.`);
-    const need = {};
-    for (const s of supplies) {
-      if (ITEMS[s]?.type !== 'supply') return fail('Only supplies can be packed.');
-      need[s] = (need[s] || 0) + 1;
-    }
-    for (const [s, n] of Object.entries(need)) if ((st.inventory[s] || 0) < n) return fail(`Not enough ${ITEMS[s].name}.`);
-    for (const [s, n] of Object.entries(need)) this.takeItem(s, n);
-
+    if (st.expeditions.length >= expeditionSlots(st)) return fail('All expedition slots are in use. Improved Exploration adds more.');
+    const err = validateParty(st, uids, bugsOnExpedition(st));
+    if (err) return fail(err);
+    const party = uids.map((u) => this.bug(u));
     const seed = this.rng.seed();
-    const plan = planExpedition(st, area, team, supplies, seed);
+    const plan = planExpedition(st, area, party, seed);
+    const now = this.now();
+    const encMs = encounterMs(st, party);
     const exp = {
-      id: st.nextUid++,
-      areaId,
-      team: unique,
-      supplies,
-      seed,
-      startAt: this.now(),
-      durationMs: Math.round(expeditionDurationMs(st, area, team) * plan.lengthFraction),
-      bonusMs: 0,
-      events: plan.events,
-      result: plan.result,
+      id: st.nextUid++, areaId, party: [...uids], partyNames: party.map((b) => b.name), seed,
+      startAt: now, encounterMs: encMs, count: plan.count, endsAt: now + plan.count * encMs,
+      encounters: plan.encounters, xp: plan.xp, claimed: false,
     };
     st.expeditions.push(exp);
     this.commit();
     return { ok: true, expedition: exp };
   }
 
-  collectExpedition(id) {
+  // Pays out a finished expedition exactly once, then archives it.
+  claimExpedition(id) {
     const st = this.state;
     const exp = st.expeditions.find((e) => e.id === id);
-    if (!exp) return fail('Unknown expedition.');
-    if (!this.expeditionProgress(exp).done) return fail('The team is still exploring.');
+    if (!exp) return fail(st.history.some((h) => h.id === id) ? 'Those rewards were already claimed.' : 'Unknown expedition.');
+    if (exp.claimed) return fail('Those rewards were already claimed.');
+    if (!this.timeline(exp).done) return fail('The party is still exploring.');
+    exp.claimed = true;
     const area = AREA_BY_ID[exp.areaId];
-    const r = exp.result;
-    const now = this.now();
-    const report = { area, events: exp.events, coins: r.coins, items: r.items, eggs: [], captures: [], levelUps: [], retreated: r.retreated, guardian: null, unlockedHint: null };
-
-    this.earn(r.coins);
-    for (const [id2, n] of Object.entries(r.items)) this.addItem(id2, n);
-    for (const type of r.eggs) report.eggs.push(this.makeEgg(type));
-    for (const sp of r.seen) recordDex(st, sp, 'seen');
-    for (const c of r.captures) {
-      const res = addBug(st, c.species, { level: c.level, traits: c.traits, shiny: c.shiny, origin: 'captured', now }, this.rng);
-      st.stats.captured += 1;
-      report.captures.push(res);
+    const rewards = sumRewards(exp.encounters);
+    this.earn(rewards.coins);
+    for (const [itemId, n] of Object.entries(rewards.items)) this.addItem(itemId, n);
+    const eggs = rewards.eggs.map((tier) => this.addEgg(tier, area.id));
+    const keysUsed = [];
+    for (const e of exp.encounters) {
+      if (!e.keyUsedBy) continue;
+      const bug = this.bug(e.keyUsedBy);
+      if (bug?.item === 'key') {
+        bug.item = null;
+        keysUsed.push(bug.uid);
+      }
+      st.stats.chestsOpened += 1;
     }
-    for (const uid of exp.team) {
+    const levelUps = [];
+    for (const uid of exp.party) {
       const bug = this.bug(uid);
       if (!bug) continue;
-      const before = bug.level;
-      if (addXp(bug, r.xp[uid] || 0)) report.levelUps.push({ uid, name: bugName(bug), from: before, to: bug.level });
-      bug.restUntil = now + restDurationMs(st, area, r.hp[uid], r.maxHp[uid]);
+      const gains = addXp(bug, exp.xp[uid] || 0);
+      if (gains.length) levelUps.push({ uid, name: bug.name, level: bug.level, traits: gains.map((g) => g.trait) });
     }
-    const areaState = st.areas[area.id];
-    if (!r.retreated) areaState.runs += 1;
-    if (r.guardianFought) report.guardian = { won: r.guardianDefeated, first: r.firstGuardianWin, name: area.guardian.name };
-    if (r.firstGuardianWin) {
-      areaState.guardianDefeated = true;
-      st.stats.guardians += 1;
-      const next = AREAS[area.index + 1];
-      if (next) report.unlockedHint = next;
-    }
-    st.expeditions = st.expeditions.filter((e) => e !== exp);
+    st.areas[area.id].runs += 1;
     st.stats.expeditions += 1;
+    st.expeditions = st.expeditions.filter((e) => e !== exp);
+    const record = { ...exp, claimedAt: this.now(), rewards: { coins: rewards.coins, items: rewards.items, eggs: rewards.eggs } };
+    st.history.unshift(record);
+    st.history.length = Math.min(st.history.length, HISTORY_LIMIT);
     this.commit();
-    return { ok: true, report };
-  }
-
-  unlockArea(areaId) {
-    const check = this.canUnlock(areaId);
-    if (!check.ok) return check;
-    const area = AREA_BY_ID[areaId];
-    this.spend(area.unlockCost);
-    this.state.areas[areaId].unlocked = true;
-    this.commit();
-    return { ok: true };
-  }
-
-  // ---------- shop & upgrades ----------
-
-  buy(id, { offerIndex = null } = {}) {
-    const st = this.state;
-    let price;
-    if (offerIndex !== null) {
-      const offer = this.shopOffers().find((o) => o.index === offerIndex);
-      if (!offer || offer.id !== id) return fail('That deal is gone.');
-      if (offer.sold) return fail('Sold out until the next restock.');
-      price = offer.price;
-    } else {
-      if (!FIXED_STOCK.includes(id)) return fail('Not for sale.');
-      price = priceOf(id);
-    }
-    if (!this.spend(price)) return fail('Not enough coins.');
-    if (offerIndex !== null) st.shop.bought.push(offerIndex);
-    if (EGGS[id]) this.makeEgg(id);
-    else this.addItem(id);
-    this.commit();
-    return { ok: true, price };
-  }
-
-  buyUpgrade(id) {
-    const u = UPGRADE_BY_ID[id];
-    if (!u) return fail('Unknown upgrade.');
-    const level = this.state.upgrades[id] || 0;
-    if (level >= u.max) return fail('Already maxed out.');
-    const cost = upgradeCost(id, level);
-    if (!this.spend(cost)) return fail('Not enough coins.');
-    this.state.upgrades[id] = level + 1;
-    this.commit();
-    return { ok: true, level: level + 1 };
+    const nextArea = AREAS[area.index + 1];
+    const unlockable = nextArea && !st.areas[nextArea.id].unlocked && st.areas[area.id].runs === nextArea.unlock.runs ? nextArea : null;
+    return { ok: true, report: { expedition: record, area, rewards, eggs, keysUsed, levelUps, unlockable } };
   }
 }
