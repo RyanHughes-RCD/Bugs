@@ -10,12 +10,9 @@ import { fmtTime } from './format.js';
 // World units are pixels of the BugsMap art (150 x 300).
 export const WORLD_W = 150;
 export const WORLD_H = 300;
-// The dirt patch in BugsMap/pixil-layer-1.png, where diggers like to dig.
-export const DIRT = { x: 4, y: 166, w: 60, h: 42 };
 const BOUNDS = { x0: 8, x1: 142, y0: 14, y1: 292 };
 const MOVE = { wriggler: 4, crawler: 11, beetle: 8, arachnid: 13, hopper: 9, flyer: 16 };
 const PERSONAL_SPACE = 11;
-const ROCK_RADIUS = 11;
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -83,7 +80,7 @@ export class GardenScene {
     this.viewH = ch / this.scale;
     this.camX = (WORLD_W - this.viewW) / 2;
     const maxCam = Math.max(0, WORLD_H - this.viewH);
-    if (this.camY === null) this.camY = clamp(DIRT.y + DIRT.h / 2 - this.viewH * 0.55, 0, maxCam);
+    if (this.camY === null) this.camY = clamp(this.game.state.garden.rock.y - this.viewH * 0.45, 0, maxCam);
     this.camY = clamp(this.camY, 0, maxCam);
     this.bugPx = Math.max(1, Math.round(this.scale * 0.8));
   }
@@ -149,8 +146,8 @@ export class GardenScene {
   hide(e, seconds) {
     const r = this.game.state.garden.rock;
     e.hidden = seconds;
-    e.x = r.x + rand(-3, 3);
-    e.y = r.y + rand(-2, 2);
+    e.x = r.x + rand(-12, 12);
+    e.y = r.y + rand(-6, 4);
     e.act = null;
   }
 
@@ -184,8 +181,12 @@ export class GardenScene {
       e.ty = f.y + 4;
       e.act = 'sniff';
     } else if (roll < 0.6 && e.digger) {
-      e.tx = rand(DIRT.x + 8, DIRT.x + DIRT.w - 8);
-      e.ty = rand(DIRT.y + 20, DIRT.y + DIRT.h - 4);
+      // Diggers work the edge of a dirt patch (the rock covers the middle).
+      const patches = dirtPatches(this.game.state.garden, this.game.now()).filter((p) => p.alpha > 0.3);
+      const p = patches[Math.floor(Math.random() * patches.length)] || this.game.state.garden.rock;
+      const a = rand(0, Math.PI * 2);
+      e.tx = clamp(p.x + Math.cos(a) * rand(18, 28), BOUNDS.x0, BOUNDS.x1);
+      e.ty = clamp(p.y + Math.sin(a) * rand(12, 18), BOUNDS.y0, BOUNDS.y1);
       e.act = 'dig';
     } else {
       const range = e.family === 'flyer' ? 60 : 32;
@@ -206,8 +207,8 @@ export class GardenScene {
         // Crawl back out beside the rock.
         const r = this.game.state.garden.rock;
         const a = rand(0, Math.PI * 2);
-        e.x = clamp(r.x + Math.cos(a) * 12, BOUNDS.x0, BOUNDS.x1);
-        e.y = clamp(r.y + Math.sin(a) * 8, BOUNDS.y0, BOUNDS.y1);
+        e.x = clamp(r.x + Math.cos(a) * (this.assets.rock.width / 2 + 6), BOUNDS.x0, BOUNDS.x1);
+        e.y = clamp(r.y + Math.sin(a) * (this.assets.rock.height / 2 + 4), BOUNDS.y0, BOUNDS.y1);
         e.wait = rand(0.5, 2);
       }
       return;
@@ -250,7 +251,7 @@ export class GardenScene {
     const dx = e.tx - e.x;
     const dy = e.ty - e.y;
     const d = Math.hypot(dx, dy);
-    if (d < (e.act === 'hide' ? 4 : 0.8)) {
+    if (d < (e.act === 'hide' ? 10 : 0.8)) {
       if (e.act === 'hide' && !this.rockDrag) this.hide(e, rand(25, 120));
       else if (e.act === 'sniff' || e.act === 'dig') e.actTime = rand(1.5, 3);
       else e.wait = e.family === 'flyer' ? rand(0.2, 1.2) : rand(0.6, 3.5);
@@ -303,7 +304,8 @@ export class GardenScene {
     ctx.fillStyle = '#39b270';
     ctx.fillRect(0, 0, cw, ch);
     const [mx, my] = this.toScreen(0, 0);
-    for (const layer of this.assets.map) ctx.drawImage(layer, Math.round(mx), Math.round(my), WORLD_W * scale, WORLD_H * scale);
+    // Only the base layer: the map's brown patch layer is drawn under the rock.
+    if (this.assets.map[0]) ctx.drawImage(this.assets.map[0], Math.round(mx), Math.round(my), WORLD_W * scale, WORLD_H * scale);
 
     this.drawPatches();
     this.drawCoins();
@@ -426,40 +428,51 @@ export class GardenScene {
     }
   }
 
+  // The dirt patch art from BugsMap/pixil-layer-1.png, centred on each patch.
   drawPatches() {
     const { ctx, scale } = this;
+    const art = this.assets.patch;
     for (const p of dirtPatches(this.game.state.garden, this.game.now())) {
       if (p.alpha <= 0.01) continue;
-      const [sx, sy] = this.toScreen(p.x, p.y + 2);
+      const [sx, sy] = this.toScreen(p.x, p.y);
       ctx.save();
-      ctx.globalAlpha = p.alpha * 0.85;
-      // Pixel-y ellipse of churned earth with a darker centre.
-      ctx.fillStyle = '#6b4a2b';
-      ctx.beginPath();
-      ctx.ellipse(sx, sy, 11 * scale, 6 * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#4e3520';
-      ctx.beginPath();
-      ctx.ellipse(sx, sy, 7 * scale, 3.5 * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#8a643c';
-      for (const [dx, dy] of [[-8, -3], [6, -4], [-3, 4], [8, 2], [-10, 1], [2, -1]]) ctx.fillRect(sx + dx * scale, sy + dy * scale, scale, scale);
+      ctx.globalAlpha = p.alpha;
+      if (art) {
+        ctx.drawImage(art, Math.round(sx - (art.width * scale) / 2), Math.round(sy - (art.height * scale) / 2), art.width * scale, art.height * scale);
+      } else {
+        ctx.fillStyle = '#6b4a2b';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 30 * scale, 21 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }
 
+  // The rock is drawn at map resolution and sits on its patch, slightly
+  // raised; lifted while being dragged.
   drawRock() {
+    const { ctx, scale } = this;
     const r = this.rock();
-    const lifted = this.rockDrag ? 5 : 0;
-    const size = 16 * this.bugPx * 1.5;
+    const art = this.assets.rock;
+    const lifted = this.rockDrag ? 6 : 0;
     const [sx, sy] = this.toScreen(r.x, r.y);
     if (lifted) {
-      this.ctx.fillStyle = 'rgba(26, 28, 44, 0.3)';
-      this.ctx.beginPath();
-      this.ctx.ellipse(sx, sy + 4 * this.scale, 10 * this.scale, 4 * this.scale, 0, 0, Math.PI * 2);
-      this.ctx.fill();
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + 2 * scale, (art.width / 2) * scale, (art.height / 3) * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
-    this.ctx.drawImage(this.assets.sprites.rock, sx - size / 2, sy - size * 0.62 - lifted * this.scale, size, size);
+    ctx.drawImage(art, Math.round(sx - (art.width * scale) / 2), Math.round(sy - (art.height * 0.62 + lifted) * scale), art.width * scale, art.height * scale);
+  }
+
+  // Whether a world point is on the rock.
+  onRock(wx, wy) {
+    const r = this.game.state.garden.rock;
+    const art = this.assets.rock;
+    const dx = (wx - r.x) / (art.width / 2);
+    const dy = (wy - (r.y - art.height * 0.12)) / (art.height / 2);
+    return dx * dx + dy * dy <= 1.1;
   }
 
   // ---------- nests (screen space, along the bottom) ----------
@@ -547,7 +560,7 @@ export class GardenScene {
     this.canvas.setPointerCapture?.(e.pointerId);
     const onNest = this.nestLayout().some((n) => Math.abs(cx - n.x) < n.size / 2 && Math.abs(cy - n.y) < n.size / 2);
     const r = this.game.state.garden.rock;
-    if (!onNest && Math.hypot(wx - r.x, wy - (r.y - 3)) < ROCK_RADIUS) {
+    if (!onNest && this.onRock(wx, wy)) {
       this.rockDrag = { x: r.x, y: r.y, grabX: wx - r.x, grabY: wy - r.y, moved: 0, startX: e.clientX, startY: e.clientY };
       const found = this.reveal();
       this.handlers.onRockLift?.(found);
@@ -561,8 +574,8 @@ export class GardenScene {
       const [wx, wy] = this.toWorld(e.clientX, e.clientY);
       const d = this.rockDrag;
       d.moved = Math.max(d.moved, Math.hypot(e.clientX - d.startX, e.clientY - d.startY));
-      d.x = clamp(wx - d.grabX, 10, 140);
-      d.y = clamp(wy - d.grabY, 16, 290);
+      d.x = clamp(wx - d.grabX, 26, 124);
+      d.y = clamp(wy - d.grabY, 30, 280);
       return;
     }
     if (!this.drag) return;

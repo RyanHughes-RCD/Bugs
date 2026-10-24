@@ -184,8 +184,8 @@ export class Game {
 
   // Drag the garden rock somewhere new (world coordinates of the garden map).
   moveRock(x, y) {
-    const cx = Math.min(140, Math.max(10, Math.round(x)));
-    const cy = Math.min(290, Math.max(16, Math.round(y)));
+    const cx = Math.min(124, Math.max(26, Math.round(x)));
+    const cy = Math.min(280, Math.max(30, Math.round(y)));
     if (!moveRock(this.state.garden, cx, cy, this.now())) return fail('The rock barely moved.');
     this.commit();
     return { ok: true };

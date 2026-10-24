@@ -46,6 +46,6 @@ export const GARDEN_FORAGE = { cap: 100 };
 
 // The garden rock. Some bugs like to hide under it. Where it rests, a dirt
 // patch slowly forms; after the rock is moved the patch lingers, then fades.
-export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 112, y: 128 } };
+export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 34, y: 187 } }; // the patch's spot on the map
 
 export const BIG_SPEND = { coins: 500, fraction: 0.5 }; // ask for confirmation above either

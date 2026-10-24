@@ -1,6 +1,7 @@
 import { SPECIES_LIST } from '../data/species.js';
 import { EGG_TIERS } from '../data/eggs.js';
 import { SPRITES } from '../data/sprites.js';
+import { Rng } from '../core/rng.js';
 
 // Copy of pixel_bugs/palette.txt, used only if the file cannot be fetched.
 const FALLBACK_PALETTE = {
@@ -97,6 +98,9 @@ export class Assets {
     }
     for (const t of EGG_TIERS) if (!this.eggs[t.id]) this.eggs[t.id] = this.makeEgg(t.visual);
     if (this.map[0]) this.flowerSpots = this.findFlowers(this.map[0]);
+    // The brown patch on the map's second layer is the dirt the rock leaves.
+    this.patch = this.map[1] ? this.cropToContent(this.map[1]) : null;
+    this.rock = this.makeRock(this.patch ? Math.round(this.patch.width * 0.8) : 52);
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
   }
 
@@ -175,6 +179,72 @@ export class Assets {
       for (const p of px) if (!p.outline) p.set = hexRgb(ALBINO_RAMP[Math.min(ALBINO_RAMP.length - 1, Math.floor(lum(...p.rgb) * ALBINO_RAMP.length))]);
       for (const p of findEyes(px, W, view)) p.set = hexRgb(ALBINO_EYE);
     });
+  }
+
+  // Trims transparent margins (used for the dirt-patch layer of the map).
+  cropToContent(img) {
+    const c = makeCanvas(img.width, img.height);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let [x0, y0, x1, y1] = [c.width, c.height, -1, -1];
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        if (!d[(y * c.width + x) * 4 + 3]) continue;
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+    }
+    if (x1 < 0) return null;
+    const out = makeCanvas(x1 - x0 + 1, y1 - y0 + 1);
+    out.getContext('2d').drawImage(c, -x0, -y0);
+    return out;
+  }
+
+  // A big boulder drawn at the map's own pixel size: a lumpy oval, lit from
+  // the top left, with an outline, cracks and speckles in the palette greys.
+  makeRock(w) {
+    const h = Math.round(w * 0.62);
+    const c = makeCanvas(w, h);
+    const ctx = c.getContext('2d');
+    const rng = new Rng(4242);
+    const cx = (w - 1) / 2;
+    const cy = (h - 1) / 2 + 1;
+    const bumps = Array.from({ length: 7 }, () => rng.float(-0.06, 0.06));
+    const inside = (x, y) => {
+      const ang = Math.atan2(y - cy, x - cx);
+      const k = 1 + bumps.reduce((s, b, i) => s + b * Math.sin(ang * (i + 2) + i), 0);
+      const ny = (y - cy) / (h / 2 - 0.5) * (y > cy ? 1.15 : 1); // flatter base
+      return ((x - cx) / (w / 2 - 0.5)) ** 2 + ny ** 2 <= k * k;
+    };
+    const shades = ['W', 'l', 'l', 'l', 's', 's', 's', 'k'];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!inside(x, y)) continue;
+        const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+        let ch;
+        if (edge) ch = 'K';
+        else {
+          const light = ((x - cx) / w) * 0.9 + ((y - cy) / h) * 1.3; // about -0.9 (top left) .. 0.9
+          const band = Math.max(0, Math.min(shades.length - 1, Math.floor((light + 0.85) * 4.4)));
+          ch = shades[band];
+          if (rng.chance(0.05)) ch = ch === 'k' ? 's' : 'k';
+        }
+        ctx.fillStyle = this.palette[ch];
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    // A couple of cracks.
+    ctx.fillStyle = this.palette.K;
+    for (const [sx, sy, len, dx] of [[w * 0.35, h * 0.3, 6, 1], [w * 0.62, h * 0.55, 5, -1]]) {
+      let x = Math.round(sx);
+      let y = Math.round(sy);
+      for (let i = 0; i < len; i++) {
+        if (inside(x, y)) ctx.fillRect(x, y, 1, 1);
+        x += i % 2 ? dx : 0;
+        y += 1;
+      }
+    }
+    return c;
   }
 
   // Builds an egg (plus three cracked stages) from the tier's visual config.
