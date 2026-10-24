@@ -66,7 +66,7 @@ test('the garden holds at most 10 bugs; leaving it never removes a bug', () => {
   assert.ok(game.setInGarden(outside[6].uid, true).ok);
 });
 
-test('garden bugs forage a few coins up to a cap; away bugs do not', () => {
+test('garden bugs forage a few coins up to a cap, even while away exploring', () => {
   const { game, clock } = makeGame();
   const rate = gardenRatePerMin(game.state);
   assert.ok(rate > 0);
@@ -80,7 +80,11 @@ test('garden bugs forage a few coins up to a cap; away bugs do not', () => {
   assert.equal(game.collectGarden().coins, GARDEN_FORAGE.cap);
   assert.equal(game.state.coins, coins + GARDEN_FORAGE.cap);
   game.launchExpedition('garden', partyUids(game));
-  assert.equal(gardenRatePerMin(game.state), 0);
+  assert.equal(gardenRatePerMin(game.state), rate, 'income continues during expeditions');
+  const before = game.state.garden.pot;
+  clock.t += 10 * MIN;
+  game.tick();
+  assert.ok(game.state.garden.pot > before);
 });
 
 test('one item per bug: equip swaps, nothing is duplicated or lost', () => {
