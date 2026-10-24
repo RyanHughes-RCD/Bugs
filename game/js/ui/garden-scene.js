@@ -120,7 +120,10 @@ export class GardenScene {
     const fam = SPECIES[species].family;
     const x = rand(BOUNDS.x0, BOUNDS.x1);
     const y = rand(Math.max(BOUNDS.y0, this.camY + 10), Math.min(BOUNDS.y1, this.camY + this.viewH - 10));
-    return { species, family: fam, x, y, tx: x, ty: y, angle: rand(0, Math.PI * 2), wait: rand(0, 2), speed: MOVE[fam] * rand(0.8, 1.2), phase: rand(0, 6.28), act: null, actTime: 0, bubble: 0, hearts: 0 };
+    const side = SPECIES[species].view === 'side';
+    // Top-down sprites face up and rotate to their heading. Side views face
+    // right, so they mirror to face left and only tilt a little.
+    return { species, family: fam, side, flip: Math.random() < 0.5 ? -1 : 1, x, y, tx: x, ty: y, angle: side ? 0 : rand(0, Math.PI * 2), wait: rand(0, 2), speed: MOVE[fam] * rand(0.8, 1.2), phase: rand(0, 6.28), act: null, actTime: 0, bubble: 0, hearts: 0 };
   }
 
   // Picks the next thing to do: wander nearby, visit a flower, or (diggers) dig in the dirt.
@@ -139,7 +142,7 @@ export class GardenScene {
     } else {
       const range = e.family === 'flyer' ? 60 : 32;
       e.tx = clamp(e.x + rand(-range, range), BOUNDS.x0, BOUNDS.x1);
-      e.ty = clamp(e.y + rand(-range, range), BOUNDS.y0, BOUNDS.y1);
+      e.ty = clamp(e.y + rand(-range, range) * (e.side ? 0.4 : 1), BOUNDS.y0, BOUNDS.y1);
     }
   }
 
@@ -168,8 +171,14 @@ export class GardenScene {
     }
     if (e.wait > 0) {
       e.wait -= dt;
-      if (Math.random() < dt * 0.6) e.turn = rand(-1.2, 1.2); // look around while idle
-      if (e.turn) { e.angle += e.turn * dt * 2; e.turn *= 0.96; }
+      // Look around while idle: top-down bugs turn, side views about-face.
+      if (e.side) {
+        if (Math.random() < dt * 0.15) e.flip = -e.flip;
+        e.angle *= 1 - Math.min(1, dt * 4);
+      } else {
+        if (Math.random() < dt * 0.6) e.turn = rand(-1.2, 1.2);
+        if (e.turn) { e.angle += e.turn * dt * 2; e.turn *= 0.96; }
+      }
       if (e.wait <= 0) this.pickTarget(e);
       return;
     }
@@ -187,6 +196,12 @@ export class GardenScene {
     e.x += (dx / d) * step;
     e.y += (dy / d) * step;
     e.moving = true;
+    if (e.side) {
+      if (Math.abs(dx) > 0.3) e.flip = dx < 0 ? -1 : 1;
+      const tilt = clamp(Math.atan2(dy, Math.abs(dx)), -0.5, 0.5);
+      e.angle += (tilt - e.angle) * Math.min(1, dt * 6);
+      return;
+    }
     const want = Math.atan2(dy, dx) + Math.PI / 2;
     const diff = ((want - e.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     e.angle += diff * Math.min(1, dt * 6);
@@ -299,6 +314,7 @@ export class GardenScene {
     const wig = e.moving || e.actTime > 0 ? 1 + Math.sin(e.phase * (e.act === 'dig' ? 2 : 1)) * 0.06 : 1;
     ctx.save();
     ctx.translate(Math.round(sx), Math.round(sy));
+    if (e.side) ctx.scale(e.flip, 1);
     ctx.rotate(e.angle);
     ctx.scale(wig, 2 - wig);
     ctx.drawImage(img, -size / 2, -size / 2, size, size);

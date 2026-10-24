@@ -232,6 +232,7 @@ small.inline { display: inline; }
 @keyframes walk { 50% { transform: translateY(-2px) rotate(-6deg); } }
 .march { position: absolute; top: 4px; left: calc(8px + var(--p, 0) * (100% - 150px)); display: flex; flex-direction: row-reverse; gap: 2px; transition: left 1s linear; }
 .march .bug-img { rotate: 90deg; }
+.march .bug-img.side { rotate: none; }
 .team-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .slot { aspect-ratio: 1; display: grid; place-items: center; background: var(--cream2); border: 2px dashed var(--mid); border-radius: 6px; color: var(--mid); font-size: 1.4rem; }
 .slot.filled { background: var(--paper); border: 2px solid var(--ink); position: relative; }

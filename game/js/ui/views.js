@@ -17,7 +17,7 @@ import { esc, fmtTime, fmtNum, pct, fmtClock, fmtDur } from './format.js';
 // ---------- building blocks ----------
 
 const icon = (A, id, cls = '') => `<img class="px icon ${cls}" src="${A.spriteUrl(id)}" alt="">`;
-export const bugImg = (A, bug, cls = '') => `<img class="px bug-img ${bug.shiny ? 'shiny' : ''} ${cls}" src="${A.bugUrl(bug.species, bug.shiny)}" alt="${esc(SPECIES[bug.species].name)}">`;
+export const bugImg = (A, bug, cls = '') => `<img class="px bug-img ${bug.shiny ? 'shiny' : ''} ${SPECIES[bug.species].view} ${cls}" src="${A.bugUrl(bug.species, bug.shiny)}" alt="${esc(SPECIES[bug.species].name)}">`;
 const speciesImg = (A, id, cls = '') => `<img class="px bug-img ${cls}" src="${A.bugUrl(id)}" alt="${esc(SPECIES[id].name)}">`;
 export const eggImg = (A, tier, cls = '', stage = 0) => `<span class="egg-wrap t-${tier} ${cls}"><img class="px egg-img" src="${A.eggUrl(tier, stage)}" alt="${esc(EGG_BY_ID[tier].name)}"></span>`;
 export const coins = (A, n) => `<span class="coins">${icon(A, 'coin', 'sm')}${fmtNum(n)}</span>`;
@@ -228,7 +228,7 @@ export function speciesModal(v, id) {
       <div><h3>#${sp.index + 1} ${esc(sp.name)}</h3>${rarityTag(sp.rarity)}<small>${FAMILIES[sp.family]}</small></div></div>
     <p class="flavor">"${esc(sp.desc)}"</p>
     <p><b>Natural traits:</b> ${sp.traits.map((t) => `${traitIcon(A, t)} ${TRAITS[t].name}`).join(', ')}</p>
-    <p class="meta">Signature trait first. Each hatchling rolls its own trait levels, and rarer bugs may roll extra traits.</p>
+    <p class="meta">Signature trait first. Common and Uncommon hatchlings get only their signature trait; rarer ones get more traits at higher levels.</p>
     <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
 }
 
