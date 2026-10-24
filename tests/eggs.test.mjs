@@ -97,9 +97,8 @@ test('low rarities have one weak trait; stats climb steadily up the rarity ladde
       const s = (stats[sp.rarity] = stats[sp.rarity] || { count: 0, best: 0, total: 0, n: 0, maxCount: 0 });
       s.count += t.length; s.best += Math.max(...t); s.total += t.reduce((a, b) => a + b, 0); s.n += 1;
       s.maxCount = Math.max(s.maxCount, t.length);
-      if (['drab', 'plain', 'common'].includes(sp.rarity)) assert.equal(t.length, 1, `${sp.id} has one trait`);
-      if (sp.rarity === 'drab') assert.equal(t[0], 1, 'drab bugs start at level 1');
-      if (sp.rarity === 'plain') assert.ok(t[0] <= 2, 'plain bugs start weak');
+      if (['drab', 'common'].includes(sp.rarity)) assert.equal(t.length, 1, `${sp.id} has one trait`);
+      if (sp.rarity === 'drab') assert.ok(t[0] <= 2, 'drab bugs start weak');
     }
   }
   for (let i = 1; i < RARITY_ORDER.length; i++) {

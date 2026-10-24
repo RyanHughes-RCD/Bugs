@@ -8,7 +8,7 @@
 // loot / eggs / chest: weighted reward tables for this area.
 export const AREAS = [
   {
-    id: 'garden', name: 'The Garden', difficulty: 2, encounters: [3, 5], coinBase: 15,
+    id: 'garden', name: 'The Garden', difficulty: 2, encounters: [6, 10], coinBase: 15,
     unlock: { runs: 0, coins: 0 },
     art: { image: 'BugsMap/pixil-layer-0.png', scene: 'garden' },
     loot: [['honey_drop', 30], ['shiny_pebble', 30], ['key', 10], ['power_brace', 3], ['stinger_blade', 3], ['thorn_spear', 3], ['dew_wings', 3], ['pebble_shovel', 3], ['twig_hammer', 3]],
@@ -17,7 +17,7 @@ export const AREAS = [
     desc: 'Friendly paths through your own backyard. Low risk, simple obstacles, common finds.',
   },
   {
-    id: 'forest', name: 'The Misty Forest', difficulty: 4, encounters: [4, 6], coinBase: 25,
+    id: 'forest', name: 'The Misty Forest', difficulty: 4, encounters: [8, 12], coinBase: 25,
     unlock: { runs: 3, coins: 300 },
     art: { scene: 'forest' },
     loot: [['honey_drop', 20], ['dewdrop_pearl', 30], ['amber_chunk', 10], ['key', 10], ['stinger_blade', 4], ['twig_hammer', 4], ['acorn_cap', 3], ['silk_cloak', 3], ['trail_mix', 2]],
@@ -26,7 +26,7 @@ export const AREAS = [
     desc: 'Vines, fallen trees and hidden paths wrapped in fog.',
   },
   {
-    id: 'caves', name: 'The Crystal Caves', difficulty: 6, encounters: [5, 7], coinBase: 45,
+    id: 'caves', name: 'The Crystal Caves', difficulty: 6, encounters: [10, 14], coinBase: 45,
     unlock: { runs: 3, coins: 1200 },
     art: { scene: 'caves' },
     loot: [['desert_glass', 30], ['amber_chunk', 15], ['key', 12], ['pebble_shovel', 5], ['power_brace', 5], ['amber_shell', 2], ['bug_net', 2]],
@@ -35,7 +35,7 @@ export const AREAS = [
     desc: 'Underground passages, heavy rocks and glittering crystal seams.',
   },
   {
-    id: 'volcano', name: 'The Volcano', difficulty: 8, encounters: [6, 8], coinBase: 80,
+    id: 'volcano', name: 'The Volcano', difficulty: 8, encounters: [12, 16], coinBase: 80,
     unlock: { runs: 3, coins: 4000 },
     art: { scene: 'volcano' },
     loot: [['ember_stone', 30], ['desert_glass', 10], ['key', 12], ['thorn_spear', 4], ['amber_shell', 3], ['firefly_lantern', 1], ['clover_charm', 3]],
@@ -44,7 +44,7 @@ export const AREAS = [
     desc: 'Lava crossings, unstable ledges and fierce creatures guarding rich rewards.',
   },
   {
-    id: 'aether', name: 'The Aether', difficulty: 10, encounters: [7, 10], coinBase: 140,
+    id: 'aether', name: 'The Aether', difficulty: 10, encounters: [14, 20], coinBase: 140,
     unlock: { runs: 3, coins: 12000 },
     art: { scene: 'aether' },
     loot: [['moon_crystal', 30], ['ember_stone', 10], ['key', 12], ['firefly_lantern', 2], ['moon_pendant', 1], ['bug_net', 3]],

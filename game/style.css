@@ -5,7 +5,7 @@
   --teal: #257179; --blue: #3b5dc9; --sky: #41a6f6; --cyan: #73eff7; --purple: #5d275d;
   --brown: #7a4a2a; --tan: #b07a4a; --pink: #f4a0b0;
   --cream: #fbf3df; --cream2: #f1e3c2;
-  --drab: #7d7a72; --plain: #b8a98f; --common: #94b0c2; --uncommon: #38b764; --rare: #41a6f6; --epic: #c86ee0; --legendary: #ffcd75; --mythic: #f4a0b0; --celestial: #73eff7;
+  --drab: #7d7a72; --nice: #3fc4b4; --common: #94b0c2; --uncommon: #38b764; --rare: #41a6f6; --epic: #c86ee0; --legendary: #ffcd75; --mythic: #f4a0b0; --celestial: #73eff7;
   --font: 'Jersey 10', ui-monospace, 'Courier New', monospace;
   --shadow: 3px 3px 0 var(--ink);
 }
@@ -412,12 +412,12 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .area-banner.small .diff { right: auto; left: 8px; top: 6px; }
 
 /* ---------- v3: rarities, variants, nests, hatch event ---------- */
-.rarity.r-drab { background: var(--drab); color: var(--paper); } .rarity.r-plain { background: var(--plain); }
+.rarity.r-drab { background: var(--drab); color: var(--paper); } .rarity.r-nice { background: var(--nice); color: var(--ink); }
 .rarity.r-celestial { background: linear-gradient(90deg, #3b5dc9, #73eff7, #f4f4f4); color: var(--ink); }
-.bug-card.r-drab, .dex-cell.known.r-drab { border-left-color: var(--drab); } .bug-card.r-plain { border-left-color: var(--plain); }
+.bug-card.r-drab, .dex-cell.known.r-drab { border-left-color: var(--drab); } .bug-card.r-nice { border-left-color: var(--nice); }
 .bug-card.r-celestial { border-left-color: var(--celestial); background: #eafcfd; }
-.dex-cell.known.r-drab { border-bottom-color: var(--drab); } .dex-cell.known.r-plain { border-bottom-color: var(--plain); } .dex-cell.known.r-celestial { border-bottom-color: var(--celestial); }
-.portrait.r-drab { border-color: var(--drab); } .portrait.r-plain { border-color: var(--plain); } .portrait.r-celestial { border-color: var(--celestial); background: #eafcfd; }
+.dex-cell.known.r-drab { border-bottom-color: var(--drab); } .dex-cell.known.r-nice { border-bottom-color: var(--nice); } .dex-cell.known.r-celestial { border-bottom-color: var(--celestial); }
+.portrait.r-drab { border-color: var(--drab); } .portrait.r-nice { border-color: var(--nice); } .portrait.r-celestial { border-color: var(--celestial); background: #eafcfd; }
 
 .bug-img.aura { filter: drop-shadow(0 0 3px var(--aura)) drop-shadow(0 0 6px var(--aura)); animation: aurapulse 2.2s ease-in-out infinite; }
 @keyframes aurapulse { 50% { filter: drop-shadow(0 0 1px var(--aura)) drop-shadow(0 0 9px var(--aura)); } }

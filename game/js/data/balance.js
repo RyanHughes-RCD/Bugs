@@ -4,7 +4,7 @@ export const MINUTE = 60e3;
 export const HOUR = 60 * MINUTE;
 
 export const BASE_INCUBATION_MS = 4 * HOUR;
-export const BASE_ENCOUNTER_MS = 10 * MINUTE;
+export const BASE_ENCOUNTER_MS = 5 * MINUTE;
 export const GARDEN_LIMIT = 10;
 export const PARTY_SIZE = 4;
 export const BASE_INCUBATOR_SLOTS = 2;
@@ -49,10 +49,3 @@ export const GARDEN_FORAGE = { cap: 100 };
 export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 112, y: 128 } };
 
 export const BIG_SPEND = { coins: 500, fraction: 0.5 }; // ask for confirmation above either
-
-export const BUG_NAMES = [
-  'Pip', 'Bramble', 'Clover', 'Nib', 'Moss', 'Pebble', 'Juniper', 'Fig', 'Sprout', 'Bean', 'Hazel', 'Tansy', 'Dot',
-  'Thistle', 'Wren', 'Basil', 'Poppy', 'Twig', 'Acorn', 'Maple', 'Sorrel', 'Fern', 'Button', 'Biscuit', 'Pudding',
-  'Nutmeg', 'Saffron', 'Rowan', 'Willow', 'Ember', 'Sage', 'Olive', 'Mochi', 'Pickle', 'Tofu', 'Waffle', 'Ziggy',
-  'Barnaby', 'Marigold', 'Dandelion', 'Pepper', 'Cosmo', 'Luna', 'Orbit', 'Quill', 'Rumble', 'Skipper', 'Tumble',
-];

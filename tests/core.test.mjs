@@ -149,7 +149,7 @@ test('saves from the first version are migrated without losing progress', () => 
   const st = game.state;
   assert.equal(st.version, 2);
   const ant = st.bugs.find((b) => b.uid === 1);
-  assert.equal(ant.name, 'Sir Ant');
+  assert.equal(ant.name, undefined, 'old nicknames are dropped');
   assert.equal(ant.level, 6);
   assert.equal(ant.item, 'thorn_spear');
   assert.ok(Object.values(ant.traits).reduce((a, b) => a + b, 0) >= 6, 'levels became trait growth');

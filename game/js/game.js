@@ -5,7 +5,7 @@ import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
 import { GARDEN_LIMIT, HISTORY_LIMIT, STARTING } from './data/balance.js';
-import { createBug, addXp, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
+import { createBug, addXp, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden, moveRock } from './systems/garden.js';
@@ -245,21 +245,11 @@ export class Game {
     return { ok: true };
   }
 
-  renameBug(uid, name) {
-    const bug = this.bug(uid);
-    if (!bug) return fail('Unknown bug.');
-    const clean = String(name || '').trim().slice(0, 16);
-    if (!clean) return fail('A name cannot be empty.');
-    bug.name = clean;
-    this.commit();
-    return { ok: true };
-  }
-
   releaseBug(uid) {
     const st = this.state;
     const bug = this.bug(uid);
     if (!bug) return fail('Unknown bug.');
-    if (this.assignment(bug) === 'expedition') return fail(`${bug.name} is away exploring.`);
+    if (this.assignment(bug) === 'expedition') return fail(`${bugName(bug)} is away exploring.`);
     if (st.bugs.length <= 1) return fail('You need to keep at least one bug.');
     if (bug.item) this.addItem(bug.item);
     const coins = releaseValue(bug);
@@ -306,7 +296,7 @@ export class Game {
     const bug = this.bug(uid);
     if (!bug) return fail('Unknown bug.');
     if (ITEMS[itemId]?.type !== 'gear') return fail('That cannot be equipped.');
-    if (this.assignment(bug) === 'expedition') return fail(`${bug.name} is away exploring.`);
+    if (this.assignment(bug) === 'expedition') return fail(`${bugName(bug)} is away exploring.`);
     if (!this.takeItem(itemId)) return fail(`You have no ${ITEMS[itemId].name}.`);
     if (bug.item) this.addItem(bug.item);
     bug.item = itemId;
@@ -317,7 +307,7 @@ export class Game {
   unequip(uid) {
     const bug = this.bug(uid);
     if (!bug?.item) return fail('Nothing is equipped.');
-    if (this.assignment(bug) === 'expedition') return fail(`${bug.name} is away exploring.`);
+    if (this.assignment(bug) === 'expedition') return fail(`${bugName(bug)} is away exploring.`);
     this.addItem(bug.item);
     bug.item = null;
     this.commit();
@@ -362,7 +352,7 @@ export class Game {
     const now = this.now();
     const encMs = encounterMs(st, party);
     const exp = {
-      id: st.nextUid++, areaId, party: [...uids], partyNames: party.map((b) => b.name), seed,
+      id: st.nextUid++, areaId, party: [...uids], partyNames: party.map(bugName), seed,
       startAt: now, encounterMs: encMs, count: plan.count, endsAt: now + plan.count * encMs,
       encounters: plan.encounters, xp: plan.xp, claimed: false,
     };
@@ -399,7 +389,7 @@ export class Game {
       const bug = this.bug(uid);
       if (!bug) continue;
       const gains = addXp(bug, exp.xp[uid] || 0);
-      if (gains.length) levelUps.push({ uid, name: bug.name, level: bug.level, traits: gains.map((g) => g.trait) });
+      if (gains.length) levelUps.push({ uid, name: bugName(bug), level: bug.level, traits: gains.map((g) => g.trait) });
     }
     st.areas[area.id].runs += 1;
     st.stats.expeditions += 1;

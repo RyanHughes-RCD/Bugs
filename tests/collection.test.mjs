@@ -14,7 +14,7 @@ import { makeGame, MIN, HOUR } from './helpers.mjs';
 test('110 species across nine rarities, from Drab to Celestial', () => {
   assert.equal(SPECIES_LIST.length, 110);
   assert.equal(new Set(SPECIES_LIST.map((s) => s.id)).size, 110);
-  assert.deepEqual(RARITY_ORDER, ['drab', 'plain', 'common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'celestial']);
+  assert.deepEqual(RARITY_ORDER, ['drab', 'common', 'uncommon', 'nice', 'rare', 'epic', 'legendary', 'mythic', 'celestial']);
   for (const r of RARITY_ORDER) assert.ok(SPECIES_LIST.some((s) => s.rarity === r), r);
   // Rarer tiers are scarcer.
   const count = (r) => SPECIES_LIST.filter((s) => s.rarity === r).length;
@@ -79,7 +79,7 @@ test('old saves turn the shiny flag into the shiny variant', async () => {
 
 test('progression is slower: pricier eggs, and common eggs are mostly humble', () => {
   for (let i = 1; i < EGG_TIERS.length; i++) assert.ok(EGG_TIERS[i].price >= EGG_TIERS[i - 1].price * 2.5);
-  const humble = eggOdds('common').filter((o) => ['drab', 'plain', 'common'].includes(o.rarity)).reduce((s, o) => s + o.chance, 0);
+  const humble = eggOdds('common').filter((o) => ['drab', 'common', 'uncommon'].includes(o.rarity)).reduce((s, o) => s + o.chance, 0);
   assert.ok(humble >= 0.85, `common eggs: ${humble}`);
   assert.ok(EGG_TIERS.find((t) => t.id === 'rare').price >= 1500);
 });
@@ -114,4 +114,23 @@ test('only some species like hiding under the rock', () => {
   const lovers = SPECIES_LIST.filter((s) => s.likesRock).map((s) => s.id);
   assert.ok(lovers.includes('pill_bug') && lovers.includes('woodlouse') && lovers.includes('millipede'));
   assert.ok(!lovers.includes('butterfly') && !lovers.includes('bee'));
+});
+
+test('bugs are called by what they are, with a variant prefix', async () => {
+  const { bugName } = await import('../game/js/systems/bugs.js');
+  assert.equal(bugName({ species: 'ladybug', variant: null }), 'Ladybug');
+  assert.equal(bugName({ species: 'ladybug', variant: 'golden' }), 'Golden Ladybug');
+  assert.equal(bugName({ species: 'ant', variant: 'shiny' }), 'Shiny Worker Ant');
+  assert.equal(bugName({ species: 'bee', variant: 'albino' }), 'Albino Honeybee');
+  const { game } = makeGame();
+  for (const b of game.state.bugs) assert.equal(b.name, undefined, 'no nicknames stored');
+});
+
+test('every side-view and rock-loving entry names a real species', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../game/js/data/species.js', import.meta.url), 'utf8');
+  for (const set of ['SIDE_VIEW', 'ROCK_LOVERS']) {
+    const ids = [...src.match(new RegExp(`const ${set} = new Set\\(\\[([^\\]]*)\\]`))[1].matchAll(/'(\\w+)'/g)].map((m) => m[1]);
+    for (const id of ids) assert.ok(SPECIES[id], `${set} entry ${id}`);
+  }
+  assert.equal(SPECIES.dung_beetle.view, 'side');
 });

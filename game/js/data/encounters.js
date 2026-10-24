@@ -32,7 +32,7 @@ export const ENCOUNTERS = [
   { id: 'campsite', category: 'discovery', areas: any, weight: 4,
     intro: 'The party finds an abandoned campsite.',
     result: { text: 'They rest by the old fire pit and search the packs left behind.', coins: [0.4, 0.7], loot: 0.5 } },
-  { id: 'mysterious_egg', category: 'discovery', areas: any, weight: 1, special: true, maxPerRun: 1,
+  { id: 'mysterious_egg', category: 'discovery', areas: any, weight: 1, special: true, maxPerRun: 2,
     intro: 'Something round and warm sits all alone...',
     result: { text: 'A mysterious egg! The party carries it home carefully.', coins: [0, 0], egg: 1 } },
   { id: 'friendly_creature', category: 'discovery', areas: any, weight: 4,
@@ -55,7 +55,7 @@ export const ENCOUNTERS = [
     result: { text: 'The party explores the strange place and finds something unusual.', coins: [0.5, 0.9], loot: 1 } },
 
   // ---------- treasure ----------
-  { id: 'locked_chest', category: 'chest', areas: any, weight: 4, special: true, maxPerRun: 2,
+  { id: 'locked_chest', category: 'chest', areas: any, weight: 4, special: true, maxPerRun: 4,
     intro: 'The party discovers a locked treasure chest!' },
   { id: 'buried_treasure', category: 'treasure', areas: any, weight: 4, special: true,
     intro: ['An X is scratched into the dirt.', 'Something metal pokes out of the ground.'],
@@ -73,7 +73,7 @@ export const ENCOUNTERS = [
     check: { traits: ['fly'], difficulty: 0 },
     success: { text: '{bug} flutters up and retrieves it!', coins: [1.4, 2] },
     fail: { text: 'Nobody can reach it. The party moves on, looking up wistfully.', coins: [0.1, 0.2] } },
-  { id: 'rare_gear', category: 'treasure', areas: any, weight: 1.5, special: true, maxPerRun: 1,
+  { id: 'rare_gear', category: 'treasure', areas: any, weight: 1.5, special: true, maxPerRun: 2,
     intro: 'Something glints under a pile of old leaves...',
     check: { traits: ['lift', 'dig'], difficulty: 0 },
     success: { text: '{bug} clears the pile and finds a piece of equipment!', coins: [0.4, 0.6], gear: 1 },

@@ -6,7 +6,7 @@ import { Rng } from './rng.js';
 import { SPECIES } from '../data/species.js';
 import { ITEMS } from '../data/items.js';
 import { GARDEN_LIMIT, MAX_BUG_LEVEL, BASE_INCUBATION_MS } from '../data/balance.js';
-import { rollTraits, pickName } from '../systems/bugs.js';
+import { rollTraits } from '../systems/bugs.js';
 
 const EGG_MAP = {
   garden_egg: 'common', meadow_egg: 'common', pond_egg: 'uncommon', woods_egg: 'uncommon',
@@ -41,7 +41,7 @@ export function migrateV1(old) {
   for (const ob of old.bugs || []) {
     if (!SPECIES[ob.species]) continue;
     const bug = {
-      uid: ob.uid, name: ob.nickname || pickName(s, rng), species: ob.species,
+      uid: ob.uid, species: ob.species,
       level: 1, xp: 0, traits: rollTraits(ob.species, rng), variant: ob.shiny ? 'shiny' : null, item: null,
       inGarden: false, origin: ob.origin || 'hatched', obtainedAt: ob.obtainedAt || now,
     };

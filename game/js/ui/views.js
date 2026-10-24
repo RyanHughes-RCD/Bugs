@@ -5,8 +5,8 @@ import { ITEMS, ITEM_TYPES, sellPrice, itemEffectsText } from '../data/items.js'
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
 import { UPGRADES, upgradeCost } from '../data/upgrades.js';
-import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE } from '../data/balance.js';
-import { effectiveTraits, itemBonus, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
+import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE, BASE_ENCOUNTER_MS } from '../data/balance.js';
+import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs } from '../systems/eggs.js';
 import { expeditionSlots, encounterMs, partyBonuses, sumRewards } from '../systems/expedition.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
@@ -52,8 +52,8 @@ function bugCard(v, bug, { act = 'open-bug', selected = false, disabled = false,
   const asg = assignmentOf(bug, st, v.away);
   return `<button class="bug-card r-${r} ${selected ? 'selected' : ''}" data-act="${act}" data-uid="${bug.uid}" ${Object.entries(data).map(([k, val]) => `data-${k}="${esc(val)}"`).join(' ')} ${disabled ? 'disabled' : ''}>
     ${bugImg(v.A, bug)}
-    <span class="bc-name">${esc(bug.name)}</span>
-    <span class="bc-lv">${esc(SPECIES[bug.species].name)} · Lv ${bug.level}</span>
+    <span class="bc-name">${esc(bugName(bug))}</span>
+    <span class="bc-lv">Lv ${bug.level}</span>
     <span class="bc-traits">${traitChips(v.A, bug)}</span>
     ${bug.item ? `<span class="bc-gear">${icon(v.A, bug.item, 'xs')}</span>` : ''}
     <span class="badge a-${asg}">${ASSIGN_LABEL[asg]}</span>${extra}
@@ -98,7 +98,7 @@ export function quickBugCard(v, uid) {
   const r = rarityOf(bug);
   return `<div class="quick r-${r}">
     <div class="portrait sm r-${r}">${bugImg(A, bug)}</div>
-    <div class="grow"><b>${esc(bug.name)}</b> ${rarityTag(r)} ${variantTag(bug)}<small>${esc(SPECIES[bug.species].name)} · Lv ${bug.level}${bug.item ? ` · ${ITEMS[bug.item].name}` : ''}</small>
+    <div class="grow"><b>${esc(bugName(bug))}</b> ${rarityTag(r)}<small>Lv ${bug.level}${bug.item ? ` · ${ITEMS[bug.item].name}` : ''}</small>
       <div class="bc-traits">${traitChips(A, bug)}</div></div>
     ${btn('Details', 'open-bug', { uid }, 'sm go')}
   </div>`;
@@ -180,8 +180,7 @@ export function hatchModal(v, s) {
       <div class="shell left"><img class="px" src="${A.eggUrl(tier.id, 3)}" alt=""></div>
       <div class="shell right"><img class="px" src="${A.eggUrl(tier.id, 3)}" alt=""></div>
       <div class="he-bug">${bugImg(A, bug, 'pop')}</div>
-      <h2>${esc(bug.name)}</h2>
-      <p class="he-species">the ${esc(sp.name)}</p>
+      <h2>${esc(bugName(bug))}</h2>
       <div class="rar-pop">${rarityTag(r)}</div>
       ${bug.variant ? `<div class="variant-banner v-${bug.variant}">✦ ${VARIANTS[bug.variant].name.toUpperCase()}! ✦</div>` : ''}
       <small>from a ${tier.name}</small>
@@ -252,7 +251,7 @@ export function speciesModal(v, id) {
       const found = v.game.state.dex[id]?.variants?.[k];
       return `<div class="variant-cell ${found ? '' : 'missing'}">${found ? speciesImg(A, id, 'big', k) : speciesImg(A, id, 'big sil')}<span class="variant-tag v-${k}">${va.name}</span><small>${found ? 'Found!' : `${pct(va.chance, 1)} per hatch`}</small></div>`;
     }).join('')}</div>
-    <p class="meta">Signature trait first. Drab, Plain and Common hatchlings get only their signature trait; rarer ones get more traits at higher levels.</p>
+    <p class="meta">Signature trait first. Drab and Common hatchlings get only their signature trait; rarer ones get more traits at higher levels.</p>
     <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
 }
 
@@ -270,7 +269,7 @@ export function bugModal(v, uid) {
   const away = asg === 'expedition';
   return `<div class="modal-head">
       <div class="portrait r-${r}">${bugImg(A, bug, 'big')}</div>
-      <div><h3>${esc(bug.name)} ${btn('rename', 'rename', { uid }, 'link')}</h3>
+      <div><h3>${esc(bugName(bug))}</h3>
         <div>${rarityTag(r)} ${variantTag(bug)}</div>
         <small>${esc(sp.name)} · ${FAMILIES[sp.family]} · #${bug.uid}</small></div>
     </div>
@@ -355,7 +354,7 @@ export function plannerModal(v0) {
     <div class="section-title">Party <small>${party.length}/${PARTY_SIZE} — exactly ${PARTY_SIZE} needed</small>${btn('Auto-pick', 'plan-auto', {}, 'sm')}</div>
     <div class="team-slots">${Array.from({ length: PARTY_SIZE }, (_, i) => {
       const b = party[i];
-      return b ? `<button class="slot filled" data-act="plan-toggle" data-uid="${b.uid}">${bugImg(A, b)}<small>${esc(b.name)}</small></button>` : '<div class="slot">+</div>';
+      return b ? `<button class="slot filled" data-act="plan-toggle" data-uid="${b.uid}">${bugImg(A, b)}<small>${esc(bugName(b))}</small></button>` : '<div class="slot">+</div>';
     }).join('')}</div>
     <div class="coverage">${TRAIT_IDS.map((t) => {
       const s = scores[t];
@@ -363,7 +362,7 @@ export function plannerModal(v0) {
       const chance = checkChance(score, area.difficulty);
       return `<div class="cov-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(score / (area.difficulty * 2 + 2), `t-${t}`)}<span>${score ? score.toFixed(1) : '—'}</span><small>${pct(chance)}</small></div>`;
     }).join('')}<small class="muted">Party score per trait (best bug counts fully, helpers less) and the chance to pass an average ${area.name} check.</small></div>
-    <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(b.name)).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
+    <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(bugName(b))).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
     <div class="meta">${area.encounters[0]}–${area.encounters[1]} encounters × ${fmtDur(encMs)}${bonus.encounterSpeed ? ` (items -${pct(bonus.encounterSpeed)})` : ''} = <b>${fmtDur(area.encounters[0] * encMs)}–${fmtDur(area.encounters[1] * encMs)}</b>${bonus.coinBonus ? ` · +${pct(bonus.coinBonus)} coins` : ''}${bonus.specialFind ? ` · +${pct(bonus.specialFind)} special finds` : ''}</div>
     <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid) })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Launch expedition', 'launch', {}, 'go big', party.length !== PARTY_SIZE)}</div>`;
@@ -398,10 +397,10 @@ export function expeditionLogModal(v, id, fromHistory = false) {
   const shown = exp.encounters.slice(0, tl.resolved);
   const soFar = sumRewards(shown);
   const cur = tl.current !== null ? exp.encounters[tl.current] : null;
-  const party = exp.party.map((uid, i) => game.bug(uid) || { name: exp.partyNames[i], species: 'ant', variant: null });
+  const party = exp.party.map((uid, i) => game.bug(uid) || { gone: exp.partyNames[i], species: 'ant', variant: null });
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>${area.name}</span>
       <div class="march" style="--p:${tl.fraction}">${party.map((b) => bugImg(A, b, 'sm walk')).join('')}</div></div>
-    <div class="party-line">${party.map((b) => `<span>${bugImg(A, b, 'xs')}${esc(b.name)}</span>`).join('')}</div>
+    <div class="party-line">${party.map((b) => `<span>${bugImg(A, b, 'xs')}${esc(b.gone || bugName(b))}</span>`).join('')}</div>
     ${fromHistory ? '' : `${bar(tl.fraction, 'exp', exp.startAt, exp.endsAt)}
     <div class="timing"><span>Encounter <b>${tl.done ? exp.count : tl.resolved + 1}</b> of ${exp.count}</span><span>Elapsed ${tl.done ? fmtTime(exp.endsAt - exp.startAt) : since(game, exp.startAt)}</span><span>Remaining ${tl.done ? '0s' : countdown(game, exp.endsAt)}</span></div>`}
     ${cur ? `<div class="current"><b>Now:</b> ${esc(cur.intro)}<small>Resolves in ${countdown(game, tl.currentEndsAt)}</small></div>` : ''}
@@ -423,7 +422,7 @@ export function claimModal(v, report) {
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>Back from ${area.name}</span></div>
     ${chests.map((c, i) => `<div class="chest-reveal" style="animation-delay:${i * 0.4}s">
       <div class="chest-anim">${icon(A, 'chest', 'big closed')}${icon(A, 'chest_open', 'big open')}</div>
-      <div><b>Chest opened by ${esc(v.game.bug(c.keyUsedBy)?.name || 'a party member')}!</b><small>The Chest Key was used up.</small>${rewardInline(A, c)}</div></div>`).join('')}
+      <div><b>Chest opened by ${esc(v.game.bug(c.keyUsedBy) ? bugName(v.game.bug(c.keyUsedBy)) : 'a party member')}!</b><small>The Chest Key was used up.</small>${rewardInline(A, c)}</div></div>`).join('')}
     <div class="section-title">Rewards</div>
     <div class="rewards">
       <div class="reward">${coins(A, rewards.coins)}</div>
@@ -459,7 +458,7 @@ export function renderItems(v) {
     }).join('')}`;
   }).join('');
   return `${tabs}${sections || '<p class="muted center">Your inventory is empty.</p>'}
-    ${equipped.length ? `<div class="section-title">Equipped on bugs</div>${equipped.map((b) => `<div class="list-row">${icon(A, b.item)}<div class="grow"><b>${ITEMS[b.item].name}</b><small>on ${esc(b.name)}${game.assignment(b) === 'expedition' ? ' (exploring)' : ''}</small></div>${btn('Unequip', 'unequip', { uid: b.uid }, 'sm', game.assignment(b) === 'expedition')}</div>`).join('')}` : ''}`;
+    ${equipped.length ? `<div class="section-title">Equipped on bugs</div>${equipped.map((b) => `<div class="list-row">${icon(A, b.item)}<div class="grow"><b>${ITEMS[b.item].name}</b><small>on ${esc(bugName(b))}${game.assignment(b) === 'expedition' ? ' (exploring)' : ''}</small></div>${btn('Unequip', 'unequip', { uid: b.uid }, 'sm', game.assignment(b) === 'expedition')}</div>`).join('')}` : ''}`;
 }
 
 export function pickBugModal(v0, itemId) {
@@ -533,7 +532,7 @@ export function welcomeModal(v) {
       <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here. Tap one to meet it, and tap coins they dig up.</li>
       <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
       <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi.</li>
-      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter takes 10 minutes and tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}.</li>
+      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter takes ${fmtDur(BASE_ENCOUNTER_MS)} and tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}.</li>
       <li>${icon(A, 'key', 'sm')} <b>Keys:</b> equip a Chest Key on a party member to open locked chests.</li>
       <li>${icon(A, 'hammer', 'sm')} <b>Upgrades:</b> permanent boosts bought with coins.</li>
     </ol>

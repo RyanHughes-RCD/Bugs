@@ -2,7 +2,7 @@ import { SPECIES } from '../data/species.js';
 import { RARITIES, VARIANTS } from '../data/rarities.js';
 import { TRAIT_IDS } from '../data/traits.js';
 import { ITEMS } from '../data/items.js';
-import { BUG_NAMES, GARDEN_LIMIT, MAX_BUG_LEVEL, MAX_TRAIT_LEVEL, XP } from '../data/balance.js';
+import { GARDEN_LIMIT, MAX_BUG_LEVEL, MAX_TRAIT_LEVEL, XP } from '../data/balance.js';
 
 // Rolls the extra luck layer on top of rarity: null, or a VARIANTS key.
 export function rollVariant(rng) {
@@ -32,14 +32,11 @@ export function rollTraits(speciesId, rng) {
   return traits;
 }
 
-export function pickName(state, rng) {
-  const used = new Set(state.bugs.map((b) => b.name));
-  const free = BUG_NAMES.filter((n) => !used.has(n));
-  if (free.length) return rng.pick(free);
-  let i = 2;
-  const base = rng.pick(BUG_NAMES);
-  while (used.has(`${base} ${i}`)) i++;
-  return `${base} ${i}`;
+// What a bug is called: its species, prefixed by any colour variant
+// ("Golden Ladybug"). Bugs have no individual nicknames.
+export function bugName(bug) {
+  const v = VARIANTS[bug.variant];
+  return `${v ? `${v.name} ` : ''}${SPECIES[bug.species].name}`;
 }
 
 export function recordDex(state, speciesId, variant = null) {
@@ -55,7 +52,6 @@ export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', 
   if (!SPECIES[speciesId]) throw new Error(`Unknown species ${speciesId}`);
   const bug = {
     uid: state.nextUid++,
-    name: pickName(state, rng),
     species: speciesId,
     level: 1,
     xp: 0,

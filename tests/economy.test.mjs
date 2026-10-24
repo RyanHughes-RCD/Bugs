@@ -110,7 +110,7 @@ test('equipment and upgrades are separate: removing an item keeps the upgrade', 
   party[0].item = null;
   const without = encounterMs(game.state, party);
   assert.ok(withItem < without);
-  assert.equal(without, Math.round(10 * MIN * 0.88));
+  assert.equal(without, Math.round(5 * MIN * 0.88));
 });
 
 test('shop purchases and sales validate the balance and inventory', () => {

@@ -83,7 +83,7 @@ try {
   await act('[data-act="launch"]');
   await act('[data-act="confirm-yes"]');
   const exp = await st(() => window.bugGarden.game.state.expeditions[0]);
-  assert.equal(exp.endsAt - exp.startAt, exp.count * 10 * 60e3, 'ten minutes per encounter');
+  assert.equal(exp.endsAt - exp.startAt, exp.count * 5 * 60e3, 'five minutes per encounter');
   await warp(15 * 60e3);
   assert.ok((await page.textContent('.modal')).includes(`of ${exp.count}`));
   await snap('live-log');

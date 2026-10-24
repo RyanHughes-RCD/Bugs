@@ -61,6 +61,7 @@ export function migrate(raw) {
     b.inGarden = !!b.inGarden;
     if (b.variant === undefined) b.variant = b.shiny ? 'shiny' : null;
     delete b.shiny;
+    delete b.name; // bugs no longer have nicknames
   }
   return s;
 }
