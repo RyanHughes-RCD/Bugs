@@ -52,4 +52,28 @@ export const GARDEN_FORAGE = { cap: 100 };
 // patch slowly forms; after the rock is moved the patch lingers, then fades.
 export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 34, y: 187 } }; // the patch's spot on the map
 
+// Wild bugs wander into the garden while it has room (say, while the party is
+// away). Say hi before they leave and they give a small gift: usually coins,
+// sometimes an egg. Times are in minutes.
+export const VISITORS = {
+  max: 3, // at most this many at once, and never more than the garden's free places
+  everyMin: [40, 100], // gap between arrivals
+  stayMin: [60, 240], // how long one stays if nobody says hi
+  afterHiMin: 2, // a greeted visitor heads off soon after
+  rarity: [['drab', 30], ['common', 35], ['uncommon', 20], ['nice', 10], ['rare', 5]],
+  coins: [5, 20],
+  eggChance: 0.15,
+  eggs: [['common', 80], ['uncommon', 17], ['rare', 3]],
+  catchUpHours: 24, // arrivals simulated while the app was closed
+};
+
+// Lifting the rock once its dirt patch has fully formed turns up a find,
+// once per spot. Move the rock and wait again for the next one.
+export const ROCK_FIND = {
+  eggChance: 0.25,
+  coinChance: 0.5, // otherwise just a few curious woodlice
+  coins: [10, 30],
+  eggs: [['common', 75], ['uncommon', 20], ['rare', 5]],
+};
+
 export const BIG_SPEND = { coins: 500, fraction: 0.5 }; // ask for confirmation above either

@@ -6,12 +6,14 @@ import { EGG_BY_ID, EGG_TIERS } from '../data/eggs.js';
 import { AREA_BY_ID } from '../data/areas.js';
 import { UPGRADE_BY_ID, upgradeCost } from '../data/upgrades.js';
 import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
+import { SPECIES } from '../data/species.js';
 import { clampEncounterCount, defaultEncounterCount, encounterMs } from '../systems/expedition.js';
 import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 
+const anEgg = (tier) => { const n = EGG_BY_ID[tier].name; return `${/^[AEIOU]/.test(n) ? 'an' : 'a'} ${n}`; };
 const BACKUP_TIME_KEY = 'bug-garden-last-backup';
 
 const PANELS = {
@@ -61,10 +63,34 @@ export class App {
       onRockLift: (found) => {
         this.hideQuick();
         if (found.length) {
-          const names = found.map((uid) => this.game.bug(uid)).filter(Boolean).map(bugName);
-          this.toast(`You lift the rock... ${names.join(' and ')} ${names.length > 1 ? 'were' : 'was'} hiding underneath! Say hi!`, 'good');
+          const names = found.map((key) => {
+            const v = typeof key === 'string' && this.game.visitor(Number(key.slice(1)));
+            return v ? `a wild ${SPECIES[v.species].name}` : this.game.bug(key) && bugName(this.game.bug(key));
+          }).filter(Boolean);
+          if (names.length) this.toast(`You lift the rock... ${names.join(' and ')} ${names.length > 1 ? 'were' : 'was'} hiding underneath! Say hi!`, 'good');
+        }
+        const res = this.game.searchRock();
+        if (!res.ok) return;
+        const r = this.game.state.garden.rock;
+        if (res.egg) {
+          this.scene.float(r.x, r.y - 20, 'Egg!', '#a7f070');
+          this.toast(`Under the rock: ${anEgg(res.egg)}! ${res.nested ? "It's settled into a nest." : "It's waiting in the Hatchery."}`, 'good');
+        } else if (res.coins) {
+          this.scene.float(r.x, r.y - 20, `+${res.coins}`);
+          this.toast(`Under the rock: ${res.coins} coins somebody buried.`, 'good');
+        } else {
+          this.toast('Under the rock: just a few woodlice. Move it somewhere new and check back in a few hours.');
         }
       },
+      onVisitor: (id) => {
+        this.hideQuick();
+        const res = this.game.greetVisitor(id);
+        if (!res.ok) return res;
+        if (res.egg) this.toast(`The wild ${res.name} left you ${anEgg(res.egg)}! ${res.nested ? "It's settled into a nest." : "It's waiting in the Hatchery."}`, 'good');
+        else this.toast(`The wild ${res.name} says hi back and leaves you ${res.coins} coins.`, 'good');
+        return res;
+      },
+      onSign: (id) => this.dispatch('view-exp', { id }),
       onRockMoved: (x, y) => this.game.moveRock(x, y),
     });
     this.scene.start();

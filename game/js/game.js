@@ -4,11 +4,13 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING } from './data/balance.js';
+import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
 import { createBug, addXp, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden, moveRock } from './systems/garden.js';
+import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
+import { SPECIES } from './data/species.js';
 
 const fail = (error) => ({ ok: false, error });
 
@@ -61,6 +63,7 @@ export class Game {
     this.rng = new Rng(this.state.rngState);
     const awayMs = this.now() - (this.state.lastSeen || this.now());
     tickGarden(this.state, this.now());
+    tickVisitors(this.state, this.now(), this.rng);
     this.commit();
     return { fresh: false, awayMs };
   }
@@ -118,6 +121,7 @@ export class Game {
 
   tick() {
     tickGarden(this.state, this.now());
+    if (tickVisitors(this.state, this.now(), this.rng)) this.save();
   }
 
   // Developer tool: moves the game clock forward. Only exposed with ?debug.
@@ -189,6 +193,46 @@ export class Game {
     if (!moveRock(this.state.garden, cx, cy, this.now())) return fail('The rock barely moved.');
     this.commit();
     return { ok: true };
+  }
+
+  // ---------- visitors & the rock ----------
+
+  visitor(id) {
+    return this.state.garden.visitors.find((v) => v.id === id && v.leavesAt > this.now());
+  }
+
+  // Say hi to a wild visitor: it leaves a gift, then heads home soon after.
+  greetVisitor(id) {
+    const v = this.visitor(id);
+    if (!v) return fail('That visitor has already gone home.');
+    if (v.greeted) return fail('You already said hi.');
+    v.greeted = true;
+    v.leavesAt = Math.min(v.leavesAt, this.now() + VISITORS.afterHiMin * 60e3);
+    const gift = this.giveFind(rollVisitorGift(this.rng), 'visitor');
+    this.state.stats.visitorsGreeted = (this.state.stats.visitorsGreeted || 0) + 1;
+    this.commit();
+    return { ok: true, name: SPECIES[v.species].name, ...gift };
+  }
+
+  // Looks under the rock once its patch has formed. One find per spot.
+  searchRock() {
+    const g = this.state.garden;
+    if (!rockFindReady(g, this.now())) return fail('Nothing new under the rock yet.');
+    g.rock.searched = true;
+    this.state.stats.rockFinds = (this.state.stats.rockFinds || 0) + 1;
+    const find = this.giveFind(rollRockFind(this.rng), 'rock');
+    this.commit();
+    return { ok: true, ...find };
+  }
+
+  // Pays out a find. Eggs settle straight into a free nest when there is one.
+  giveFind(find, source) {
+    if (find.coins) this.earn(find.coins);
+    if (!find.egg) return find;
+    const egg = this.addEgg(find.egg, source);
+    const busy = this.state.eggs.filter((e) => e.startedAt).length;
+    const nested = busy < incubatorCount(this.state) && this.startIncubation(egg.uid).ok;
+    return { ...find, nested };
   }
 
   // ---------- eggs ----------
