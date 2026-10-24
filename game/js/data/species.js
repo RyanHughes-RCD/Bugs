@@ -72,8 +72,12 @@ const RAW = [
   ['luna_moth', 'Luna Moth', 'mythic', 'flyer', ['fly', 'build', 'lift'], 'A pale green spirit of the midnight sky.'],
 ];
 
+// How each sprite is drawn. Most are top-down with the head pointing up; these
+// are side views facing right, so they mirror and tilt instead of rotating.
+const SIDE_VIEW = new Set(['caterpillar', 'cricket', 'dung_beetle', 'grub', 'mantis', 'millipede', 'mole_cricket', 'slug', 'snail', 'weevil', 'worm']);
+
 export const SPECIES_LIST = RAW.map(([id, name, rarity, family, traits, desc], index) => ({
-  id, name, rarity, family, traits, desc, index, sprite: `8x/${id}.png`,
+  id, name, rarity, family, traits, desc, index, sprite: `8x/${id}.png`, view: SIDE_VIEW.has(id) ? 'side' : 'top',
 }));
 
 export const SPECIES = Object.fromEntries(SPECIES_LIST.map((s) => [s.id, s]));

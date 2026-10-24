@@ -1,5 +1,5 @@
 import { SPECIES } from '../data/species.js';
-import { RARITIES, PRIMARY_TRAIT_BONUS } from '../data/rarities.js';
+import { RARITIES } from '../data/rarities.js';
 import { TRAIT_IDS } from '../data/traits.js';
 import { ITEMS } from '../data/items.js';
 import { BUG_NAMES, GARDEN_LIMIT, MAX_BUG_LEVEL, MAX_TRAIT_LEVEL, XP } from '../data/balance.js';
@@ -20,9 +20,7 @@ export function rollTraits(speciesId, rng) {
   const extras = rng.shuffle(TRAIT_IDS.filter((t) => !chosen.includes(t)));
   while (chosen.length < count) chosen.push(extras.shift());
   const traits = {};
-  chosen.forEach((t, i) => {
-    traits[t] = Math.min(MAX_TRAIT_LEVEL, rng.int(r.traitLevels[0], r.traitLevels[1]) + (i === 0 ? PRIMARY_TRAIT_BONUS : 0));
-  });
+  for (const t of chosen) traits[t] = Math.min(MAX_TRAIT_LEVEL, rng.int(r.traitLevels[0], r.traitLevels[1]));
   return traits;
 }
 

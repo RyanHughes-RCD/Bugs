@@ -145,5 +145,5 @@ test('the starting resources fund the first eggs, and early expeditions keep the
   let coins = 0;
   for (let s = 0; s < 200; s++) coins += planExpedition(game.state, AREA_BY_ID.garden, game.state.bugs, s).encounters.reduce((x, e) => x + e.coins, 0);
   const perRun = coins / 200;
-  assert.ok(perRun >= 40 && perRun <= 120, `starter garden run pays ${perRun}`);
+  assert.ok(perRun >= 30 && perRun <= 120, `starter garden run pays ${perRun}`);
 });

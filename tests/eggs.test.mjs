@@ -86,6 +86,30 @@ test('every hatched bug has 1+ valid traits, more for rarer bugs on average', ()
   assert.ok(avg('legendary') > avg('common'));
 });
 
+test('low rarities have one weak trait; stats climb steadily up the rarity ladder', async () => {
+  const { rollTraits } = await import('../game/js/systems/bugs.js');
+  const { SPECIES_LIST } = await import('../game/js/data/species.js');
+  const rng = new Rng(11);
+  const stats = {};
+  for (const sp of SPECIES_LIST) {
+    for (let i = 0; i < 40; i++) {
+      const t = Object.values(rollTraits(sp.id, rng));
+      const s = (stats[sp.rarity] = stats[sp.rarity] || { count: 0, best: 0, total: 0, n: 0, maxCount: 0 });
+      s.count += t.length; s.best += Math.max(...t); s.total += t.reduce((a, b) => a + b, 0); s.n += 1;
+      s.maxCount = Math.max(s.maxCount, t.length);
+      if (sp.rarity === 'common' || sp.rarity === 'uncommon') assert.equal(t.length, 1, `${sp.id} has one trait`);
+      if (sp.rarity === 'common') assert.ok(t[0] <= 2, 'commons start weak');
+    }
+  }
+  for (let i = 1; i < RARITY_ORDER.length; i++) {
+    const lo = stats[RARITY_ORDER[i - 1]];
+    const hi = stats[RARITY_ORDER[i]];
+    assert.ok(hi.best / hi.n > lo.best / lo.n, `${RARITY_ORDER[i]} best trait beats ${RARITY_ORDER[i - 1]}`);
+    assert.ok(hi.total / hi.n > lo.total / lo.n, `${RARITY_ORDER[i]} total beats ${RARITY_ORDER[i - 1]}`);
+    assert.ok(hi.count / hi.n >= lo.count / lo.n, `${RARITY_ORDER[i]} has at least as many traits`);
+  }
+});
+
 test('buying eggs validates coins; incubators are limited and upgradable', () => {
   const { game } = makeGame();
   game.state.coins = 50;
