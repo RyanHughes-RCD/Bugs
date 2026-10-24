@@ -13,6 +13,7 @@ import { partyTraitScores, checkChance } from '../systems/traits.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { areaBackground } from './scenes.js';
 import { esc, fmtTime, fmtNum, pct, fmtClock, fmtDur } from './format.js';
+import { VERSION } from '../version.js';
 
 // ---------- building blocks ----------
 
@@ -83,6 +84,7 @@ export function renderHud(v) {
     chips.push(`<button class="chip ${tl.done ? 'ready' : ''}" data-act="view-exp" data-id="${exp.id}">${icon(A, 'map', 'xs')}${area.name.replace('The ', '')}
       ${tl.done ? '<b>Rewards ready!</b>' : `<small>${tl.resolved + 1}/${exp.count}</small> ${countdown(game, exp.endsAt)}`}</button>`);
   }
+  if (v.ui.updateAvailable) chips.unshift(`<button class="chip update" data-act="update-app">${icon(A, 'star', 'xs')}<b>New version! Tap to update</b></button>`);
   const garden = gardenCount(st);
   return `<div class="hud-row">
       <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${GARDEN_FORAGE.cap}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
@@ -505,6 +507,9 @@ export function settingsModal(v) {
       <tr><td>Expeditions completed</td><td>${s.expeditions}</td></tr><tr><td>Eggs hatched</td><td>${s.hatched}</td></tr>
       <tr><td>Chests opened</td><td>${s.chestsOpened}</td></tr><tr><td>Coins earned</td><td>${fmtNum(s.coinsEarned)}</td></tr>
     </table>
+    <h4>App version</h4>
+    <p class="muted">You're on version <b>${VERSION}</b>.${ui.updateAvailable ? ` Version <b>${esc(ui.updateAvailable)}</b> is ready.` : ''}</p>
+    <div class="row wrap">${ui.updateAvailable ? btn('Update now', 'update-app', {}, 'go') : btn('Check for updates', 'check-update')}</div>
     <h4>Save</h4><p class="muted">Progress saves automatically on this device after every action. Export a code to move it.</p>
     <textarea id="save-code" rows="3" placeholder="Paste a save code here to import">${ui.exportCode ? esc(ui.exportCode) : ''}</textarea>
     <div class="row wrap">${btn('Export code', 'export')}${btn('Import code', 'import')}${btn('Reset game', 'reset', {}, 'danger')}</div>

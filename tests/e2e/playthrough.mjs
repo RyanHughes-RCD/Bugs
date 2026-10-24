@@ -111,6 +111,20 @@ try {
   await act('#nav [data-panel="bugs"]');
   await snap('collection');
 
+  // Update button: pretend a newer build is on the server.
+  await page.route(/version\.js\?t=/, (route) => route.fulfill({ contentType: 'text/javascript', body: "export const VERSION = '99.0.0';" }));
+  await act('[data-act="settings"]');
+  await snap('settings');
+  await page.click('.modal [data-act="check-update"]');
+  await page.waitForSelector('#hud .chip.update', { state: 'attached' });
+  await page.waitForSelector('.modal [data-act="update-app"]');
+  await snap('update-available');
+  const reloaded = page.waitForEvent('load');
+  await page.click('.modal [data-act="update-app"]');
+  await reloaded;
+  await page.waitForSelector('#loading', { state: 'detached' });
+  assert.equal(await st(sig), before, 'save survives the update reload');
+
   assert.deepEqual(errors, [], 'no console errors');
   console.log(`E2E playthrough passed${shots ? ` (screenshots in ${shots})` : ''}.`);
 } catch (err) {

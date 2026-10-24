@@ -9,6 +9,7 @@ import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
 import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { simulateHatches } from '../systems/eggs.js';
+import { checkForUpdate, applyUpdate } from './updater.js';
 
 const PANELS = {
   garden: { title: 'Garden', icon: 'flower' },
@@ -81,8 +82,12 @@ export class App {
     const persist = () => this.game.save();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) persist();
-      else this.second();
+      else {
+        this.second();
+        this.checkUpdate();
+      }
     });
+    this.checkUpdate();
     window.addEventListener('pagehide', persist);
     setInterval(() => this.second(), 1000);
     setInterval(persist, 15000);
@@ -97,6 +102,21 @@ export class App {
       this.openModal(() => V.welcomeModal(this.v), { static: true, locked: true });
     } else if (loadInfo.awayMs > 60e3) {
       this.welcomeBack(loadInfo.awayMs);
+    }
+  }
+
+  // Quietly looks for a newer published version (at most every 5 minutes)
+  // and shows an update chip on the garden if there is one.
+  async checkUpdate({ force = false, report = false } = {}) {
+    if (!force && Date.now() - (this.lastUpdateCheck || 0) < 5 * 60e3) return;
+    this.lastUpdateCheck = Date.now();
+    try {
+      const res = await checkForUpdate();
+      this.ui.updateAvailable = res.available ? res.latest : null;
+      this.renderHud(true);
+      if (report) this.toast(res.available ? `Version ${res.latest} is ready. Tap Update now.` : `You're on the latest version (${res.current}).`, 'good');
+    } catch {
+      if (report) this.toast('Could not check for updates. Are you online?', 'bad');
     }
   }
 
@@ -154,6 +174,7 @@ export class App {
       st.expeditions.map((e) => `${e.id}:${g.timeline(e).resolved}:${g.timeline(e).done}`).join(','),
       st.eggs.map((e) => (e.startedAt ? `${e.uid}${g.eggProgress(e).ready ? 'R' : 'i'}` : '')).join(''),
       st.garden.pot >= 1,
+      this.ui.updateAvailable || '',
     ].join('|');
   }
 
@@ -434,6 +455,16 @@ export class App {
         });
         break;
       case 'help': this.openModal(() => V.welcomeModal(this.v), { static: true }); break;
+      case 'check-update':
+        this.checkUpdate({ force: true, report: true }).then(() => {
+          if (this.modal?.static) this.openModal(() => V.settingsModal(this.v), { static: true });
+        });
+        break;
+      case 'update-app':
+        g.save();
+        this.toast('Updating to the latest version...', 'good');
+        applyUpdate();
+        break;
       case 'welcome-done': st.flags.welcomed = true; g.commit(); this.closeModal(); break;
       case 'close-modal': this.closeModal(); break;
       // Developer tools (?debug only).
