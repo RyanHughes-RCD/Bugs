@@ -131,10 +131,15 @@ export class App {
     const flags = this.game.state.flags;
     if (flags.migratedFromV1 && !flags.migrationShown) {
       flags.migrationShown = true;
+      delete flags.rebalanced;
       this.game.commit();
       this.openModal(() => V.migratedModal(this.v, flags.migratedFromV1.refund), { static: true });
     } else if (!flags.welcomed) {
       this.openModal(() => V.welcomeModal(this.v), { static: true, locked: true });
+    } else if (flags.rebalanced) {
+      delete flags.rebalanced;
+      this.game.commit();
+      this.openModal(() => V.rebalancedModal(this.v), { static: true });
     } else if (loadInfo.awayMs > 60e3) {
       this.welcomeBack(loadInfo.awayMs);
     }
@@ -501,7 +506,7 @@ export class App {
         const area = AREA_BY_ID[ui.plan.areaId];
         const names = ui.plan.party.map((u) => bugName(g.bug(u))).join(', ');
         const plan = { ...ui.plan, party: [...ui.plan.party] };
-        const ms = plan.count * encounterMs(st, plan.party.map((u) => g.bug(u)));
+        const ms = plan.count * encounterMs(st, area, plan.party.map((u) => g.bug(u)));
         this.ask({ title: `Send the party to ${area.name}?`, body: `<p>${plan.count} encounters, about <b>${fmtTime(ms)}</b>. ${names} will be away until the expedition ends. Their items can't be changed while they're exploring.</p>`, yes: 'Set off!' }, () => {
           const res = g.launchExpedition(plan.areaId, plan.party, plan.count);
           if (this.result(res, `The party sets off for ${area.name}!`)) this.dispatch('view-exp', { id: res.expedition.id });

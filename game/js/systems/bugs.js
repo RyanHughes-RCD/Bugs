@@ -2,7 +2,7 @@ import { SPECIES } from '../data/species.js';
 import { RARITIES, VARIANTS } from '../data/rarities.js';
 import { TRAIT_IDS } from '../data/traits.js';
 import { ITEMS } from '../data/items.js';
-import { GARDEN_LIMIT, MAX_BUG_LEVEL, MAX_TRAIT_LEVEL, XP } from '../data/balance.js';
+import { GARDEN_LIMIT, MAX_TRAIT_LEVEL } from '../data/balance.js';
 
 // Rolls the extra luck layer on top of rarity: null, or a VARIANTS key.
 export function rollVariant(rng) {
@@ -53,8 +53,6 @@ export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', 
   const bug = {
     uid: state.nextUid++,
     species: speciesId,
-    level: 1,
-    xp: 0,
     traits: traits || rollTraits(speciesId, rng),
     variant: variant === undefined ? rollVariant(rng) : variant,
     item: null,
@@ -88,25 +86,6 @@ export function itemBonus(bug, trait) {
   return (bug.item && ITEMS[bug.item]?.effects?.traits?.[trait]) || 0;
 }
 
-// Each level up raises the bug's weakest natural trait by one.
-export function addXp(bug, amount) {
-  const gains = [];
-  if (bug.level >= MAX_BUG_LEVEL) return gains;
-  bug.xp += Math.round(amount);
-  while (bug.level < MAX_BUG_LEVEL && bug.xp >= XP.toNext(bug.level)) {
-    bug.xp -= XP.toNext(bug.level);
-    bug.level += 1;
-    const order = SPECIES[bug.species].traits;
-    const t = Object.keys(bug.traits)
-      .filter((k) => bug.traits[k] < MAX_TRAIT_LEVEL)
-      .sort((a, b) => bug.traits[a] - bug.traits[b] || (order.indexOf(a) + 9) % 9 - (order.indexOf(b) + 9) % 9)[0];
-    if (t) bug.traits[t] += 1;
-    gains.push({ level: bug.level, trait: t });
-  }
-  if (bug.level >= MAX_BUG_LEVEL) bug.xp = 0;
-  return gains;
-}
-
 export function bugsOnExpedition(state) {
   const set = new Set();
   for (const e of state.expeditions) for (const uid of e.party) set.add(uid);
@@ -126,7 +105,7 @@ export function gardenCount(state) {
 
 export function releaseValue(bug) {
   const mult = VARIANTS[bug.variant]?.releaseMult || 1;
-  return Math.round(RARITIES[rarityOf(bug)].release * (1 + 0.1 * (bug.level - 1)) * mult);
+  return Math.round(RARITIES[rarityOf(bug)].release * mult);
 }
 
 export function traitTotal(bug) {

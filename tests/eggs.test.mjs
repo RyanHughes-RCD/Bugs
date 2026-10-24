@@ -4,7 +4,6 @@ import { Rng } from '../game/js/core/rng.js';
 import { EGG_TIERS } from '../game/js/data/eggs.js';
 import { RARITY_ORDER } from '../game/js/data/rarities.js';
 import { SPECIES } from '../game/js/data/species.js';
-import { BASE_INCUBATION_MS } from '../game/js/data/balance.js';
 import { validateEggTiers, eggOdds, rollEgg, simulateHatches, incubatorCount } from '../game/js/systems/eggs.js';
 import { makeGame, HOUR } from './helpers.mjs';
 
@@ -40,13 +39,14 @@ test('rolled hatches match the advertised odds', () => {
   }
 });
 
-test('base incubation is four hours and survives closing the game', () => {
+test('common eggs hatch in an hour, rarer ones take longer, and timers survive closing the game', () => {
   const { game, clock, storage } = makeGame();
   const egg = game.state.eggs[0];
   assert.ok(game.startIncubation(egg.uid).ok);
-  assert.equal(egg.endsAt - egg.startedAt, BASE_INCUBATION_MS);
-  assert.equal(BASE_INCUBATION_MS, 4 * HOUR);
-  clock.t += 4 * HOUR - 1000;
+  assert.equal(egg.endsAt - egg.startedAt, HOUR);
+  const hours = EGG_TIERS.map((t) => t.hatchMs / HOUR);
+  assert.deepEqual(hours, [...hours].sort((a, b) => a - b), 'rarer tiers never hatch faster');
+  clock.t += HOUR - 1000;
   const { game: reopened } = makeGame({ storage, clock });
   assert.equal(reopened.hatchEgg(egg.uid).ok, false, 'not yet');
   clock.t += 1000;
@@ -75,7 +75,7 @@ test('every hatched bug has 1+ valid traits, more for rarer bugs on average', ()
   for (let i = 0; i < 300; i++) {
     const egg = game.addEgg(i % 2 ? 'legendary' : 'common', 'test');
     game.startIncubation(egg.uid);
-    clock.t += 4 * HOUR;
+    clock.t += 12 * HOUR;
     const { bug, rarity } = game.hatchEgg(egg.uid);
     const ts = Object.entries(bug.traits);
     assert.ok(ts.length >= 1);
@@ -137,5 +137,21 @@ test('Faster Incubation only affects eggs started after the purchase', () => {
   assert.equal(first.endsAt, before, 'running egg untouched');
   const { egg } = game.buyEgg('common');
   game.startIncubation(egg.uid);
-  assert.equal(egg.endsAt - egg.startedAt, Math.round(4 * HOUR * (1 - 0.07)));
+  assert.equal(egg.endsAt - egg.startedAt, Math.round(HOUR * (1 - 0.07)));
+});
+
+test('better eggs appear in the shop as new areas open', () => {
+  const { game } = makeGame();
+  game.state.coins = 1e6;
+  assert.ok(game.buyEgg('uncommon').ok);
+  const res = game.buyEgg('rare');
+  assert.equal(res.ok, false);
+  assert.match(res.error, /Crystal Caves/);
+  game.state.areas.caves.unlocked = true;
+  assert.ok(game.buyEgg('rare').ok);
+  game.state.areas.aether.unlocked = true;
+  assert.ok(game.buyEgg('legendary').ok);
+  assert.equal(game.buyEgg('celestial').ok, false, 'needs runs in the Aether too');
+  game.state.areas.aether.runs = 10;
+  assert.ok(game.buyEgg('celestial').ok);
 });

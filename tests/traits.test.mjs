@@ -5,7 +5,9 @@ import { TRAIT_CHECK } from '../game/js/data/balance.js';
 import { AREA_BY_ID } from '../game/js/data/areas.js';
 import { traitScore, checkChance, partyTraitScores, resolveCheck } from '../game/js/systems/traits.js';
 import { planExpedition } from '../game/js/systems/expedition.js';
-import { effectiveTraits, addXp } from '../game/js/systems/bugs.js';
+import { effectiveTraits, rollTraits, traitTotal } from '../game/js/systems/bugs.js';
+import { SPECIES_LIST } from '../game/js/data/species.js';
+import { RARITIES, RARITY_ORDER } from '../game/js/data/rarities.js';
 import { makeGame, addBug } from './helpers.mjs';
 
 test('party trait score uses diminishing weights so one trait cannot dominate', () => {
@@ -47,13 +49,21 @@ test('items add trait levels, even traits the bug lacks, and stop when removed',
   assert.deepEqual(effectiveTraits(bug), { dig: 3 });
 });
 
-test('levelling up raises trait levels', () => {
-  const { game } = makeGame();
-  const bug = addBug(game, 'ant', { lift: 3, build: 1 });
-  const gains = addXp(bug, 30 + 85);
-  assert.equal(bug.level, 3);
-  assert.equal(gains.length, 2);
-  assert.equal(bug.traits.lift + bug.traits.build, 6);
+test('rarity sets trait levels: every step up is stronger on average', () => {
+  const rng = new Rng(3);
+  const avgPower = RARITY_ORDER.map((r) => {
+    const pool = SPECIES_LIST.filter((s) => s.rarity === r);
+    let total = 0;
+    for (let i = 0; i < 200; i++) {
+      const traits = rollTraits(rng.pick(pool).id, rng);
+      const [lo, hi] = RARITIES[r].traitLevels;
+      assert.ok(Object.values(traits).every((l) => l >= lo && l <= hi), r);
+      total += traitTotal({ traits, item: null });
+    }
+    return total / 200;
+  });
+  for (let i = 1; i < avgPower.length; i++) assert.ok(avgPower[i] > avgPower[i - 1], `${RARITY_ORDER[i]} beats ${RARITY_ORDER[i - 1]}`);
+  assert.ok(avgPower.at(-1) >= 30 * avgPower[0], 'a Celestial is worth many Drab bugs');
 });
 
 // Measures how often a party succeeds at checks of one trait over many expeditions.

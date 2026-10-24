@@ -4,11 +4,11 @@ import { TRAITS, TRAIT_IDS } from '../data/traits.js';
 import { ITEMS, ITEM_TYPES, sellPrice, itemEffectsText } from '../data/items.js';
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js';
-import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
+import { UPGRADES, upgradeCost, upgradeValue } from '../data/upgrades.js';
+import { GARDEN_LIMIT, PARTY_SIZE, GARDEN_FORAGE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
 import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
-import { eggOdds, incubatorCount, incubationMs } from '../systems/eggs.js';
-import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours } from '../systems/expedition.js';
+import { eggOdds, incubatorCount, incubationMs, shopStock } from '../systems/eggs.js';
+import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours, partyPower, paceFactor } from '../systems/expedition.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { areaBackground } from './scenes.js';
@@ -54,7 +54,7 @@ function bugCard(v, bug, { act = 'open-bug', selected = false, disabled = false,
   return `<button class="bug-card r-${r} ${selected ? 'selected' : ''}" data-act="${act}" data-uid="${bug.uid}" ${Object.entries(data).map(([k, val]) => `data-${k}="${esc(val)}"`).join(' ')} ${disabled ? 'disabled' : ''}>
     ${bugImg(v.A, bug)}
     <span class="bc-name">${esc(bugName(bug))}</span>
-    <span class="bc-lv">Lv ${bug.level}</span>
+    <span class="bc-lv">Power ${traitTotal(bug)}</span>
     <span class="bc-traits">${traitChips(v.A, bug)}</span>
     ${bug.item ? `<span class="bc-gear">${icon(v.A, bug.item, 'xs')}</span>` : ''}
     <span class="badge a-${asg}">${ASSIGN_LABEL[asg]}</span>${extra}
@@ -100,7 +100,7 @@ export function quickBugCard(v, uid) {
   const r = rarityOf(bug);
   return `<div class="quick r-${r}">
     <div class="portrait sm r-${r}">${bugImg(A, bug)}</div>
-    <div class="grow"><b>${esc(bugName(bug))}</b> ${rarityTag(r)}<small>Lv ${bug.level}${bug.item ? ` · ${ITEMS[bug.item].name}` : ''}</small>
+    <div class="grow"><b>${esc(bugName(bug))}</b> ${rarityTag(r)}<small>Power ${traitTotal(bug)}${bug.item ? ` · ${ITEMS[bug.item].name}` : ''}</small>
       <div class="bc-traits">${traitChips(A, bug)}</div></div>
     ${btn('Details', 'open-bug', { uid }, 'sm go')}
   </div>`;
@@ -136,11 +136,14 @@ export function renderHatchery(v) {
       ${eggImg(A, t.id)}<div class="grow"><b>${t.name}</b> x${groups[t.id].length}<small>Hatches in ${fmtDur(incubationMs(st, t.id))}</small></div>
       ${btn('Incubate', 'incubate', { uid: groups[t.id][0].uid }, 'go sm', full)}</div>`).join('') || '<p class="muted center">No eggs waiting. Buy one below or find them on expeditions.</p>'}
     <div class="section-title">Egg shop</div>
-    <div class="egg-shop">${EGG_TIERS.map((t) => `<div class="egg-offer t-${t.id}">
+    <div class="egg-shop">${EGG_TIERS.map((t) => {
+      const stock = shopStock(st, t.id);
+      return `<div class="egg-offer t-${t.id} ${stock.ok ? '' : 'locked'}">
       ${eggImg(A, t.id, 'big')}<b>${t.name}</b>
-      <small>${esc(t.desc)}</small>
-      <div class="row">${btn('Odds', 'odds', { tier: t.id }, 'sm')}${btn(coins(A, t.price), 'buy-egg', { tier: t.id }, 'go sm', st.coins < t.price)}</div>
-    </div>`).join('')}</div>
+      <small>${stock.ok ? `${esc(t.desc)} Hatches in ${fmtDur(incubationMs(st, t.id))}.` : `${icon(A, 'lock', 'xs')} ${esc(stock.reason)}`}</small>
+      <div class="row">${btn('Odds', 'odds', { tier: t.id }, 'sm')}${btn(coins(A, t.price), 'buy-egg', { tier: t.id }, 'go sm', !stock.ok || st.coins < t.price)}</div>
+    </div>`;
+    }).join('')}</div>
     <p class="muted center">The tier changes the odds, never guarantees the result. Tap Odds to see exactly what's possible.</p>`;
 }
 
@@ -206,9 +209,9 @@ export function renderCollection(v0) {
   const f = ui.filter;
   let list = st.bugs.filter((b) => (!f.rarity || rarityOf(b) === f.rarity) && (!f.trait || effectiveTraits(b)[f.trait]) && (!f.place || assignmentOf(b, st, v.away) === f.place));
   const sorts = {
-    rarity: (a, b) => RARITY_ORDER.indexOf(rarityOf(b)) - RARITY_ORDER.indexOf(rarityOf(a)) || b.level - a.level,
+    rarity: (a, b) => RARITY_ORDER.indexOf(rarityOf(b)) - RARITY_ORDER.indexOf(rarityOf(a)) || traitTotal(b) - traitTotal(a),
     trait: (a, b) => (f.trait ? (effectiveTraits(b)[f.trait] || 0) - (effectiveTraits(a)[f.trait] || 0) : traitTotal(b) - traitTotal(a)),
-    level: (a, b) => b.level - a.level,
+    power: (a, b) => traitTotal(b) - traitTotal(a),
     newest: (a, b) => b.uid - a.uid,
   };
   list = [...list].sort(sorts[ui.sort] || sorts.rarity);
@@ -266,7 +269,6 @@ export function bugModal(v, uid) {
   const sp = SPECIES[bug.species];
   const asg = game.assignment(bug);
   const eff = effectiveTraits(bug);
-  const next = XP.toNext(bug.level);
   const gear = Object.keys(st.inventory).filter((id) => ITEMS[id]?.type === 'gear');
   const away = asg === 'expedition';
   return `<div class="modal-head">
@@ -275,12 +277,11 @@ export function bugModal(v, uid) {
         <div>${rarityTag(r)} ${variantTag(bug)}</div>
         <small>${esc(sp.name)} · ${FAMILIES[sp.family]} · #${bug.uid}</small></div>
     </div>
-    <div class="lvl-line"><b>Lv ${bug.level}</b>${bug.level < MAX_BUG_LEVEL ? `${bar(bug.xp / next, 'xp')}<small>${bug.xp}/${next} XP</small>` : '<small>MAX</small>'}</div>
-    <small>Each level up raises this bug's weakest trait by 1.</small>
+    <div class="lvl-line"><b>Power ${traitTotal(bug)}</b><small>Its total trait levels. Rarity sets them, so rarer bugs make a faster party.</small></div>
     <h4>Traits</h4>
     <div class="trait-list">${Object.keys(eff).map((t) => {
       const b = itemBonus(bug, t);
-      return `<div class="trait-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(eff[t] / 12, `t-${t}`)}<span>Lv ${eff[t]}${b ? ` <em class="up">(+${b} item)</em>` : ''}</span></div>`;
+      return `<div class="trait-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(eff[t] / 15, `t-${t}`)}<span>Lv ${eff[t]}${b ? ` <em class="up">(+${b} item)</em>` : ''}</span></div>`;
     }).join('')}</div>
     <h4>Equipped item <small class="inline">(one per bug)</small></h4>
     <div class="gear-slot">${bug.item ? `${icon(A, bug.item)}<div class="grow"><b>${ITEMS[bug.item].name}</b><small>${itemEffectsText(bug.item)}</small></div>${btn('Unequip', 'unequip', { uid }, 'sm', away)}` : '<span class="muted">Nothing equipped.</span>'}</div>
@@ -324,7 +325,7 @@ function areaCard(v, area) {
   const st = game.state;
   const as = st.areas[area.id];
   const busy = st.expeditions.length >= expeditionSlots(st);
-  const encMin = encounterMs(st, []);
+  const encMin = BASE_ENCOUNTER_MS * (1 - upgradeValue(st, 'expedition_efficiency'));
   let action;
   if (as.unlocked) action = btn('Assemble party', 'plan', { area: area.id }, 'go', busy);
   else {
@@ -337,7 +338,7 @@ function areaCard(v, area) {
   return `<div class="area-card ${as.unlocked ? '' : 'locked'}">
     <div class="area-banner px-bg" style="${areaBackground(area, A)}"><span>${area.index + 1}. ${area.name}</span><i class="diff">Difficulty ${area.difficulty}</i></div>
     <div class="area-body"><p>${esc(area.desc)}</p>
-      <div class="meta">${fmtDur(encMin)} per encounter · trips from ${fmtDur(EXPEDITION_LENGTH.min * encMin)} to overnight${as.unlocked ? ` · ${as.runs} completed` : ''}</div>
+      <div class="meta">Suits party power <b>${area.pace.power}</b>: ${fmtDur(encMin)} per encounter at that power, longer for weaker parties${area.index ? ' (and more so here than in easier areas)' : ''}${as.unlocked ? ` · ${as.runs} completed` : ''}</div>
       <div class="row wrap">${action}</div></div></div>`;
 }
 
@@ -349,7 +350,7 @@ export function plannerModal(v0) {
   const party = ui.plan.party.map((u) => game.bug(u)).filter(Boolean);
   const scores = partyTraitScores(party);
   const bonus = partyBonuses(party);
-  const encMs = encounterMs(st, party);
+  const encMs = encounterMs(st, area, party);
   const eligible = [...st.bugs].sort((a, b) => (v.away.has(a.uid) - v.away.has(b.uid)) || traitTotal(b) - traitTotal(a));
   const keyHolders = party.filter((b) => b.item === 'key');
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>${area.name}</span><i class="diff">Difficulty ${area.difficulty}</i></div>
@@ -365,10 +366,21 @@ export function plannerModal(v0) {
       return `<div class="cov-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(score / (area.difficulty * 2 + 2), `t-${t}`)}<span>${score ? score.toFixed(1) : '—'}</span><small>${pct(chance)}</small></div>`;
     }).join('')}<small class="muted">Party score per trait (best bug counts fully, helpers less) and the chance to pass an average ${area.name} check.</small></div>
     <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(bugName(b))).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
+    ${paceLine(area, party, encMs)}
     ${tripLength(v, area, party, encMs)}
     ${bonus.coinBonus || bonus.specialFind || bonus.encounterSpeed ? `<div class="meta">${[bonus.encounterSpeed && `Items: encounters -${pct(bonus.encounterSpeed)} time`, bonus.coinBonus && `+${pct(bonus.coinBonus)} coins`, bonus.specialFind && `+${pct(bonus.specialFind)} special finds`].filter(Boolean).join(' · ')}</div>` : ''}
     <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid) })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Launch expedition', 'launch', {}, 'go big', party.length !== PARTY_SIZE)}</div>`;
+}
+
+// How the party's power compares with what the area suits, and what that
+// does to the time per encounter.
+function paceLine(area, party, encMs) {
+  if (!party.length) return '';
+  const power = partyPower(party);
+  const f = paceFactor(area, party);
+  const verdict = f > 1.05 ? `<b class="bad">${f.toFixed(1)}× slower</b>` : f < 0.95 ? `<b class="ok">${(1 / f).toFixed(1)}× faster</b>` : '<b class="ok">right on pace</b>';
+  return `<div class="meta pace">Party power <b>${power}</b> / ${area.name} suits <b>${area.pace.power}</b>: encounters ${verdict} · ${fmtDur(encMs)} each</div>`;
 }
 
 // Trip length picker: presets by hours, plus fine-tuning by single encounters.
@@ -377,7 +389,7 @@ function tripLength(v, area, party, encMs) {
   const count = ui.plan.count;
   const back = new Date(game.now() + count * encMs);
   const sameDay = back.toDateString() === new Date(game.now()).toDateString();
-  const presets = [['Short', defaultEncounterCount(area)], ...EXPEDITION_LENGTH.presetHours.map((h) => [h === 8 ? '8h overnight' : `${h}h`, encountersForHours(game.state, party, h)])];
+  const presets = [['Short', defaultEncounterCount(area)], ...EXPEDITION_LENGTH.presetHours.map((h) => [h === 8 ? '8h overnight' : `${h}h`, encountersForHours(game.state, area, party, h)])];
   return `<div class="section-title">Trip length</div>
     <div class="trip">
       <div class="row wrap presets">${presets.map(([label, n]) => btn(label, 'plan-count', { n }, `sm ${n === count ? 'on' : ''}`)).join('')}</div>
@@ -448,7 +460,6 @@ export function claimModal(v, report) {
       ${rewards.eggs.map((t) => `<div class="reward">${eggImg(A, t, 'sm')} ${EGG_BY_ID[t].name}</div>`).join('')}
     </div>
     ${rewards.eggs.length ? '<p class="meta">New eggs are waiting in the Hatchery basket.</p>' : ''}
-    ${report.levelUps.length ? `<div class="section-title">Level ups</div>${report.levelUps.map((l) => `<p>${esc(l.name)} reached Lv ${l.level}: ${l.traits.filter(Boolean).map((t) => `+1 ${TRAITS[t].name}`).join(', ')}</p>`).join('')}` : ''}
     ${report.unlockable ? `<p class="ok center">${report.unlockable.name} can now be unlocked in Explore!</p>` : ''}
     <div class="row sticky-foot">${btn('View log', 'view-history', { id: exp.id })}${btn('Great!', 'close-modal', {}, 'go big')}</div>`;
 }
@@ -564,7 +575,7 @@ export function welcomeModal(v) {
       <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
       <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi. Leave it a few hours and something might turn up under it.</li>
       <li>${icon(A, 'heart', 'sm')} <b>Visitors:</b> wild bugs drop by when the garden has room, like while your party is away. Tap one to say hi and it leaves a little gift, sometimes even an egg.</li>
-      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter takes ${fmtDur(BASE_ENCOUNTER_MS)} and tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}.</li>
+      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}. Rarer bugs have stronger traits, and a stronger party gets through each area faster.</li>
       <li>${icon(A, 'key', 'sm')} <b>Keys:</b> equip a Chest Key on a party member to open locked chests.</li>
       <li>${icon(A, 'hammer', 'sm')} <b>Upgrades:</b> permanent boosts bought with coins.</li>
     </ol>
@@ -572,10 +583,18 @@ export function welcomeModal(v) {
     <div class="row sticky-foot">${btn("Let's go!", 'welcome-done', {}, 'go big')}</div>`;
 }
 
+export function rebalancedModal() {
+  return `<h3>Bugs got a shake-up!</h3>
+    <ul><li><b>Rarity is strength now.</b> Levels and XP are gone: every bug's traits were reset to match its rarity, so rarer bugs are much stronger.</li>
+    <li><b>Party power sets the pace.</b> Each area suits a certain party power. Weaker parties can still go anywhere, but their encounters take longer, especially in the harder areas.</li>
+    <li><b>Eggs:</b> cheap eggs hatch faster, and better eggs appear in the shop as you explore new areas.</li></ul>
+    <div class="row sticky-foot">${btn('Got it', 'close-modal', {}, 'go big')}</div>`;
+}
+
 export function migratedModal(v, refund) {
   return `<h3>Bug Garden has grown!</h3>
     <p>Your garden was updated to the new version. All your bugs, eggs and gear came with you:</p>
-    <ul><li>Bugs now have the six expedition traits (Lift, Cut, Fight, Fly, Dig, Build), with levels based on how far you'd trained them.</li>
+    <ul><li>Bugs now have the six expedition traits (Lift, Cut, Fight, Fly, Dig, Build), with levels set by their rarity.</li>
     <li>Old eggs became the new egg tiers. Eggs already incubating keep their original timers.</li>
     <li>Old upgrades, items that no longer exist and unfinished expeditions were refunded: <b>${fmtNum(refund)} coins</b>.</li></ul>
     <div class="row sticky-foot">${btn('Show me', 'close-modal', {}, 'go big')}</div>`;

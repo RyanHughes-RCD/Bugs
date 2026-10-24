@@ -4,28 +4,28 @@
 // purchase, never to eggs or expeditions already running.
 export const UPGRADES = [
   {
-    id: 'faster_incubation', name: 'Faster Incubation', max: 8, base: 200, growth: 1.8,
+    id: 'faster_incubation', name: 'Faster Incubation', max: 8, base: 200, growth: 2.0,
     desc: 'Eggs hatch sooner.',
     value: (l) => 0.07 * l,
     text: (l) => `-${Math.round(7 * l)}% hatch time`,
   },
   {
-    id: 'expedition_efficiency', name: 'Expedition Efficiency', max: 8, base: 250, growth: 1.8,
+    id: 'expedition_efficiency', name: 'Expedition Efficiency', max: 8, base: 250, growth: 2.0,
     desc: 'Each encounter takes less time.',
-    value: (l) => 0.06 * l,
-    text: (l) => `-${Math.round(6 * l)}% encounter time`,
+    value: (l) => 0.04 * l,
+    text: (l) => `-${Math.round(4 * l)}% encounter time`,
   },
   {
-    id: 'better_finds', name: 'Better Finds', max: 10, base: 150, growth: 1.7,
+    id: 'better_finds', name: 'Better Finds', max: 10, base: 150, growth: 1.9,
     desc: 'More coins from expedition rewards.',
-    value: (l) => 0.1 * l,
-    text: (l) => `+${10 * l}% coins`,
+    value: (l) => 0.05 * l,
+    text: (l) => `+${5 * l}% coins`,
   },
   {
-    id: 'improved_exploration', name: 'Improved Exploration', max: 4, base: 600, growth: 2.6,
+    id: 'improved_exploration', name: 'Improved Exploration', max: 2, base: 600, growth: 2.6,
     desc: 'Run more expeditions at once, and find more treasure, chests and eggs.',
-    value: (l) => ({ slots: Math.floor((l + 1) / 2), specialFind: 0.1 * l }),
-    text: (l) => `${1 + Math.floor((l + 1) / 2)} expedition slot${l ? 's' : ''}, +${10 * l}% special finds`,
+    value: (l) => ({ slots: l ? 1 : 0, specialFind: 0.1 * l }),
+    text: (l) => `${l ? 2 : 1} expedition slot${l ? 's' : ''}, +${10 * l}% special finds`,
   },
   {
     id: 'incubator_slots', name: 'Extra Incubators', max: 3, base: 400, growth: 2.5,

@@ -1,10 +1,10 @@
 import { Rng } from '../core/rng.js';
 import { ENCOUNTERS, CHEST } from '../data/encounters.js';
 import { ITEMS, MAX_ITEM_SPEED } from '../data/items.js';
-import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, EXPEDITION_LENGTH, PARTY_SIZE, XP } from '../data/balance.js';
+import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, EXPEDITION_LENGTH, PACE, PARTY_SIZE } from '../data/balance.js';
 import { upgradeValue } from '../data/upgrades.js';
 import { partyTraitScores, resolveCheck } from './traits.js';
-import { effectiveTraits, bugName } from './bugs.js';
+import { effectiveTraits, bugName, traitTotal } from './bugs.js';
 
 export function expeditionSlots(state) {
   return BASE_EXPEDITION_SLOTS + upgradeValue(state, 'improved_exploration').slots;
@@ -25,10 +25,21 @@ export function partyBonuses(party) {
   return out;
 }
 
+// A party's power: the total of its trait levels, items included.
+export function partyPower(party) {
+  return party.reduce((s, b) => s + traitTotal(b), 0);
+}
+
+// How much longer (or shorter) each encounter takes for this party here.
+export function paceFactor(area, party) {
+  const f = Math.pow(area.pace.power / Math.max(1, partyPower(party)), area.pace.steep);
+  return Math.min(PACE.max, Math.max(PACE.min, f));
+}
+
 // Length of every encounter on an expedition with this party, fixed at launch.
-export function encounterMs(state, party) {
+export function encounterMs(state, area, party) {
   const eff = upgradeValue(state, 'expedition_efficiency');
-  return Math.round(BASE_ENCOUNTER_MS * (1 - eff) * (1 - partyBonuses(party).encounterSpeed));
+  return Math.round(BASE_ENCOUNTER_MS * (1 - eff) * (1 - partyBonuses(party).encounterSpeed) * paceFactor(area, party));
 }
 
 // Default trip length for an area: the middle of its encounter range.
@@ -41,8 +52,8 @@ export function clampEncounterCount(n) {
 }
 
 // Encounters that fit in a trip of this many hours with this party.
-export function encountersForHours(state, party, hours) {
-  return clampEncounterCount((hours * 3600e3) / encounterMs(state, party));
+export function encountersForHours(state, area, party, hours) {
+  return clampEncounterCount((hours * 3600e3) / encounterMs(state, area, party));
 }
 
 function pickIntro(def, area, rng) {
@@ -78,7 +89,6 @@ export function planExpedition(state, area, party, seed, chosenCount) {
   const used = {};
   const pool = encounterPool(area, party);
   const names = Object.fromEntries(party.map((b) => [b.uid, bugName(b)]));
-  const xp = Object.fromEntries(party.map((b) => [b.uid, 0]));
 
   const rollCoins = (range) => (range ? Math.round(rng.float(range[0], range[1]) * area.coinBase * coinMult) : 0);
   const rollLoot = (table) => rng.weighted(table);
@@ -91,7 +101,6 @@ export function planExpedition(state, area, party, seed, chosenCount) {
     if (o.loot && rng.chance(Math.min(1, o.loot * Math.sqrt(special)))) add(rollLoot(area.loot));
     if (o.gear && rng.chance(o.gear)) add(rollLoot(gearOnly));
     if (o.egg && rng.chance(Math.min(1, o.egg))) rec.eggs.push(rollLoot(area.eggs));
-    if (o.xp) for (const uid of Object.keys(xp)) xp[uid] += o.xp;
   };
 
   const encounters = [];
@@ -137,18 +146,13 @@ export function planExpedition(state, area, party, seed, chosenCount) {
       rec.text = fill(o.text, { bug: chk.bug && bugName(chk.bug), trait: chk.trait[0].toUpperCase() + chk.trait.slice(1) });
       applyOutcome(o, rec);
       if (chk.great && !def.great) { rec.coins = Math.round(rec.coins * 1.5); rec.text += ' A great result!'; }
-      if (chk.success) {
-        for (const uid of Object.keys(xp)) xp[uid] += XP.successBonus;
-        if (chk.bug) xp[chk.bug.uid] += XP.successBonus;
-      }
     } else {
       rec.text = def.result.text;
       applyOutcome(def.result, rec);
     }
-    for (const uid of Object.keys(xp)) xp[uid] += XP.perEncounter;
     encounters.push(rec);
   }
-  return { count, encounters, xp };
+  return { count, encounters };
 }
 
 // Where an expedition is right now, from its saved timestamps.
