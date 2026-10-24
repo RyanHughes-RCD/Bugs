@@ -4,7 +4,8 @@
 // further, so a well-trained low-rarity bug can still beat an untrained rare.
 // traitLevels: [min, max] starting level for each trait.
 // traitCount: weighted [count, weight] options for how many traits a bug has.
-// forage: coins per minute the bug digs up while in the garden.
+// forage: coins per minute the bug digs up while it lives in the garden
+// (including while it is away on an expedition).
 export const RARITY_ORDER = ['drab', 'common', 'uncommon', 'nice', 'rare', 'epic', 'legendary', 'mythic', 'celestial'];
 
 export const RARITIES = {

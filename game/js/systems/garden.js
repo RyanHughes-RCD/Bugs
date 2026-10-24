@@ -1,11 +1,11 @@
 import { GARDEN_FORAGE, ROCK } from '../data/balance.js';
 import { RARITIES } from '../data/rarities.js';
-import { rarityOf, bugsOnExpedition } from './bugs.js';
+import { rarityOf } from './bugs.js';
 
-// Garden bugs (not away exploring) slowly forage coins into a capped pot.
+// Garden bugs slowly forage coins into a capped pot. They keep earning while
+// away on an expedition (their garden place is kept for them).
 export function gardenRatePerMin(state) {
-  const away = bugsOnExpedition(state);
-  return state.bugs.filter((b) => b.inGarden && !away.has(b.uid)).reduce((s, b) => s + RARITIES[rarityOf(b)].forage, 0);
+  return state.bugs.filter((b) => b.inGarden).reduce((s, b) => s + RARITIES[rarityOf(b)].forage, 0);
 }
 
 export function tickGarden(state, now) {

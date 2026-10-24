@@ -1,7 +1,6 @@
 import { SPECIES_LIST } from '../data/species.js';
 import { EGG_TIERS } from '../data/eggs.js';
 import { SPRITES } from '../data/sprites.js';
-import { Rng } from '../core/rng.js';
 
 // Copy of pixel_bugs/palette.txt, used only if the file cannot be fetched.
 const FALLBACK_PALETTE = {
@@ -100,7 +99,7 @@ export class Assets {
     if (this.map[0]) this.flowerSpots = this.findFlowers(this.map[0]);
     // The brown patch on the map's second layer is the dirt the rock leaves.
     this.patch = this.map[1] ? this.cropToContent(this.map[1]) : null;
-    this.rock = this.makeRock(this.patch ? Math.round(this.patch.width * 0.8) : 52);
+    this.rock = this.makeRock(this.patch ? this.patch.width : 64);
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
   }
 
@@ -200,51 +199,14 @@ export class Assets {
     return out;
   }
 
-  // A big boulder drawn at the map's own pixel size: a lumpy oval, lit from
-  // the top left, with an outline, cracks and speckles in the palette greys.
-  makeRock(w) {
-    const h = Math.round(w * 0.62);
-    const c = makeCanvas(w, h);
-    const ctx = c.getContext('2d');
-    const rng = new Rng(4242);
-    const cx = (w - 1) / 2;
-    const cy = (h - 1) / 2 + 1;
-    const bumps = Array.from({ length: 7 }, () => rng.float(-0.06, 0.06));
-    const inside = (x, y) => {
-      const ang = Math.atan2(y - cy, x - cx);
-      const k = 1 + bumps.reduce((s, b, i) => s + b * Math.sin(ang * (i + 2) + i), 0);
-      const ny = (y - cy) / (h / 2 - 0.5) * (y > cy ? 1.15 : 1); // flatter base
-      return ((x - cx) / (w / 2 - 0.5)) ** 2 + ny ** 2 <= k * k;
-    };
-    const shades = ['W', 'l', 'l', 'l', 's', 's', 's', 'k'];
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (!inside(x, y)) continue;
-        const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
-        let ch;
-        if (edge) ch = 'K';
-        else {
-          const light = ((x - cx) / w) * 0.9 + ((y - cy) / h) * 1.3; // about -0.9 (top left) .. 0.9
-          const band = Math.max(0, Math.min(shades.length - 1, Math.floor((light + 0.85) * 4.4)));
-          ch = shades[band];
-          if (rng.chance(0.05)) ch = ch === 'k' ? 's' : 'k';
-        }
-        ctx.fillStyle = this.palette[ch];
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-    // A couple of cracks.
-    ctx.fillStyle = this.palette.K;
-    for (const [sx, sy, len, dx] of [[w * 0.35, h * 0.3, 6, 1], [w * 0.62, h * 0.55, 5, -1]]) {
-      let x = Math.round(sx);
-      let y = Math.round(sy);
-      for (let i = 0; i < len; i++) {
-        if (inside(x, y)) ctx.fillRect(x, y, 1, 1);
-        x += i % 2 ? dx : 0;
-        y += 1;
-      }
-    }
-    return c;
+  // The rock sprite from data/sprites.js, trimmed and upscaled 3x with
+  // Scale3x, which keeps its shape and colours but smooths the stair-stepped
+  // edges into finer pixels. rockScale is how many map pixels each of those
+  // finer pixels covers, so the rock stays about as wide as the dirt patch.
+  makeRock(targetWidth) {
+    const art = scale3x(this.cropToContent(this.sprites.rock));
+    this.rockScale = targetWidth / art.width;
+    return art;
   }
 
   // Builds an egg (plus three cracked stages) from the tier's visual config.
@@ -352,4 +314,43 @@ function findEyes(px, W, view) {
     return [left, right].filter(Boolean);
   }
   return [];
+}
+
+// Scale3x / AdvMAME3x pixel-art upscaler: every pixel becomes a 3x3 block,
+// with corners taken from matching neighbours so diagonals stay smooth.
+function scale3x(src) {
+  const w = src.width;
+  const h = src.height;
+  const sctx = src.getContext('2d');
+  const sd = new Uint32Array(sctx.getImageData(0, 0, w, h).data.buffer);
+  const out = makeCanvas(w * 3, h * 3);
+  const octx = out.getContext('2d');
+  const img = octx.createImageData(w * 3, h * 3);
+  const od = new Uint32Array(img.data.buffer);
+  const at = (x, y) => sd[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const [A, B, C] = [at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1)];
+      const [D, E, F] = [at(x - 1, y), at(x, y), at(x + 1, y)];
+      const [G, H, I] = [at(x - 1, y + 1), at(x, y + 1), at(x + 1, y + 1)];
+      const db = D === B && D !== H && B !== F;
+      const bf = B === F && B !== D && F !== H;
+      const dh = D === H && D !== B && H !== F;
+      const hf = H === F && D !== H && B !== F;
+      const px = [
+        db ? D : E,
+        (db && E !== C) || (bf && E !== A) ? B : E,
+        bf ? F : E,
+        (db && E !== G) || (dh && E !== A) ? D : E,
+        E,
+        (bf && E !== I) || (hf && E !== C) ? F : E,
+        dh ? D : E,
+        (dh && E !== I) || (hf && E !== G) ? H : E,
+        hf ? F : E,
+      ];
+      for (let k = 0; k < 9; k++) od[(y * 3 + Math.floor(k / 3)) * w * 3 + x * 3 + (k % 3)] = px[k];
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
 }
