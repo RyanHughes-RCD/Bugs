@@ -528,7 +528,7 @@ export function settingsModal(v) {
   return `<h3>Settings</h3>
     <table class="kv">
       <tr><td>Expeditions completed</td><td>${s.expeditions}</td></tr><tr><td>Eggs hatched</td><td>${s.hatched}</td></tr>
-      <tr><td>Chests opened</td><td>${s.chestsOpened}</td></tr><tr><td>Coins earned</td><td>${fmtNum(s.coinsEarned)}</td></tr>
+      <tr><td>Chests opened</td><td>${s.chestsOpened}</td></tr><tr><td>Visitors greeted</td><td>${s.visitorsGreeted || 0}</td></tr><tr><td>Coins earned</td><td>${fmtNum(s.coinsEarned)}</td></tr>
     </table>
     <h4>App version</h4>
     <p class="muted">You're on version <b>${VERSION}</b>.${ui.updateAvailable ? ` Version <b>${esc(ui.updateAvailable)}</b> is ready.` : ''}</p>
@@ -562,7 +562,8 @@ export function welcomeModal(v) {
     <ol>
       <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here. Tap one to meet it, and tap coins they dig up.</li>
       <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
-      <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi.</li>
+      <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi. Leave it a few hours and something might turn up under it.</li>
+      <li>${icon(A, 'heart', 'sm')} <b>Visitors:</b> wild bugs drop by when the garden has room, like while your party is away. Tap one to say hi and it leaves a little gift, sometimes even an egg.</li>
       <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter takes ${fmtDur(BASE_ENCOUNTER_MS)} and tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}.</li>
       <li>${icon(A, 'key', 'sm')} <b>Keys:</b> equip a Chest Key on a party member to open locked chests.</li>
       <li>${icon(A, 'hammer', 'sm')} <b>Upgrades:</b> permanent boosts bought with coins.</li>

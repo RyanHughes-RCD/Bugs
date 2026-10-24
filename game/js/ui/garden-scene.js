@@ -5,6 +5,8 @@ import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
 import { dirtPatches } from '../systems/garden.js';
+import { rockFindReady } from '../systems/visitors.js';
+import { AREA_BY_ID } from '../data/areas.js';
 import { fmtTime } from './format.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
@@ -13,6 +15,7 @@ export const WORLD_H = 300;
 const BOUNDS = { x0: 8, x1: 142, y0: 14, y1: 292 };
 const MOVE = { wriggler: 4, crawler: 11, beetle: 8, arachnid: 13, hopper: 9, flyer: 16 };
 const PERSONAL_SPACE = 11;
+const SIGN = { right: 26, bottom: 82 }; // away board position from the view's top-right, in map pixels
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -105,39 +108,79 @@ export class GardenScene {
 
   // ---------- bugs ----------
 
+  // Garden bugs that are home, plus wild visitors (keyed 'v<id>'). Anyone who
+  // is no longer here walks off the edge of the garden instead of vanishing.
   sync() {
     const st = this.game.state;
+    const now = this.game.now();
     const away = bugsOnExpedition(st);
     const home = st.bugs.filter((b) => b.inGarden && !away.has(b.uid));
-    const keep = new Set(home.map((b) => b.uid));
-    for (const uid of this.entities.keys()) if (!keep.has(uid)) this.entities.delete(uid);
-    for (const b of home) {
-      let e = this.entities.get(b.uid);
-      if (!e) {
-        e = this.spawn(b.species);
-        e.uid = b.uid;
-        this.entities.set(b.uid, e);
-      }
-      const sp = SPECIES[b.species];
-      e.species = b.species;
-      e.variant = b.variant;
-      e.aura = sp.aura;
-      e.digger = (effectiveTraits(b).dig || 0) > 0;
-      e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
+    const visitors = st.garden.visitors.filter((v) => v.leavesAt > now);
+    const keep = new Set([...home.map((b) => b.uid), ...visitors.map((v) => `v${v.id}`)]);
+    for (const [key, e] of this.entities) {
+      if (keep.has(key) || e.leaving) continue;
+      if (e.hidden || !this.ready) this.entities.delete(key);
+      else this.leave(e);
     }
+    const place = (key, species, fresh) => {
+      let e = this.entities.get(key);
+      if (!e) {
+        e = this.spawn(species, fresh);
+        e.uid = key;
+        this.entities.set(key, e);
+      }
+      if (e.leaving) {
+        e.leaving = false;
+        e.tx = clamp(e.x, BOUNDS.x0, BOUNDS.x1);
+        e.ty = clamp(e.y, BOUNDS.y0, BOUNDS.y1);
+      }
+      const sp = SPECIES[species];
+      e.species = species;
+      e.aura = sp.aura;
+      e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
+      return e;
+    };
+    for (const b of home) {
+      const e = place(b.uid, b.species, this.ready);
+      e.variant = b.variant;
+      e.digger = (effectiveTraits(b).dig || 0) > 0;
+    }
+    for (const v of visitors) {
+      const e = place(`v${v.id}`, v.species, this.ready);
+      e.visitor = v.id;
+      e.greeted = v.greeted;
+      e.variant = null;
+    }
+    this.ready = true;
   }
 
-  spawn(species) {
+  leave(e) {
+    e.leaving = true;
+    e.act = null;
+    e.actTime = 0;
+    e.wait = 0;
+    e.tx = e.x < WORLD_W / 2 ? -14 : WORLD_W + 14;
+    e.ty = e.y + rand(-10, 10);
+  }
+
+  // New arrivals walk in from the edge; bugs already here at load are placed.
+  spawn(species, walkIn = false) {
     const sp = SPECIES[species];
     const fam = sp.family;
     const side = sp.view === 'side';
-    const x = rand(BOUNDS.x0, BOUNDS.x1);
+    let x = rand(BOUNDS.x0, BOUNDS.x1);
     const y = rand(Math.max(BOUNDS.y0, this.camY + 10), Math.min(BOUNDS.y1, this.camY + this.viewH - 30));
+    if (walkIn) x = Math.random() < 0.5 ? -10 : WORLD_W + 10;
     const e = {
       species, family: fam, side, likesRock: sp.likesRock, flip: Math.random() < 0.5 ? -1 : 1,
       x, y, tx: x, ty: y, angle: side ? 0 : rand(0, Math.PI * 2), wait: rand(0, 2),
       speed: MOVE[fam] * rand(0.8, 1.2), phase: rand(0, 6.28), act: null, actTime: 0, bubble: 0, hearts: 0, surprised: 0,
     };
+    if (walkIn) {
+      e.tx = clamp(x + (x < 0 ? rand(25, 50) : -rand(25, 50)), BOUNDS.x0, BOUNDS.x1);
+      e.wait = 0;
+      return e;
+    }
     // Shade-lovers often start the day tucked under the rock.
     if (e.likesRock && Math.random() < 0.5) this.hide(e, rand(20, 90));
     return e;
@@ -216,8 +259,14 @@ export class GardenScene {
       }
       return;
     }
+    if (e.leaving) {
+      e.act = null;
+      e.wait = 0;
+      e.actTime = 0;
+      if (e.x < -10 || e.x > WORLD_W + 10) { this.entities.delete(e.uid); return; }
+    }
     for (const o of others) {
-      if (o === e || o.hidden) continue;
+      if (o === e || o.hidden || e.leaving || e.x < BOUNDS.x0 || e.x > BOUNDS.x1) continue;
       const dx = e.x - o.x;
       const dy = e.y - o.y;
       const d = Math.hypot(dx, dy);
@@ -261,6 +310,7 @@ export class GardenScene {
       return;
     }
     let sp = e.speed * (e.slow > 0 ? 0.35 : 1); // a squished bug limps for a bit
+    if (e.leaving) sp *= 2.5; // off on an adventure, or heading home
     if (e.family === 'hopper') sp *= Math.sin(e.phase * 0.5) > 0.3 ? 3.2 : 0.2;
     const step = Math.min(d, sp * dt);
     e.x += (dx / d) * step;
@@ -318,6 +368,8 @@ export class GardenScene {
     for (const e of all) if (e.variant === 'shiny') this.glow(e.x, e.y - this.bob(e), 12 + Math.sin(this.t * 2 + e.phase), 'rgba(220, 245, 255, 0.55)');
     for (const e of all) this.drawBug(e);
     this.drawRock();
+    this.drawRockHint();
+    this.drawSign();
     for (const p of this.particles) {
       const [sx, sy] = this.toScreen(p.x, p.y);
       ctx.globalAlpha = Math.min(1, p.life * 2);
@@ -422,6 +474,7 @@ export class GardenScene {
         this.ctx.globalAlpha = 1;
       }
     }
+    if (e.visitor && !e.greeted && !e.leaving && !e.bubble) this.text('?', sx, sy - this.scale + Math.sin(this.t * 4 + e.phase) * this.scale, '#a7f070', 7);
     if (e.surprised > 0) this.text('!', sx, sy - 2 * this.scale + Math.sin(this.t * 12) * this.scale, '#ffcd75', 7);
     if (e.bubble > 0 && e.label) this.text(e.label, sx, sy - 2 * this.scale, e.labelColor || '#f4f4f4', 6);
     if (e.hearts > 0) {
@@ -474,6 +527,73 @@ export class GardenScene {
     const dw = art.width * px;
     const dh = art.height * px;
     ctx.drawImage(art, Math.round(sx - dw / 2), Math.round(sy - (size.h * 0.62 + lifted) * scale), dw, dh);
+  }
+
+  // Something is waiting under a settled rock: a glint at its edge.
+  drawRockHint() {
+    if (this.rockDrag || !rockFindReady(this.game.state.garden, this.game.now())) return;
+    const r = this.rock();
+    const rs = this.rockSize();
+    for (let k = 0; k < 2; k++) {
+      const a = Math.sin(this.t * 2.2 + k * 2.6);
+      if (a < 0.4) continue;
+      const [sx, sy] = this.toScreen(r.x + (k ? 0.36 : -0.3) * rs.w, r.y + rs.h * 0.22);
+      this.ctx.globalAlpha = a;
+      this.sparkle(sx, sy, this.scale * 0.8, '#fff3b8');
+      this.ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---------- the away board ----------
+
+  // A signpost showing the party that is out exploring.
+  signLayout() {
+    const exps = this.game.state.expeditions;
+    if (!exps.length) return null;
+    // Pinned to the top-right of the view, below the HUD, so it is always in sight.
+    return { x: this.camX + this.viewW - SIGN.right, y: this.camY + SIGN.bottom, w: 44, h: 26, exp: exps[0], more: exps.length - 1 };
+  }
+
+  drawSign() {
+    const s = this.signLayout();
+    if (!s) return;
+    const { ctx, scale } = this;
+    const px = (x, y, w, h, c) => {
+      const [sx, sy] = this.toScreen(x, y);
+      ctx.fillStyle = c;
+      ctx.fillRect(Math.round(sx), Math.round(sy), Math.round(w * scale), Math.round(h * scale));
+    };
+    const left = s.x - s.w / 2;
+    const top = s.y - s.h;
+    // Posts, board with planks and an outline.
+    px(left + 5, top + 4, 3, s.h + 6, '#1a1c2c');
+    px(left + 6, top + 4, 1, s.h + 5, '#7a4a2a');
+    px(left + s.w - 8, top + 4, 3, s.h + 6, '#1a1c2c');
+    px(left + s.w - 7, top + 4, 1, s.h + 5, '#7a4a2a');
+    px(left, top, s.w, s.h, '#1a1c2c');
+    px(left + 1, top + 1, s.w - 2, s.h - 2, '#b07a4a');
+    for (const y of [9, 18]) px(left + 1, top + y, s.w - 2, 1, '#7a4a2a');
+    const tl = this.game.timeline(s.exp);
+    const area = AREA_BY_ID[s.exp.areaId];
+    const [cx] = this.toScreen(s.x, 0);
+    this.text(area.name.replace('The ', ''), cx, this.toScreen(0, top + 5)[1], '#f4f4f4', 5);
+    // The party, small.
+    const size = 8 * scale;
+    s.exp.party.forEach((uid, i) => {
+      const b = this.game.bug(uid);
+      if (!b) return;
+      const [bx, by] = this.toScreen(left + 7 + i * 10, top + 13.5);
+      const hop = tl.done ? Math.abs(Math.sin(this.t * 6 + i)) * scale * 1.5 : 0;
+      ctx.drawImage(this.assets.bug(b.species, b.variant), Math.round(bx - size / 2), Math.round(by - size / 2 - hop), size, size);
+    });
+    const label = tl.done ? 'Back! Tap' : fmtTime(tl.remaining);
+    this.text(label, cx, this.toScreen(0, top + 22.5)[1], tl.done ? '#a7f070' : '#ffcd75', 5);
+    if (s.more) this.text(`+${s.more}`, this.toScreen(left + s.w, 0)[0], this.toScreen(0, top)[1], '#ffcd75', 5);
+  }
+
+  onSign(wx, wy) {
+    const s = this.signLayout();
+    return s && wx > s.x - s.w / 2 - 2 && wx < s.x + s.w / 2 + 2 && wy > s.y - s.h - 2 && wy < s.y + 6 ? s : null;
   }
 
   // The rock's size in map pixels.
@@ -583,6 +703,18 @@ export class GardenScene {
     }
   }
 
+  greet(e) {
+    const res = this.handlers.onVisitor?.(e.visitor);
+    if (!res?.ok) return;
+    e.greeted = true;
+    e.label = 'Hi!';
+    e.labelColor = '#a7f070';
+    e.bubble = 1.6;
+    e.wait = 3;
+    if (res.coins) this.float(e.x, e.y - 8, `+${res.coins}`);
+    if (res.egg) this.float(e.x, e.y - 8, 'Egg!', '#a7f070');
+  }
+
   float(x, y, text, color) {
     this.floaters.push({ x, y, text, color, life: 1.6 });
   }
@@ -648,9 +780,11 @@ export class GardenScene {
         return;
       }
     }
+    const sign = this.onSign(x, y);
+    if (sign) return this.handlers.onSign?.(sign.exp.id);
     let best = null;
     for (const e of this.entities.values()) {
-      if (e.hidden) continue;
+      if (e.hidden || e.leaving) continue;
       const d = Math.hypot(e.x - x, e.y - this.bob(e) - y);
       if (d < 11 && (!best || d < best.d)) best = { e, d };
     }
@@ -659,6 +793,7 @@ export class GardenScene {
       e.hearts = 1.2;
       e.wait = 2;
       e.actTime = 0;
+      if (e.visitor) return this.greet(e);
       return this.handlers.onBug(e.uid);
     }
     this.handlers.onEmpty?.();
