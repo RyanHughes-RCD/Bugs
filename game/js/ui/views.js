@@ -5,10 +5,10 @@ import { ITEMS, ITEM_TYPES, sellPrice, itemEffectsText } from '../data/items.js'
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
 import { UPGRADES, upgradeCost } from '../data/upgrades.js';
-import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE, BASE_ENCOUNTER_MS } from '../data/balance.js';
+import { GARDEN_LIMIT, PARTY_SIZE, MAX_BUG_LEVEL, XP, GARDEN_FORAGE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
 import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs } from '../systems/eggs.js';
-import { expeditionSlots, encounterMs, partyBonuses, sumRewards } from '../systems/expedition.js';
+import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours } from '../systems/expedition.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
 import { gardenRatePerMin } from '../systems/garden.js';
 import { areaBackground } from './scenes.js';
@@ -337,7 +337,7 @@ function areaCard(v, area) {
   return `<div class="area-card ${as.unlocked ? '' : 'locked'}">
     <div class="area-banner px-bg" style="${areaBackground(area, A)}"><span>${area.index + 1}. ${area.name}</span><i class="diff">Difficulty ${area.difficulty}</i></div>
     <div class="area-body"><p>${esc(area.desc)}</p>
-      <div class="meta">${area.encounters[0]}–${area.encounters[1]} encounters × ${fmtDur(encMin)} = ${fmtDur(area.encounters[0] * encMin)}–${fmtDur(area.encounters[1] * encMin)}${as.unlocked ? ` · ${as.runs} completed` : ''}</div>
+      <div class="meta">${fmtDur(encMin)} per encounter · trips from ${fmtDur(EXPEDITION_LENGTH.min * encMin)} to overnight${as.unlocked ? ` · ${as.runs} completed` : ''}</div>
       <div class="row wrap">${action}</div></div></div>`;
 }
 
@@ -365,9 +365,25 @@ export function plannerModal(v0) {
       return `<div class="cov-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(score / (area.difficulty * 2 + 2), `t-${t}`)}<span>${score ? score.toFixed(1) : '—'}</span><small>${pct(chance)}</small></div>`;
     }).join('')}<small class="muted">Party score per trait (best bug counts fully, helpers less) and the chance to pass an average ${area.name} check.</small></div>
     <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(bugName(b))).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
-    <div class="meta">${area.encounters[0]}–${area.encounters[1]} encounters × ${fmtDur(encMs)}${bonus.encounterSpeed ? ` (items -${pct(bonus.encounterSpeed)})` : ''} = <b>${fmtDur(area.encounters[0] * encMs)}–${fmtDur(area.encounters[1] * encMs)}</b>${bonus.coinBonus ? ` · +${pct(bonus.coinBonus)} coins` : ''}${bonus.specialFind ? ` · +${pct(bonus.specialFind)} special finds` : ''}</div>
+    ${tripLength(v, area, party, encMs)}
+    ${bonus.coinBonus || bonus.specialFind || bonus.encounterSpeed ? `<div class="meta">${[bonus.encounterSpeed && `Items: encounters -${pct(bonus.encounterSpeed)} time`, bonus.coinBonus && `+${pct(bonus.coinBonus)} coins`, bonus.specialFind && `+${pct(bonus.specialFind)} special finds`].filter(Boolean).join(' · ')}</div>` : ''}
     <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid) })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Launch expedition', 'launch', {}, 'go big', party.length !== PARTY_SIZE)}</div>`;
+}
+
+// Trip length picker: presets by hours, plus fine-tuning by single encounters.
+function tripLength(v, area, party, encMs) {
+  const { game, ui } = v;
+  const count = ui.plan.count;
+  const back = new Date(game.now() + count * encMs);
+  const sameDay = back.toDateString() === new Date(game.now()).toDateString();
+  const presets = [['Short', defaultEncounterCount(area)], ...EXPEDITION_LENGTH.presetHours.map((h) => [h === 8 ? '8h overnight' : `${h}h`, encountersForHours(game.state, party, h)])];
+  return `<div class="section-title">Trip length</div>
+    <div class="trip">
+      <div class="row wrap presets">${presets.map(([label, n]) => btn(label, 'plan-count', { n }, `sm ${n === count ? 'on' : ''}`)).join('')}</div>
+      <div class="row stepper">${btn('−', 'plan-count', { n: count - 1 }, 'sm', count <= EXPEDITION_LENGTH.min)}<b>${count} encounters</b>${btn('+', 'plan-count', { n: count + 1 }, 'sm', count >= EXPEDITION_LENGTH.max)}</div>
+      <div class="meta">${count} × ${fmtDur(encMs)} = <b>${fmtDur(count * encMs)}</b> · back ${sameDay ? '' : 'tomorrow '}at <b>${back.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</b></div>
+    </div>`;
 }
 
 function encounterLine(v, exp, e, i) {
@@ -499,6 +515,13 @@ export function confirmModal(v, { title, body, yes = 'Confirm', danger = false }
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn(yes, 'confirm-yes', {}, danger ? 'danger big' : 'go big')}</div>`;
 }
 
+const timeAgo = (ms) => {
+  const m = Math.floor(ms / 60e3), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d) return `${d} day${d > 1 ? 's' : ''} ago`;
+  if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
+  return m ? `${m} min ago` : 'just now';
+};
+
 export function settingsModal(v) {
   const { game, ui, A } = v;
   const s = game.state.stats;
@@ -510,9 +533,12 @@ export function settingsModal(v) {
     <h4>App version</h4>
     <p class="muted">You're on version <b>${VERSION}</b>.${ui.updateAvailable ? ` Version <b>${esc(ui.updateAvailable)}</b> is ready.` : ''}</p>
     <div class="row wrap">${ui.updateAvailable ? btn('Update now', 'update-app', {}, 'go') : btn('Check for updates', 'check-update')}</div>
-    <h4>Save</h4><p class="muted">Progress saves automatically on this device after every action. Export a code to move it.</p>
-    <textarea id="save-code" rows="3" placeholder="Paste a save code here to import">${ui.exportCode ? esc(ui.exportCode) : ''}</textarea>
-    <div class="row wrap">${btn('Export code', 'export')}${btn('Import code', 'import')}${btn('Reset game', 'reset', {}, 'danger')}</div>
+    <h4>Backup</h4>
+    <p class="muted">Progress saves automatically, but only on this device. Removing the home-screen icon or clearing website data erases it, so keep a backup. ${ui.lastBackup ? `Last backup: <b>${timeAgo(Date.now() - ui.lastBackup)}</b>.` : '<b>No backup yet.</b>'}</p>
+    <div class="row wrap">${btn('Save backup file', 'backup-file', {}, 'go')}<label class="btn">Load backup file<input id="save-file" type="file" accept=".txt,text/plain" hidden></label></div>
+    <p class="muted">Or copy a save code into your notes, then paste it here to restore.</p>
+    <textarea id="save-code" rows="3" placeholder="Paste a save code here to restore it">${ui.exportCode ? esc(ui.exportCode) : ''}</textarea>
+    <div class="row wrap">${btn('Copy save code', 'export')}${btn('Restore from code', 'import')}${btn('Reset game', 'reset', {}, 'danger')}</div>
     ${ui.debug ? devTools(v) : ''}
     <div class="row sticky-foot">${btn('How to play', 'help')}${btn('Close', 'close-modal')}</div>`;
 }

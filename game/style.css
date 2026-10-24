@@ -503,3 +503,7 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .he-actions { margin-top: 8px; flex-wrap: wrap; justify-content: center; }
 
 .chip.update { background: var(--yellow); animation: bounce 1s ease-in-out infinite; }
+.trip { margin-bottom: 8px; }
+.trip .presets { gap: 6px; margin-bottom: 6px; }
+.trip .stepper { align-items: center; gap: 10px; margin-bottom: 4px; }
+.trip .stepper .btn { min-width: 40px; }

@@ -4,7 +4,7 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { GARDEN_LIMIT, HISTORY_LIMIT, STARTING } from './data/balance.js';
+import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING } from './data/balance.js';
 import { createBug, addXp, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
@@ -338,7 +338,7 @@ export class Game {
 
   // ---------- expeditions ----------
 
-  launchExpedition(areaId, uids) {
+  launchExpedition(areaId, uids, count) {
     const st = this.state;
     const area = AREA_BY_ID[areaId];
     if (!area) return fail('Unknown area.');
@@ -346,9 +346,12 @@ export class Game {
     if (st.expeditions.length >= expeditionSlots(st)) return fail('All expedition slots are in use. Improved Exploration adds more.');
     const err = validateParty(st, uids, bugsOnExpedition(st));
     if (err) return fail(err);
+    if (count !== undefined && !(Number.isInteger(count) && count >= EXPEDITION_LENGTH.min && count <= EXPEDITION_LENGTH.max)) {
+      return fail(`An expedition is ${EXPEDITION_LENGTH.min} to ${EXPEDITION_LENGTH.max} encounters.`);
+    }
     const party = uids.map((u) => this.bug(u));
     const seed = this.rng.seed();
-    const plan = planExpedition(st, area, party, seed);
+    const plan = planExpedition(st, area, party, seed, count);
     const now = this.now();
     const encMs = encounterMs(st, party);
     const exp = {

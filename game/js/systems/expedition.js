@@ -1,7 +1,7 @@
 import { Rng } from '../core/rng.js';
 import { ENCOUNTERS, CHEST } from '../data/encounters.js';
 import { ITEMS, MAX_ITEM_SPEED } from '../data/items.js';
-import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, PARTY_SIZE, XP } from '../data/balance.js';
+import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, EXPEDITION_LENGTH, PARTY_SIZE, XP } from '../data/balance.js';
 import { upgradeValue } from '../data/upgrades.js';
 import { partyTraitScores, resolveCheck } from './traits.js';
 import { effectiveTraits, bugName } from './bugs.js';
@@ -31,6 +31,20 @@ export function encounterMs(state, party) {
   return Math.round(BASE_ENCOUNTER_MS * (1 - eff) * (1 - partyBonuses(party).encounterSpeed));
 }
 
+// Default trip length for an area: the middle of its encounter range.
+export function defaultEncounterCount(area) {
+  return Math.round((area.encounters[0] + area.encounters[1]) / 2);
+}
+
+export function clampEncounterCount(n) {
+  return Math.min(EXPEDITION_LENGTH.max, Math.max(EXPEDITION_LENGTH.min, Math.round(n)));
+}
+
+// Encounters that fit in a trip of this many hours with this party.
+export function encountersForHours(state, party, hours) {
+  return clampEncounterCount((hours * 3600e3) / encounterMs(state, party));
+}
+
 function pickIntro(def, area, rng) {
   const intro = def.intro;
   const opts = typeof intro === 'string' ? [intro] : Array.isArray(intro) ? intro : [].concat(intro[area.id] || Object.values(intro)[0]);
@@ -48,10 +62,14 @@ export function encounterPool(area, party) {
 
 // Builds and resolves every encounter of an expedition from one seed. The
 // result is saved with the expedition and revealed over time, so reopening
-// screens or reloading never rerolls anything.
-export function planExpedition(state, area, party, seed) {
+// screens or reloading never rerolls anything. Without a chosen count, the
+// length is rolled from the area's range. Per-run caps (chests, eggs...)
+// grow with longer trips so they stay as rewarding per encounter.
+export function planExpedition(state, area, party, seed, chosenCount) {
   const rng = new Rng(seed);
-  const count = rng.int(area.encounters[0], area.encounters[1]);
+  const rolled = rng.int(area.encounters[0], area.encounters[1]);
+  const count = chosenCount ? clampEncounterCount(chosenCount) : rolled;
+  const capScale = Math.max(1, count / defaultEncounterCount(area));
   const bonus = partyBonuses(party);
   const special = 1 + upgradeValue(state, 'improved_exploration').specialFind + bonus.specialFind;
   const coinMult = 1 + upgradeValue(state, 'better_finds') + bonus.coinBonus;
@@ -79,7 +97,7 @@ export function planExpedition(state, area, party, seed) {
   const encounters = [];
   let last = null;
   for (let i = 0; i < count; i++) {
-    const options = pool.filter((e) => e.id !== last && (!e.maxPerRun || (used[e.id] || 0) < e.maxPerRun));
+    const options = pool.filter((e) => e.id !== last && (!e.maxPerRun || (used[e.id] || 0) < Math.ceil(e.maxPerRun * capScale)));
     const def = rng.weighted(options.map((e) => [e, e.weight * (e.special ? special : 1)]));
     used[def.id] = (used[def.id] || 0) + 1;
     last = def.id;
