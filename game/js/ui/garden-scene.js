@@ -14,6 +14,9 @@ export const WORLD_H = 300;
 const BOUNDS = { x0: 8, x1: 142, y0: 14, y1: 292 };
 const MOVE = { wriggler: 4, crawler: 11, beetle: 8, arachnid: 13, hopper: 9, flyer: 16 };
 const PERSONAL_SPACE = 11;
+// What a bug says when the rock lands on it: [text, weight]. A newline splits
+// a long line in two so it fits above the bug.
+const CRUSH_REACTIONS = [['YEEEOUCH!', 47], ['OWOWOWOW', 47], ["Dude why'd you do that?\nNot cool, man.", 6]];
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -416,7 +419,7 @@ export class GardenScene {
     const cw = this.canvas.width;
     const ch = this.canvas.height;
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#39b270';
+    ctx.fillStyle = '#5c8c4c'; // the grass base colour, around the edges of the map
     ctx.fillRect(0, 0, cw, ch);
     const [mx, my] = this.toScreen(0, 0);
     // Only the base layer: the map's brown patch layer is drawn under the rock.
@@ -474,16 +477,28 @@ export class GardenScene {
     this.ctx.fillRect(sx - r * this.scale, sy - r * this.scale, r * 2 * this.scale, r * 2 * this.scale);
   }
 
+  // Outlined text centred on (sx, sy), nudged inside the canvas so it is
+  // never cut off at the edges. A newline starts a second line above.
   text(str, sx, sy, color, size = 4) {
     const { ctx } = this;
-    ctx.font = `${Math.round(size * this.scale)}px "Jersey 10", monospace`;
+    const px = Math.round(size * this.scale);
+    ctx.font = `${px}px "Jersey 10", monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = Math.max(2, this.scale * 0.9);
     ctx.strokeStyle = '#1a1c2c';
-    ctx.strokeText(str, sx, sy);
     ctx.fillStyle = color;
-    ctx.fillText(str, sx, sy);
+    const lines = String(str).split('\n');
+    const half = Math.max(...lines.map((l) => ctx.measureText(l).width)) / 2 + ctx.lineWidth;
+    const x = clamp(sx, half, Math.max(half, this.canvas.width - half));
+    // Stay below the HUD that sits over the top of the garden.
+    const inset = this.handlers.topInset?.() || 0;
+    const top = Math.max(inset + px * 0.6, sy - (lines.length - 1) * px * 0.9);
+    lines.forEach((l, i) => {
+      const y = top + i * px * 0.9;
+      ctx.strokeText(l, x, y);
+      ctx.fillText(l, x, y);
+    });
   }
 
   // A tiny four-point pixel sparkle.
@@ -630,11 +645,12 @@ export class GardenScene {
   squishUnder(x, y) {
     const art = this.rockSize();
     for (const e of this.entities.values()) {
-      if (e.hidden || !this.onRock(e.x, e.y - this.bob(e), { x, y })) continue;
+      // Skip bugs already reacting to this drop, so one crush says one thing.
+      if (e.hidden || e.squish > 0 || !this.onRock(e.x, e.y - this.bob(e), { x, y })) continue;
       e.squish = 2.4;
       e.slow = 6;
-      e.label = Math.random() < 0.5 ? 'Ouch!' : 'Ow\u2026';
-      e.bubble = 1.8;
+      e.label = pickWeighted(CRUSH_REACTIONS);
+      e.bubble = e.label.includes('\n') ? 3 : 1.8;
       e.labelColor = '#ef7d57';
       e.act = null;
       e.actTime = 0;
@@ -1028,6 +1044,12 @@ export class GardenScene {
     }
     this.handlers.onEmpty?.();
   }
+}
+
+function pickWeighted(entries) {
+  let r = Math.random() * entries.reduce((s, [, w]) => s + w, 0);
+  for (const [v, w] of entries) if ((r -= w) < 0) return v;
+  return entries[0][0];
 }
 
 function hexA(hex, a) {

@@ -71,6 +71,9 @@ const RAW = [
   ['mantis', 'Moon Mantis', 'mythic', 'crawler', ['cut', 'fight', 'fly'], 'Prays to the moon, strikes like lightning.'],
   ['luna_moth', 'Luna Moth', 'mythic', 'flyer', ['fly', 'build', 'lift'], 'A pale green spirit of the midnight sky.'],
 
+  // Drawn from the Moon Mantis's outline with petal-shaped legs.
+  ['orchid_mantis', 'Orchid Mantis', 'epic', 'crawler', ['cut', 'fight', 'build'], 'Pretends to be a flower. Very convincingly.'],
+
   // A real giant: its sprite is 32x32, twice the size of everyone else.
   ['atlas_moth', 'Atlas Moth', 'epic', 'flyer', ['fly', 'lift'], 'Its wingtips look like snake heads.'],
 
@@ -145,7 +148,6 @@ const RELATIVES = [
 
   ['hercules_beetle', 'Hercules Beetle', 'rhino_beetle', 'epic', ['lift', 'fight', 'dig'], { k: 'n', P: 'N', l: 'W' }, 'Its horn is longer than its body.'],
   ['goliath_beetle', 'Goliath Beetle', 'stag_beetle', 'epic', ['lift', 'fight', 'cut'], { N: 'W', n: 'l' }, 'One of the heaviest insects on Earth.'],
-  ['orchid_mantis', 'Orchid Mantis', 'mantis', 'epic', ['cut', 'fight', 'build'], { G: 'p', g: 'W' }, 'Pretends to be a flower. Very convincingly.'],
   ['cobalt_tarantula', 'Cobalt Tarantula', 'tarantula', 'epic', ['dig', 'fight', 'build'], { k: 'b', N: 'c', r: 'C' }, 'Electric blue and famously grumpy.'],
   ['rainbow_scarab', 'Rainbow Scarab', 'jewel_beetle', 'epic', ['dig', 'fly', 'lift'], { G: 'P', T: 'b', g: 'C' }, 'Shifts colour with every step.'],
 
@@ -184,7 +186,7 @@ const AURAS = {
 
 // How each sprite is drawn. Most are top-down with the head pointing up; these
 // are side views facing right, so they mirror and tilt instead of rotating.
-const SIDE_VIEW = new Set(['magma_snail', 'caterpillar', 'cricket', 'dung_beetle', 'grub', 'mantis', 'millipede', 'mole_cricket', 'slug', 'snail', 'weevil', 'worm']);
+const SIDE_VIEW = new Set(['magma_snail', 'orchid_mantis', 'caterpillar', 'cricket', 'dung_beetle', 'grub', 'mantis', 'millipede', 'mole_cricket', 'slug', 'snail', 'weevil', 'worm']);
 
 const BASES = RAW.map(([id, name, rarity, family, traits, desc]) => ({
   id, name, rarity, family, traits, desc, base: id, recolor: null, sprite: `8x/${id}.png`, view: SIDE_VIEW.has(id) ? 'side' : 'top',

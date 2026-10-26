@@ -1,12 +1,14 @@
 import { SPECIES, SPECIES_LIST, FAMILIES } from '../data/species.js';
 import { RARITIES, RARITY_ORDER, VARIANTS } from '../data/rarities.js';
 import { TRAITS, TRAIT_IDS } from '../data/traits.js';
-import { ITEMS, ITEM_TYPES, sellPrice, itemEffectsText } from '../data/items.js';
+import { ITEMS, ITEM_TYPES, ITEM_TIERS, sellPrice, itemEffectsText, itemStock } from '../data/items.js';
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
 import { UPGRADES, upgradeCost, upgradeValue } from '../data/upgrades.js';
 import { GARDEN_LIMIT, PARTY_SIZE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
 import { DECOR } from '../data/decor.js';
+import { GARDEN_CHESTS } from '../data/garden-chests.js';
+import { gardenChestArea } from '../systems/chests.js';
 import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs, shopStock } from '../systems/eggs.js';
 import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours, partyPower, paceFactor } from '../systems/expedition.js';
@@ -47,6 +49,9 @@ export function traitChips(A, bug) {
     return `<span class="tchip" style="--tc:${TRAITS[t].color}" title="${TRAITS[t].name}">${traitIcon(A, t)}${eff[t]}${b ? '<em>*</em>' : ''}</span>`;
   }).join('');
 }
+
+// A small coloured tag naming an item's tier (Common ... Relic).
+const itemTierTag = (it) => (it.tier ? `<span class="item-tier" style="--tc:${ITEM_TIERS[it.tier].color}">${ITEM_TIERS[it.tier].name}</span>` : '');
 
 function bugCard(v, bug, { act = 'open-bug', selected = false, disabled = false, extra = '', data = {} } = {}) {
   const st = v.game.state;
@@ -90,6 +95,7 @@ export function renderHud(v) {
   return `<div class="hud-row">
       <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${potCap(st)}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
       <button class="chip garden-count" data-act="nav" data-panel="bugs">${icon(A, 'flower', 'xs')} ${garden}/${GARDEN_LIMIT}</button>
+      <button class="chip chests-chip" data-act="garden-chests" title="Open chests with your Chest Keys">${icon(A, 'key', 'xs')} ${st.inventory.key || 0}</button>
     </div>
     <div class="chips">${chips.join('')}</div>`;
 }
@@ -339,7 +345,7 @@ function areaCard(v, area) {
   }
   return `<div class="area-card ${as.unlocked ? '' : 'locked'}">
     <div class="area-banner px-bg" style="${areaBackground(area, A)}"><span>${area.index + 1}. ${area.name}</span><i class="diff">Difficulty ${area.difficulty}</i></div>
-    <div class="area-body"><p>${esc(area.desc)}</p>
+    <div class="area-body">${area.fullName ? `<p class="meta"><b>${esc(area.fullName)}</b></p>` : ''}<p>${esc(area.desc)}</p>
       <div class="meta">${eggImg(A, area.eggTier, 'xs')} Finds ${EGG_BY_ID[area.eggTier].name}s, and rarely better: up to ${EGG_TIERS[Math.min(EGG_TIERS.length - 1, EGG_BY_ID[area.eggTier].index + 3)].name}s</div>
       <div class="meta">Suits party power <b>${area.pace.power}</b>: ${fmtDur(encMin)} per encounter at that power, longer for weaker parties${area.index ? ' (and more so here than in easier areas)' : ''}${as.unlocked ? ` · ${as.runs} completed` : ''}</div>
       <div class="row wrap">${action}</div></div></div>`;
@@ -362,6 +368,7 @@ export function plannerModal(v0) {
       const b = party[i];
       return b ? `<button class="slot filled" data-act="plan-toggle" data-uid="${b.uid}">${bugImg(A, b)}<small>${esc(bugName(b))}</small></button>` : '<div class="slot">+</div>';
     }).join('')}</div>
+    ${partyGear(v, party)}
     <div class="coverage">${TRAIT_IDS.map((t) => {
       const s = scores[t];
       const score = s ? s.score : 0;
@@ -374,6 +381,30 @@ export function plannerModal(v0) {
     ${bonus.coinBonus || bonus.specialFind || bonus.encounterSpeed ? `<div class="meta">${[bonus.encounterSpeed && `Items: encounters -${pct(bonus.encounterSpeed)} time`, bonus.coinBonus && `+${pct(bonus.coinBonus)} coins`, bonus.specialFind && `+${pct(bonus.specialFind)} special finds`].filter(Boolean).join(' · ')}</div>` : ''}
     <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid) })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Launch expedition', 'launch', {}, 'go big', party.length !== PARTY_SIZE)}</div>`;
+}
+
+// Equipment panels under the party slots: one per bug, in the same order.
+// Tapping a panel opens a picker of the gear in your bag for that bug.
+function partyGear(v, party) {
+  const { game, A, ui } = v;
+  const st = game.state;
+  const panels = Array.from({ length: PARTY_SIZE }, (_, i) => {
+    const b = party[i];
+    if (!b) return '<div class="gear-panel empty"></div>';
+    const it = b.item && ITEMS[b.item];
+    return `<button class="gear-panel ${ui.plan.gearFor === b.uid ? 'open' : ''}" data-act="plan-gear" data-uid="${b.uid}" title="Change ${esc(bugName(b))}'s item">
+      ${it ? `${icon(A, b.item, 'sm')}<small>${esc(it.name)}</small>` : `<span class="muted">+</span><small>No item</small>`}</button>`;
+  }).join('');
+  const bug = party.find((b) => b.uid === ui.plan.gearFor);
+  let picker = '';
+  if (bug) {
+    const gear = Object.keys(st.inventory).filter((id) => ITEMS[id]?.type === 'gear' && st.inventory[id] > 0);
+    picker = `<div class="gear-picker"><div class="section-title">${esc(bugName(bug))}'s item <small>one per bug; the old one goes back in your bag</small></div>
+      ${bug.item ? `<div class="list-row">${icon(A, bug.item, 'sm')}<div class="grow"><b>${ITEMS[bug.item].name}</b> <small class="inline">equipped</small><small>${itemEffectsText(bug.item)}</small></div>${btn('Unequip', 'plan-unequip', { uid: bug.uid }, 'sm')}</div>` : ''}
+      ${gear.map((id) => `<div class="list-row">${icon(A, id, 'sm')}<div class="grow"><b>${ITEMS[id].name}</b> x${st.inventory[id]} ${itemTierTag(ITEMS[id])}<small>${itemEffectsText(id)}</small></div>${btn('Equip', 'plan-equip', { uid: bug.uid, item: id }, 'go sm')}</div>`).join('') || '<p class="muted center">No spare gear in your bag. Buy some in Items, or find it on expeditions.</p>'}
+    </div>`;
+  }
+  return `<div class="gear-panels">${panels}</div>${picker}`;
 }
 
 // How the party's power compares with what the area suits, and what that
@@ -475,7 +506,10 @@ export function renderItems(v) {
   const tabs = `<div class="tabs">${btn('Shop', 'items-tab', { tab: 'shop' }, ui.itemsTab === 'shop' ? 'on' : '')}${btn('Inventory', 'items-tab', { tab: 'inventory' }, ui.itemsTab === 'inventory' ? 'on' : '')}</div>`;
   if (ui.itemsTab === 'shop') {
     return `${tabs}<p class="muted">Equipment for your bugs. Each bug holds one item. Chest Keys can't be bought: find them on expeditions.</p>
-      ${Object.entries(ITEMS).filter(([, it]) => it.buy).map(([id, it]) => `<div class="list-row">${icon(A, id)}<div class="grow"><b>${it.name}</b>${st.inventory[id] ? ` <small class="inline">(own ${st.inventory[id]})</small>` : ''}<small>${itemEffectsText(id)}</small><small>${esc(it.desc)}</small></div>${btn(coins(A, it.buy), 'buy-item', { item: id }, 'go sm', st.coins < it.buy)}</div>`).join('')}`;
+      ${Object.entries(ITEMS).filter(([, it]) => it.buy).map(([id, it]) => {
+        const stock = itemStock(st, id);
+        return `<div class="list-row ${stock.ok ? '' : 'locked'}">${icon(A, id)}<div class="grow"><b>${it.name}</b> ${itemTierTag(it)}${st.inventory[id] ? ` <small class="inline">(own ${st.inventory[id]})</small>` : ''}<small>${itemEffectsText(id)}</small><small>${stock.ok ? esc(it.desc) : `${icon(A, 'lock', 'xs')} ${esc(stock.reason)}`}</small></div>${btn(coins(A, it.buy), 'buy-item', { item: id }, 'go sm', !stock.ok || st.coins < it.buy)}</div>`;
+      }).join('')}`;
   }
   const ids = Object.keys(st.inventory).filter((id) => ITEMS[id]);
   const equipped = st.bugs.filter((b) => b.item);
@@ -485,7 +519,7 @@ export function renderItems(v) {
     return `<div class="section-title">${title}</div>${list.map((id) => {
       const n = st.inventory[id];
       const price = sellPrice(id);
-      return `<div class="list-row">${icon(A, id)}<div class="grow"><b>${ITEMS[id].name}</b> x${n}<small>${type === 'gear' ? itemEffectsText(id) : esc(ITEMS[id].desc)}</small></div>
+      return `<div class="list-row">${icon(A, id)}<div class="grow"><b>${ITEMS[id].name}</b> x${n} ${type === 'gear' ? itemTierTag(ITEMS[id]) : ''}<small>${type === 'gear' ? itemEffectsText(id) : esc(ITEMS[id].desc)}</small></div>
         <div class="row col">${type === 'gear' ? btn('Equip', 'item-equip', { item: id }, 'go sm') : ''}${btn(`Sell ${price}`, 'sell', { item: id, qty: 1 }, 'sm')}${n > 1 && type === 'resource' ? btn(`All ${price * n}`, 'sell', { item: id, qty: n }, 'sm') : ''}</div></div>`;
     }).join('')}`;
   }).join('');
@@ -501,6 +535,31 @@ export function pickBugModal(v0, itemId) {
     <p class="meta">A bug's current item goes back to your inventory.</p>
     <div class="bug-grid compact">${list.map((b) => bugCard(v, b, { act: 'equip', data: { item: itemId } })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}</div>`;
+}
+
+// ---------- Garden chests ----------
+
+export function gardenChestsModal(v) {
+  const { game, A, ui } = v;
+  const st = game.state;
+  const keys = st.inventory.key || 0;
+  const onBugs = st.bugs.filter((b) => b.item === 'key').length;
+  const r = ui.chestResult;
+  const result = r ? `<div class="chest-reveal">
+      <div class="chest-anim">${icon(A, 'chest', 'big closed')}${icon(A, 'chest_open', 'big open')}</div>
+      <div><b>${esc(r.chest.name)} opened!</b><small>Stocked from ${esc(r.area.name)} · ${r.chest.keys} key${r.chest.keys > 1 ? 's' : ''} spent</small>${rewardInline(A, { coins: r.coins, items: r.items, eggs: r.eggs.map((e) => e.tier) })}</div>
+    </div>` : '';
+  return `<div class="modal-head">${icon(A, 'chest', 'big')}<div><h3>Garden chests</h3><small>Spend Chest Keys on a chest right here. Chests found on expeditions are still the better deal.</small></div></div>
+    <p class="key-balance">${icon(A, 'key', 'sm')} <b>${keys}</b> Chest Key${keys === 1 ? '' : 's'} in your bag${onBugs ? ` <small class="inline">(${onBugs} more equipped on bugs)</small>` : ''}</p>
+    ${result}
+    ${GARDEN_CHESTS.map((c) => {
+      const area = gardenChestArea(st, c);
+      const short = keys < c.keys;
+      return `<div class="list-row garden-chest">${icon(A, 'chest', 'sm')}<div class="grow"><b>${c.name}</b> <small class="inline">${icon(A, 'key', 'xs')} x${c.keys}</small>
+          <small>${esc(c.desc)}</small><small>Stocked from <b>${esc(area.name)}</b>: about ${fmtNum(Math.round(area.coinBase * area.chest.coins * c.coinFactor))} coins, ${c.rolls[0] === c.rolls[1] ? c.rolls[0] : `${c.rolls[0]}-${c.rolls[1]}`} item${c.rolls[1] > 1 ? 's' : ''}, sometimes an egg</small></div>
+        ${btn(short ? `Need ${c.keys}` : `Open (${c.keys} ${icon(A, 'key', 'xs')})`, 'open-chest', { id: c.id }, 'go sm', short || ui.chestBusy)}</div>`;
+    }).join('')}
+    <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
 }
 
 // ---------- Upgrades ----------

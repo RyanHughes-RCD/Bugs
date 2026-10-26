@@ -2,7 +2,7 @@ import { Rng } from './core/rng.js';
 import { SAVE_KEY, BACKUP_KEY, newGameState, serialize, deserialize, encodeSave, decodeSave } from './core/save.js';
 import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
-import { ITEMS, sellPrice } from './data/items.js';
+import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
 import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
 import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
@@ -10,6 +10,8 @@ import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from '.
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
 import { DECOR_BY_ID, LOG } from './data/decor.js';
+import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
+import { rollGardenChest } from './systems/chests.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
 import { SPECIES } from './data/species.js';
 
@@ -254,6 +256,26 @@ export class Game {
     return { ok: true };
   }
 
+  // ---------- garden chests ----------
+
+  // Spends Chest Keys from the bag on a garden chest. Everything is checked
+  // and rolled first; keys and rewards then change together in one save, so
+  // a failed opening never costs keys and a success pays out exactly once.
+  openGardenChest(id) {
+    const chest = GARDEN_CHEST_BY_ID[id];
+    if (!chest) return fail('Unknown chest.');
+    const have = this.state.inventory.key || 0;
+    if (have < chest.keys) return fail(`The ${chest.name} needs ${chest.keys} Chest Key${chest.keys > 1 ? 's' : ''}. You have ${have}.`);
+    const loot = rollGardenChest(this.state, chest, this.rng);
+    this.takeItem('key', chest.keys);
+    this.earn(loot.coins);
+    for (const [itemId, n] of Object.entries(loot.items)) this.addItem(itemId, n);
+    const eggs = loot.eggs.map((tier) => this.addEgg(tier, 'chest'));
+    this.state.stats.gardenChests = (this.state.stats.gardenChests || 0) + 1;
+    this.commit();
+    return { ok: true, chest, area: loot.area, coins: loot.coins, items: loot.items, eggs };
+  }
+
   // ---------- visitors & the rock ----------
 
   visitor(id) {
@@ -380,6 +402,8 @@ export class Game {
   buyItem(id) {
     const it = ITEMS[id];
     if (!it?.buy) return fail('That item is not for sale.');
+    const stock = itemStock(this.state, id);
+    if (!stock.ok) return fail(`${stock.reason}.`);
     if (!this.spend(it.buy)) return fail('Not enough coins.');
     this.addItem(id);
     this.commit();

@@ -98,6 +98,12 @@ export class App {
       onDecorMoved: (id, x, y) => this.result(this.game.moveDecor(id, x, y)),
       onDecorTap: (id) => this.decorTap(id),
       onZap: () => this.game.batteryZap().ok,
+      // How far the HUD reaches down over the garden, in canvas pixels.
+      topInset: () => {
+        const hud = this.el.hud.getBoundingClientRect();
+        const canvas = this.scene.canvas.getBoundingClientRect();
+        return Math.max(0, hud.bottom - canvas.top) * (window.devicePixelRatio || 1);
+      },
     });
     this.scene.start();
 
@@ -502,6 +508,18 @@ export class App {
         this.spendCheck(cost, `${u.name} level ${(st.upgrades[d.id] || 0) + 1}`, () => this.result(g.buyUpgrade(d.id), `${u.name} upgraded!`));
         break;
       }
+      case 'garden-chests': ui.chestResult = null; this.hideQuick(); this.openModal(() => V.gardenChestsModal(this.v)); break;
+      case 'open-chest': {
+        // Ignore taps while the last opening is still on screen being revealed.
+        if (ui.chestBusy) break;
+        const res = g.openGardenChest(d.id);
+        if (!res.ok) { this.toast(res.error, 'bad'); break; }
+        ui.chestResult = res;
+        ui.chestBusy = true;
+        this.renderModal();
+        setTimeout(() => { ui.chestBusy = false; if (this.modal) this.renderModal(); }, 700);
+        break;
+      }
       case 'buy-decor': {
         const dec = DECOR_BY_ID[d.id];
         this.spendCheck(dec.price, `the ${dec.name}`, () => {
@@ -529,6 +547,16 @@ export class App {
         this.renderModal();
         break;
       }
+      // Equipment panels in the planner: pick a bug, then equip or unequip in place.
+      case 'plan-gear': ui.plan.gearFor = ui.plan.gearFor === uid ? null : uid; this.renderModal(); break;
+      case 'plan-equip':
+        if (this.result(g.equip(uid, d.item), `${bugName(g.bug(uid))} equipped ${ITEMS[d.item].name}.`)) ui.plan.gearFor = null;
+        this.renderModal();
+        break;
+      case 'plan-unequip':
+        this.result(g.unequip(uid), 'Item returned to your bag.');
+        this.renderModal();
+        break;
       case 'plan-count': ui.plan.count = ui.lastTrip = clampEncounterCount(Number(d.n)); this.renderModal(); break;
       case 'plan-auto': ui.plan.party = this.autoParty(ui.plan.areaId); this.renderModal(); break;
       case 'launch': {
