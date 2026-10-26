@@ -1,6 +1,6 @@
 import { SPECIES } from '../data/species.js';
 import { EGG_BY_ID } from '../data/eggs.js';
-import { DECOR_BY_ID, BATTERY } from '../data/decor.js';
+import { DECOR_BY_ID, BATTERY, NIGHT_FLYERS } from '../data/decor.js';
 import { GARDEN_MAP } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
@@ -8,6 +8,7 @@ import { incubatorCount } from '../systems/eggs.js';
 import { dirtPatches, favouriteDecor, potCap, decorFits, decorRect } from '../systems/garden.js';
 import { rockFindReady } from '../systems/visitors.js';
 import { fmtTime } from './format.js';
+import { daylight } from '../systems/daylight.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
 export const WORLD_W = GARDEN_MAP.w;
@@ -21,15 +22,6 @@ const CRUSH_REACTIONS = [['YEEEOUCH!', 47], ['OWOWOWOW', 47], ["Dude why'd you d
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
-export function timeOfDay(ts) {
-  const d = new Date(ts);
-  const h = d.getHours() + d.getMinutes() / 60;
-  if (h >= 20.5 || h < 5.5) return 'night';
-  if (h >= 18.5) return 'dusk';
-  if (h < 7) return 'dawn';
-  return 'day';
-}
 
 export class GardenScene {
   constructor(canvas, game, assets, handlers) {
@@ -49,6 +41,8 @@ export class GardenScene {
     this.flowers = assets.flowerSpots.filter((f) => f.x > BOUNDS.x0 && f.x < BOUNDS.x1 && f.y > BOUNDS.y0 && f.y < BOUNDS.y1);
     this.camY = null;
     this.t = 0;
+    this.dl = daylight(game.now());
+    this.shade = document.createElement('canvas'); // the night's darkness, with holes cut by lights
     this.last = performance.now();
     this.drag = null;
     this.rockDrag = null;
@@ -160,6 +154,7 @@ export class GardenScene {
       e.species = species;
       e.aura = sp.aura;
       e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
+      e.nocturnal = e.glowing || NIGHT_FLYERS.has(sp.base); // stays up all night
       return e;
     };
     for (const b of home) {
@@ -237,6 +232,12 @@ export class GardenScene {
   // visit a flower, dig, or hide under the rock.
   pickTarget(e) {
     e.act = null;
+    // At night most bugs nod off where they are; night flyers stay busy.
+    e.sleeping = !e.nocturnal && !e.leaving && Math.random() < 0.75 * this.dl.dark;
+    if (e.sleeping) {
+      e.wait = rand(8, 20);
+      return;
+    }
     const roll = Math.random();
     const fav = e.fav && e.fav !== 'rock' && this.decorSpot(e.fav);
     if (fav && roll < 0.6) {
@@ -362,6 +363,11 @@ export class GardenScene {
     }
     if (e.wait > 0) {
       e.wait -= dt;
+      if (e.sleeping) {
+        if (Math.random() < dt * 0.4) this.floaters.push({ x: e.x + 4, y: e.y - 6, text: 'z', color: '#c8d4ff', life: 1.6 });
+        if (e.wait <= 0) this.pickTarget(e);
+        return;
+      }
       // Look around while idle: top-down bugs turn, side views about-face.
       if (e.side) {
         if (Math.random() < dt * 0.15) e.flip = -e.flip;
@@ -414,6 +420,7 @@ export class GardenScene {
 
   update(dt) {
     this.t += dt;
+    this.dl = daylight(this.game.now());
     this.sync();
     const list = [...this.entities.values()];
     for (const e of list) this.updateEntity(e, dt, list);
@@ -463,19 +470,7 @@ export class GardenScene {
     }
     ctx.globalAlpha = 1;
 
-    const tod = timeOfDay(this.game.now());
-    if (tod !== 'day') {
-      ctx.fillStyle = tod === 'night' ? 'rgba(20, 24, 70, 0.4)' : tod === 'dusk' ? 'rgba(180, 70, 60, 0.15)' : 'rgba(255, 180, 120, 0.12)';
-      ctx.fillRect(0, 0, cw, ch);
-    }
-    if (tod === 'night') {
-      ctx.globalCompositeOperation = 'lighter';
-      for (const e of all) if (e.glowing) this.glow(e.x, e.y, 14, 'rgba(255, 220, 120, 0.35)');
-      const jar = this.decorSpot('jar');
-      if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, 'rgba(255, 230, 120, 0.45)');
-      for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${0.4 + 0.4 * Math.sin(f.p * 3)})`);
-      ctx.globalCompositeOperation = 'source-over';
-    }
+    this.drawNight(all);
     for (const e of all) this.drawOverlay(e);
     for (const f of this.floaters) {
       const [sx, sy] = this.toScreen(f.x, f.y - (1.6 - f.life) * 14);
@@ -486,13 +481,53 @@ export class GardenScene {
     this.drawNests();
   }
 
-  glow(x, y, r, color) {
+  // The day/night wash from the device clock. After dark, glowing bugs, the
+  // jar, the battery and fireflies light up little pools in the darkness.
+  drawNight(all) {
+    const { ctx } = this;
+    const { dark, tint } = this.dl;
+    if (tint[3] < 0.005) return;
+    const lights = [];
+    if (dark > 0.02) {
+      for (const e of all) {
+        if (e.glowing) lights.push([e.x, e.y - this.bob(e), 18, 0.9]);
+        else if (e.act === 'charge' && e.actTime > 0) lights.push([e.x, e.y, 12, 0.7]);
+      }
+      const jar = this.decorSpot('jar');
+      if (jar) lights.push([jar.x, jar.y, 38 + Math.sin(this.t * 2) * 2, 1]);
+      const bat = this.decorSpot('battery');
+      if (bat) lights.push([bat.x, bat.y, 16 + Math.sin(this.t * 7) * 1.5, 0.5]);
+      for (const f of this.fireflies) lights.push([f.x, f.y, 7, 0.5 + 0.4 * Math.sin(f.p * 3)]);
+    }
+    const sh = this.shade;
+    if (sh.width !== this.canvas.width || sh.height !== this.canvas.height) {
+      sh.width = this.canvas.width;
+      sh.height = this.canvas.height;
+    }
+    const c = sh.getContext('2d');
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, sh.width, sh.height);
+    c.fillStyle = `rgba(${tint[0] | 0}, ${tint[1] | 0}, ${tint[2] | 0}, ${tint[3]})`;
+    c.fillRect(0, 0, sh.width, sh.height);
+    c.globalCompositeOperation = 'destination-out';
+    for (const [x, y, r, a] of lights) this.glow(x, y, r, `rgba(0, 0, 0, ${a * dark})`, c);
+    ctx.drawImage(sh, 0, 0);
+    if (dark < 0.02) return;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const e of all) if (e.glowing) this.glow(e.x, e.y - this.bob(e), 14, `rgba(255, 220, 120, ${0.35 * dark})`);
+    const jar = this.decorSpot('jar');
+    if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, `rgba(255, 230, 120, ${0.45 * dark})`);
+    for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${(0.4 + 0.4 * Math.sin(f.p * 3)) * dark})`);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  glow(x, y, r, color, c = this.ctx) {
     const [sx, sy] = this.toScreen(x, y);
-    const g = this.ctx.createRadialGradient(sx, sy, 0, sx, sy, r * this.scale);
+    const g = c.createRadialGradient(sx, sy, 0, sx, sy, r * this.scale);
     g.addColorStop(0, color);
     g.addColorStop(1, 'rgba(0,0,0,0)');
-    this.ctx.fillStyle = g;
-    this.ctx.fillRect(sx - r * this.scale, sy - r * this.scale, r * 2 * this.scale, r * 2 * this.scale);
+    c.fillStyle = g;
+    c.fillRect(sx - r * this.scale, sy - r * this.scale, r * 2 * this.scale, r * 2 * this.scale);
   }
 
   // Outlined text centred on (sx, sy), nudged inside the canvas so it is
@@ -824,7 +859,7 @@ export class GardenScene {
   }
 
   // Draws the water's moving surface onto its small canvas, clipped to the water.
-  paintWater(day) {
+  paintWater(shine) {
     const w = this.water;
     const c = w.ctx;
     c.clearRect(0, 0, w.surface.width, w.surface.height);
@@ -846,7 +881,7 @@ export class GardenScene {
       }
     }
     for (const g of w.glints) {
-      c.globalAlpha = Math.sin((g.age / g.life) * Math.PI) * (day ? 1 : 0.35);
+      c.globalAlpha = Math.sin((g.age / g.life) * Math.PI) * shine;
       c.fillStyle = '#ffffff';
       c.fillRect(g.x, g.y, 1, 1);
       if (g.age / g.life > 0.3 && g.age / g.life < 0.7) { c.fillRect(g.x - 1, g.y, 3, 1); c.fillRect(g.x, g.y - 1, 1, 3); }
@@ -865,7 +900,7 @@ export class GardenScene {
     const [sx, sy] = this.toScreen(r.x0, r.y0);
     ctx.drawImage(art, Math.round(sx), Math.round(sy), art.width * scale, art.height * scale);
     if (!this.water) return;
-    this.paintWater(timeOfDay(this.game.now()) !== 'night');
+    this.paintWater(1 - 0.65 * this.dl.dark);
     ctx.drawImage(this.water.surface, Math.round(sx), Math.round(sy), art.width * scale, art.height * scale);
   }
 
@@ -1062,6 +1097,7 @@ export class GardenScene {
       e.hearts = 1.2;
       e.wait = 2;
       e.actTime = 0;
+      e.sleeping = false; // a tap wakes a sleepy bug
       if (e.visitor) return this.greet(e);
       return this.handlers.onBug(e.uid);
     }
