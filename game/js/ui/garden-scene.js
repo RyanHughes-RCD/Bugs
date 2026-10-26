@@ -33,6 +33,7 @@ export class GardenScene {
     this.entities = new Map();
     this.floaters = [];
     this.particles = [];
+    this.pulses = []; // electric rings spreading from the battery
     this.camX = null;
     this.fireflies = Array.from({ length: 40 }, () => ({ x: rand(0, WORLD_W), y: rand(0, WORLD_H), p: rand(0, 6.28) }));
     const coinRng = new Rng(7);
@@ -233,7 +234,7 @@ export class GardenScene {
   pickTarget(e) {
     e.act = null;
     // At night most bugs nod off where they are; night flyers stay busy.
-    e.sleeping = !e.nocturnal && !e.leaving && Math.random() < 0.75 * this.dl.dark;
+    e.sleeping = !e.nocturnal && !e.leaving && !(e.boost > 0) && Math.random() < 0.75 * this.dl.dark;
     if (e.sleeping) {
       e.wait = rand(8, 20);
       return;
@@ -324,6 +325,11 @@ export class GardenScene {
     e.surprised = Math.max(0, e.surprised - dt);
     e.squish = Math.max(0, (e.squish || 0) - dt);
     e.slow = Math.max(0, (e.slow || 0) - dt);
+    if (e.boost > 0) {
+      e.boost -= dt;
+      if (e.wait > 0.4) e.wait = 0.4; // too wired to sit still
+      if (Math.random() < dt * 5) this.particles.push({ x: e.x + rand(-3, 3), y: e.y - rand(0, 5), vx: rand(-6, 6), vy: rand(-10, -2), life: 0.35, color: Math.random() < 0.5 ? '#fff07a' : '#73eff7' });
+    }
     e.moving = false;
     if (e.hidden) {
       e.hidden = Math.max(0, e.hidden - dt);
@@ -395,6 +401,7 @@ export class GardenScene {
       return;
     }
     let sp = e.speed * (e.slow > 0 ? 0.35 : 1); // a squished bug limps for a bit
+    if (e.boost > 0) sp *= BATTERY.boostSpeed; // charged up by a battery pulse
     if (e.leaving) sp *= 2.5; // off on an adventure, or heading home
     if (e.family === 'hopper') sp *= Math.sin(e.phase * 0.5) > 0.3 ? 3.2 : 0.2;
     const step = Math.min(d, sp * dt);
@@ -430,6 +437,7 @@ export class GardenScene {
       f.y = (f.y + Math.sin(f.p * 0.5) * dt * 6 + WORLD_H) % WORLD_H;
     }
     this.zapCheck(list);
+    this.updatePulses(dt, list);
     this.updateWater(dt);
     this.logRoll = Math.max(0, this.logRoll - dt);
     for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * dt; p.life -= dt; }
@@ -471,6 +479,7 @@ export class GardenScene {
     ctx.globalAlpha = 1;
 
     this.drawNight(all);
+    this.drawPulses();
     for (const e of all) this.drawOverlay(e);
     for (const f of this.floaters) {
       const [sx, sy] = this.toScreen(f.x, f.y - (1.6 - f.life) * 14);
@@ -930,6 +939,63 @@ export class GardenScene {
     return null;
   }
 
+  // Tapping the battery: a ring of electricity spreads out from it.
+  pulse() {
+    const spot = this.decorSpot('battery');
+    if (!spot) return;
+    this.pulses.push({ x: spot.x, y: spot.y, age: 0, hit: new Set() });
+    for (let k = 0; k < 14; k++) {
+      const a = rand(0, Math.PI * 2);
+      this.particles.push({ x: spot.x, y: spot.y, vx: Math.cos(a) * rand(20, 40), vy: Math.sin(a) * rand(20, 40) - 10, life: 0.5, color: k % 2 ? '#fff07a' : '#ffffff' });
+    }
+  }
+
+  // Each bug the ring sweeps over gets a jolt: a coin and a burst of speed.
+  updatePulses(dt, list) {
+    const now = performance.now();
+    for (const p of this.pulses) {
+      p.age += dt;
+      const radius = Math.min(1, p.age / (BATTERY.pulseMs / 1000)) * BATTERY.pulseRadius;
+      for (const e of list) {
+        if (e.hidden || e.leaving || p.hit.has(e) || Math.hypot(e.x - p.x, e.y - p.y) > radius) continue;
+        p.hit.add(e);
+        e.boost = BATTERY.boostMs / 1000;
+        Object.assign(e, { label: 'Bzzt!', labelColor: '#fff07a', bubble: 1.2, surprised: 1, sleeping: false, act: null, actTime: 0, wait: 0.2 });
+        for (let k = 0; k < 6; k++) this.particles.push({ x: e.x, y: e.y - 4, vx: rand(-20, 20), vy: rand(-20, -4), life: 0.5, color: k % 2 ? '#fff07a' : '#73eff7' });
+        if ((e.zapUntil || 0) > now) continue;
+        e.zapUntil = now + BATTERY.cooldownMs;
+        if (this.handlers.onZap?.()) this.float(e.x + 8, e.y - 4, '+1');
+      }
+    }
+    this.pulses = this.pulses.filter((p) => p.age < BATTERY.pulseMs / 1000 + 0.25);
+  }
+
+  // The pulse: a jagged, flickering ring that fades as it spreads.
+  drawPulses() {
+    const { ctx, scale } = this;
+    for (const p of this.pulses) {
+      const t = Math.min(1, p.age / (BATTERY.pulseMs / 1000));
+      const radius = t * BATTERY.pulseRadius;
+      const fade = 1 - Math.max(0, (p.age - BATTERY.pulseMs / 1000) / 0.25);
+      ctx.globalAlpha = (1 - t * 0.6) * fade;
+      this.glow(p.x, p.y, radius * 0.9, 'rgba(255, 240, 122, 0.18)');
+      const steps = 48;
+      for (const [color, jit] of [['#73eff7', 3], ['#fff07a', 1.8], ['#ffffff', 0.8]]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1, scale * (color === '#ffffff' ? 0.5 : 0.8));
+        ctx.beginPath();
+        for (let k = 0; k <= steps; k++) {
+          const a = (k / steps) * Math.PI * 2;
+          const r = radius + (k % steps ? rand(-jit, jit) : 0);
+          const [sx, sy] = this.toScreen(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 0.7);
+          if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Bugs that wander too close to the battery get a zap and hop away.
   // Electric bugs love it and never get zapped.
   zapCheck(list) {
@@ -957,6 +1023,7 @@ export class GardenScene {
       const r = this.riverRect();
       for (let k = 0; k < 3; k++) this.water.rings.push({ x: x - r.x0, y: y - r.y0, age: -k * 0.18, life: 1.6, size: 7 });
     }
+    if (id === 'battery') this.pulse();
     if (id === 'log') {
       this.logRoll = 0.9;
       const spot = this.decorSpot('log');

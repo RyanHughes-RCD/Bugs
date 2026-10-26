@@ -298,6 +298,7 @@ export class App {
   decorTap(id) {
     this.hideQuick();
     const d = DECOR_BY_ID[id];
+    if (id === 'battery') return null; // the scene sends out a pulse
     if (id === 'log') {
       const res = this.game.rollLog();
       this.toast(res.coins ? `You roll the log over. ${res.coins} coins were tucked underneath!` : 'You roll the log over. Just some sleepy grubs this time.', res.coins ? 'good' : '');
