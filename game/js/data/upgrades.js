@@ -28,6 +28,12 @@ export const UPGRADES = [
     text: (l) => `${l ? 2 : 1} expedition slot${l ? 's' : ''}, +${10 * l}% special finds`,
   },
   {
+    id: 'garden_space', name: 'Bigger Garden', max: 3, base: 1500, growth: 2.5,
+    desc: 'Room for 5 more bugs to live in the garden.',
+    value: (l) => 5 * l,
+    text: (l) => `${10 + 5 * l} garden places`, showZero: true,
+  },
+  {
     id: 'incubator_slots', name: 'Extra Incubators', max: 3, base: 400, growth: 2.5,
     desc: 'Incubate more eggs at the same time.',
     value: (l) => l,
