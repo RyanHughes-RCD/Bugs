@@ -4,8 +4,8 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { EXPEDITION_LENGTH, GARDEN_LIMIT, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
-import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
+import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
+import { createBug, gardenLimit, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
@@ -358,7 +358,7 @@ export class Game {
     const res = createBug(st, roll.speciesId, this.rng, { now: this.now(), origin: 'hatched', eggTier: egg.tier });
     st.stats.hatched += 1;
     this.commit();
-    return { ok: true, tier: egg.tier, rarity: roll.rarity, gardenFull: gardenCount(st) >= GARDEN_LIMIT, ...res };
+    return { ok: true, tier: egg.tier, rarity: roll.rarity, gardenFull: gardenCount(st) >= gardenLimit(st), ...res };
   }
 
   // ---------- bugs ----------
@@ -366,7 +366,7 @@ export class Game {
   setInGarden(uid, inGarden) {
     const bug = this.bug(uid);
     if (!bug) return fail('Unknown bug.');
-    if (inGarden && !bug.inGarden && gardenCount(this.state) >= GARDEN_LIMIT) return fail(`The garden holds ${GARDEN_LIMIT} bugs. Move one out first.`);
+    if (inGarden && !bug.inGarden && gardenCount(this.state) >= gardenLimit(this.state)) return fail(`The garden holds ${gardenLimit(this.state)} bugs. Move one out first, or buy Bigger Garden in Upgrades.`);
     bug.inGarden = !!inGarden;
     this.commit();
     return { ok: true };

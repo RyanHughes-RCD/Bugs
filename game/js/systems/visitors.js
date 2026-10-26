@@ -1,13 +1,13 @@
-import { GARDEN_LIMIT, VISITORS, ROCK_FIND, MINUTE, HOUR } from '../data/balance.js';
+import { VISITORS, ROCK_FIND, MINUTE, HOUR } from '../data/balance.js';
 import { SPECIES_LIST } from '../data/species.js';
-import { bugsOnExpedition } from './bugs.js';
+import { bugsOnExpedition, gardenLimit } from './bugs.js';
 import { patchStrength, ownsDecor } from './garden.js';
 import { DECOR } from '../data/decor.js';
 
 // Places in the garden not taken by bugs that are actually home right now.
 export function freeGardenSpots(state) {
   const away = bugsOnExpedition(state);
-  return GARDEN_LIMIT - state.bugs.filter((b) => b.inGarden && !away.has(b.uid)).length;
+  return gardenLimit(state) - state.bugs.filter((b) => b.inGarden && !away.has(b.uid)).length;
 }
 
 function rollGap(rng) {

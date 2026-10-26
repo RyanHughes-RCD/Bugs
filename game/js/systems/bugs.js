@@ -3,6 +3,7 @@ import { RARITIES, VARIANTS } from '../data/rarities.js';
 import { TRAIT_IDS } from '../data/traits.js';
 import { ITEMS } from '../data/items.js';
 import { GARDEN_LIMIT, MAX_TRAIT_LEVEL } from '../data/balance.js';
+import { upgradeValue } from '../data/upgrades.js';
 
 // Rolls the extra luck layer on top of rarity: null, or a VARIANTS key.
 export function rollVariant(rng) {
@@ -62,7 +63,7 @@ export function createBug(state, speciesId, rng, { now = 0, origin = 'hatched', 
     obtainedAt: now,
   };
   state.bugs.push(bug);
-  if (placeInGarden && gardenCount(state) < GARDEN_LIMIT) bug.inGarden = true;
+  if (placeInGarden && gardenCount(state) < gardenLimit(state)) bug.inGarden = true;
   const newSpecies = recordDex(state, speciesId, bug.variant);
   let reward = 0;
   if (newSpecies) {
@@ -96,6 +97,11 @@ export function bugsOnExpedition(state) {
 export function assignmentOf(bug, state, away = bugsOnExpedition(state)) {
   if (away.has(bug.uid)) return 'expedition';
   return bug.inGarden ? 'garden' : 'available';
+}
+
+// How many bugs can live in the garden: 10, plus 5 per Bigger Garden level.
+export function gardenLimit(state) {
+  return GARDEN_LIMIT + upgradeValue(state, 'garden_space');
 }
 
 // Garden places are reserved while a garden bug is away exploring.

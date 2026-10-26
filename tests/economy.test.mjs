@@ -6,6 +6,8 @@ import { ITEMS, sellPrice } from '../game/js/data/items.js';
 import { AREA_BY_ID } from '../game/js/data/areas.js';
 import { expeditionSlots } from '../game/js/systems/expedition.js';
 import { gardenRatePerMin } from '../game/js/systems/garden.js';
+import { gardenLimit } from '../game/js/systems/bugs.js';
+import { freeGardenSpots } from '../game/js/systems/visitors.js';
 import { makeGame, addBug, partyUids, MIN } from './helpers.mjs';
 
 test('the four required upgrade paths exist with rising costs and levels', () => {
@@ -64,6 +66,27 @@ test('the garden holds at most 10 bugs; leaving it never removes a bug', () => {
   assert.ok(game.setInGarden(game.state.bugs[0].uid, false).ok);
   assert.equal(game.state.bugs.length, total, 'still in the collection');
   assert.ok(game.setInGarden(outside[6].uid, true).ok);
+});
+
+test('Bigger Garden adds 5 garden places per level, up to 25', () => {
+  const { game } = makeGame();
+  assert.equal(gardenLimit(game.state), GARDEN_LIMIT);
+  for (let i = 0; i < 30; i++) addBug(game, 'ant', { lift: 2 });
+  const fill = () => {
+    for (const b of game.state.bugs) if (!b.inGarden) game.setInGarden(b.uid, true);
+    return game.state.bugs.filter((b) => b.inGarden).length;
+  };
+  assert.equal(fill(), 10);
+  game.state.coins = 1e9;
+  for (const size of [15, 20, 25]) {
+    assert.ok(game.buyUpgrade('garden_space').ok);
+    assert.equal(gardenLimit(game.state), size);
+    assert.equal(fill(), size);
+  }
+  assert.equal(game.buyUpgrade('garden_space').ok, false, 'capped at 25');
+  assert.equal(freeGardenSpots(game.state), 0);
+  game.setInGarden(game.state.bugs.find((b) => b.inGarden).uid, false);
+  assert.equal(freeGardenSpots(game.state), 1);
 });
 
 test('garden bugs forage a few coins up to a cap, even while away exploring', () => {

@@ -9,7 +9,7 @@ import { GARDEN_LIMIT, PARTY_SIZE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '
 import { DECOR } from '../data/decor.js';
 import { GARDEN_CHESTS } from '../data/garden-chests.js';
 import { gardenChestArea } from '../systems/chests.js';
-import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
+import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, gardenLimit, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs, shopStock } from '../systems/eggs.js';
 import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours, partyPower, paceFactor } from '../systems/expedition.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
@@ -94,7 +94,7 @@ export function renderHud(v) {
   const garden = gardenCount(st);
   return `<div class="hud-row">
       <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${potCap(st)}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
-      <button class="chip garden-count" data-act="nav" data-panel="bugs">${icon(A, 'flower', 'xs')} ${garden}/${GARDEN_LIMIT}</button>
+      <button class="chip garden-count" data-act="nav" data-panel="bugs">${icon(A, 'flower', 'xs')} ${garden}/${gardenLimit(st)}</button>
       <button class="chip chests-chip" data-act="garden-chests" title="Open chests with your Chest Keys">${icon(A, 'key', 'xs')} ${st.inventory.key || 0}</button>
     </div>
     <div class="chips">${chips.join('')}</div>`;
@@ -200,7 +200,7 @@ export function hatchModal(v, s) {
       <div class="reveal-traits">${Object.keys(eff).map((t, i) => `<div class="rt" style="animation-delay:${1 + i * 0.25}s">${traitIcon(A, t, 'sm')} <b>${TRAITS[t].name}</b> ${bar(eff[t] / 12, `t-${t}`)} Lv ${eff[t]}</div>`).join('')}</div>
       <div class="row he-actions">
         ${btn('Keep in collection', 'close-modal')}
-        ${gardenFull ? `<span class="muted">Garden full (${GARDEN_LIMIT}/${GARDEN_LIMIT})</span>` : btn('Place in garden', 'garden-in', { uid: bug.uid, close: 1 }, 'go big')}
+        ${gardenFull ? `<span class="muted">Garden full (${gardenLimit(v.game.state)}/${gardenLimit(v.game.state)})</span>` : btn('Place in garden', 'garden-in', { uid: bug.uid, close: 1 }, 'go big')}
       </div>
     </div>`;
 }
@@ -224,7 +224,7 @@ export function renderCollection(v0) {
   list = [...list].sort(sorts[ui.sort] || sorts.rarity);
   const chip = (label, key, val) => btn(label, 'filter', { key, val: f[key] === val ? '' : val }, `sm ${f[key] === val ? 'on' : ''}`);
   return `${tabs}
-    <div class="garden-line">${icon(A, 'flower', 'sm')} Garden <b>${gardenCount(st)}/${GARDEN_LIMIT}</b> · open a bug to move it in or out</div>
+    <div class="garden-line">${icon(A, 'flower', 'sm')} Garden <b>${gardenCount(st)}/${gardenLimit(st)}</b> · open a bug to move it in or out</div>
     <div class="filters">
       <div class="row wrap">${['garden', 'available', 'expedition'].map((p) => chip(ASSIGN_LABEL[p], 'place', p)).join('')}</div>
       <div class="row wrap">${RARITY_ORDER.map((r) => chip(RARITIES[r].name, 'rarity', r)).join('')}</div>
@@ -297,7 +297,7 @@ export function bugModal(v, uid) {
     <h4>Where</h4>
     <div class="row wrap">
       <span class="badge-inline a-${asg}">${ASSIGN_LABEL[asg]}</span>
-      ${bug.inGarden ? btn('Move to storage', 'garden-out', { uid }, 'sm') : btn(`Place in garden (${gardenCount(st)}/${GARDEN_LIMIT})`, 'garden-in', { uid }, 'sm go', gardenCount(st) >= GARDEN_LIMIT)}
+      ${bug.inGarden ? btn('Move to storage', 'garden-out', { uid }, 'sm') : btn(`Place in garden (${gardenCount(st)}/${gardenLimit(st)})`, 'garden-in', { uid }, 'sm go', gardenCount(st) >= gardenLimit(st))}
       ${btn(`Release (+${releaseValue(bug)})`, 'release', { uid }, 'sm danger', away)}
     </div>
     <p class="flavor">"${esc(sp.desc)}"</p>
@@ -587,7 +587,7 @@ export function renderUpgrades(v) {
       return `<div class="upgrade ${maxed ? 'maxed' : ''}">
         <div class="grow"><b>${u.name}</b> <small class="inline">Lv ${lvl}/${u.max}</small><small>${u.desc}</small>
           <div class="pips">${Array.from({ length: u.max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</div>
-          <small>Now: ${lvl ? u.text(lvl) : 'no bonus yet'}${maxed ? '' : `<br>Next: <b>${u.text(lvl + 1)}</b>`}</small></div>
+          <small>Now: ${lvl || u.showZero ? u.text(lvl) : 'no bonus yet'}${maxed ? '' : `<br>Next: <b>${u.text(lvl + 1)}</b>`}</small></div>
         ${maxed ? '<span class="ok">MAX</span>' : btn(coins(A, cost), 'upgrade', { id: u.id }, 'go sm', st.coins < cost)}
       </div>`;
     }).join('')}`;
@@ -645,7 +645,7 @@ export function welcomeModal(v) {
     <h3>Welcome to Bug Garden!</h3>
     <p class="center motto-inline">"${HATCHERY_MOTTO}"</p>
     <ol>
-      <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here. Tap one to meet it, and tap coins they dig up.</li>
+      <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here (more with Bigger Garden upgrades). Tap one to meet it, and tap coins they dig up.</li>
       <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
       <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi. Leave it a few hours and something might turn up under it.</li>
       <li>${icon(A, 'heart', 'sm')} <b>Visitors:</b> wild bugs drop by when the garden has room, like while your party is away. Tap one to say hi and it leaves a little gift, sometimes even an egg.</li>
