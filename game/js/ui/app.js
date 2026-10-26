@@ -9,7 +9,8 @@ import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
 import { SPECIES } from '../data/species.js';
 import { clampEncounterCount, defaultEncounterCount, encounterMs } from '../systems/expedition.js';
 import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
-import { gardenRatePerMin } from '../systems/garden.js';
+import { gardenRatePerMin, favouriteDecor } from '../systems/garden.js';
+import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 
@@ -90,7 +91,19 @@ export class App {
         else this.toast(`The wild ${res.name} says hi back and leaves you ${res.coins} coins.`, 'good');
         return res;
       },
-      onRockMoved: (x, y) => this.game.moveRock(x, y),
+      onRockMoved: (x, y) => {
+        const res = this.game.moveRock(x, y);
+        if (!res.ok && res.error !== 'The rock barely moved.') this.toast(res.error, 'bad');
+      },
+      onDecorMoved: (id, x, y) => this.result(this.game.moveDecor(id, x, y)),
+      onDecorTap: (id) => this.decorTap(id),
+      onZap: () => this.game.batteryZap().ok,
+      // How far the HUD reaches down over the garden, in canvas pixels.
+      topInset: () => {
+        const hud = this.el.hud.getBoundingClientRect();
+        const canvas = this.scene.canvas.getBoundingClientRect();
+        return Math.max(0, hud.bottom - canvas.top) * (window.devicePixelRatio || 1);
+      },
     });
     this.scene.start();
 
@@ -279,6 +292,20 @@ export class App {
     this.pending = null;
     this.el.modalRoot.innerHTML = '';
     this.el.app.classList.remove('has-modal');
+  }
+
+  // Tapping a decoration says what it does; the log also rolls over.
+  decorTap(id) {
+    this.hideQuick();
+    const d = DECOR_BY_ID[id];
+    if (id === 'log') {
+      const res = this.game.rollLog();
+      this.toast(res.coins ? `You roll the log over. ${res.coins} coins were tucked underneath!` : 'You roll the log over. Just some sleepy grubs this time.', res.coins ? 'good' : '');
+      return res;
+    }
+    const lovers = this.game.state.bugs.filter((b) => b.inGarden && favouriteDecor(this.game.state, b.species)?.id === id).length;
+    this.toast(`${d.name}: ${d.desc} ${lovers ? `${lovers} of your garden bug${lovers > 1 ? 's' : ''} love${lovers > 1 ? '' : 's'} it: +${Math.round(d.bonus * 100)}% foraging.` : ''}`);
+    return null;
   }
 
   lastBackup() {
@@ -481,6 +508,27 @@ export class App {
         this.spendCheck(cost, `${u.name} level ${(st.upgrades[d.id] || 0) + 1}`, () => this.result(g.buyUpgrade(d.id), `${u.name} upgraded!`));
         break;
       }
+      case 'garden-chests': ui.chestResult = null; this.hideQuick(); this.openModal(() => V.gardenChestsModal(this.v)); break;
+      case 'open-chest': {
+        // Ignore taps while the last opening is still on screen being revealed.
+        if (ui.chestBusy) break;
+        const res = g.openGardenChest(d.id);
+        if (!res.ok) { this.toast(res.error, 'bad'); break; }
+        ui.chestResult = res;
+        ui.chestBusy = true;
+        this.renderModal();
+        setTimeout(() => { ui.chestBusy = false; if (this.modal) this.renderModal(); }, 700);
+        break;
+      }
+      case 'buy-decor': {
+        const dec = DECOR_BY_ID[d.id];
+        this.spendCheck(dec.price, `the ${dec.name}`, () => {
+          if (!this.result(g.buyDecor(d.id), `The ${dec.name} is in your garden!${dec.fixed ? '' : ' Drag it wherever you like.'}`)) return;
+          if (dec.fixed) this.scene.camY = 0; // show off the river
+          this.closePanel();
+        });
+        break;
+      }
       case 'unlock': {
         const area = AREA_BY_ID[d.area];
         this.ask({ title: `Unlock ${area.name}?`, body: `<p>Pay <b>${fmtNum(area.unlock.coins)}</b> coins to open ${area.name} for expeditions.</p>`, yes: 'Unlock' },
@@ -499,6 +547,16 @@ export class App {
         this.renderModal();
         break;
       }
+      // Equipment panels in the planner: pick a bug, then equip or unequip in place.
+      case 'plan-gear': ui.plan.gearFor = ui.plan.gearFor === uid ? null : uid; this.renderModal(); break;
+      case 'plan-equip':
+        if (this.result(g.equip(uid, d.item), `${bugName(g.bug(uid))} equipped ${ITEMS[d.item].name}.`)) ui.plan.gearFor = null;
+        this.renderModal();
+        break;
+      case 'plan-unequip':
+        this.result(g.unequip(uid), 'Item returned to your bag.');
+        this.renderModal();
+        break;
       case 'plan-count': ui.plan.count = ui.lastTrip = clampEncounterCount(Number(d.n)); this.renderModal(); break;
       case 'plan-auto': ui.plan.party = this.autoParty(ui.plan.areaId); this.renderModal(); break;
       case 'launch': {

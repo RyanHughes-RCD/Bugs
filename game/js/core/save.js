@@ -28,7 +28,7 @@ export function newGameState(now, seed) {
     areas: {},
     expeditions: [],
     history: [],
-    garden: { pot: 0, lastTick: now, rock: defaultRock(now), welts: [], visitors: [], nextVisitAt: 0 },
+    garden: { pot: 0, lastTick: now, rock: defaultRock(now), welts: [], visitors: [], nextVisitAt: 0, decor: {} },
     dex: {},
     stats: {},
     flags: {},
@@ -53,7 +53,7 @@ export function migrate(raw) {
   for (const a of AREAS) s.areas[a.id] = { unlocked: a.index === 0, runs: 0, ...(s.areas[a.id] || {}) };
   s.expeditions = Array.isArray(s.expeditions) ? s.expeditions : [];
   s.history = Array.isArray(s.history) ? s.history : [];
-  s.garden = { pot: 0, lastTick: s.lastSeen || 0, welts: [], visitors: [], nextVisitAt: 0, ...(s.garden || {}) };
+  s.garden = { pot: 0, lastTick: s.lastSeen || 0, welts: [], visitors: [], nextVisitAt: 0, decor: {}, ...(s.garden || {}) };
   if (!s.garden.rock) s.garden.rock = defaultRock(s.lastSeen || 0);
   s.dex = s.dex || {};
   s.stats = { expeditions: 0, hatched: 0, eggsBought: 0, chestsOpened: 0, coinsEarned: 0, visitorsGreeted: 0, rockFinds: 0, ...(s.stats || {}) };

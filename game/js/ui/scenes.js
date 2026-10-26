@@ -75,6 +75,44 @@ const PAINTERS = {
     }
     for (let i = 0; i < 6; i++) px(ctx, pal, 'W', rng.int(0, W - 10), rng.int(20, H - 2), rng.int(6, 12), 2);
   },
+  chem(ctx, pal, rng) {
+    // Dim sky, a rusting factory with smokestacks, glowing spills and hazard stripes.
+    px(ctx, pal, 'k', 0, 0, W, H);
+    for (let i = 0; i < 6; i++) px(ctx, pal, 's', rng.int(0, W), rng.int(0, 10), rng.int(8, 16), 2);
+    px(ctx, pal, 'K', 6, 14, 54, 20);
+    px(ctx, pal, 'K', 64, 18, 26, 16);
+    for (const [x, h] of [[12, 12], [22, 16], [72, 10]]) { px(ctx, pal, 'K', x, 14 - h, 4, h); px(ctx, pal, 'R', x, 14 - h + 2, 4, 1); }
+    for (let i = 0; i < 9; i++) px(ctx, pal, rng.chance(0.4) ? 'y' : 's', 10 + i * 5, 20 + (i % 2) * 6, 2, 2);
+    for (let i = 0; i < 12; i++) px(ctx, pal, 'l', rng.int(10, 30), rng.int(0, 6), 2, 1);
+    px(ctx, pal, 's', 0, H - 6, W, 6);
+    for (let i = 0; i < 4; i++) { const x = rng.int(4, W - 18); px(ctx, pal, 'G', x, H - 4, rng.int(8, 14), 2); px(ctx, pal, 'g', x + 2, H - 4, 4, 1); }
+    for (let x = 0; x < W; x += 6) { px(ctx, pal, 'Y', x, H - 7, 3, 1); px(ctx, pal, 'K', x + 3, H - 7, 3, 1); }
+    for (let i = 0; i < 3; i++) { const x = rng.int(60, W - 8); px(ctx, pal, 'g', x, H - 13, 5, 6); px(ctx, pal, 'K', x, H - 11, 5, 1); }
+  },
+  void(ctx, pal, rng) {
+    // Deep dark, scattered stars, a swirling rift and drifting fragments.
+    px(ctx, pal, 'V', 0, 0, W, H);
+    for (let i = 0; i < 40; i++) px(ctx, pal, rng.pick(['W', 'v', 'i']), rng.int(0, W), rng.int(0, H), 1, 1);
+    for (let r = 14; r > 2; r -= 3) {
+      for (let a = 0; a < 40; a++) {
+        const t = (a / 40) * Math.PI * 2 + r * 0.4;
+        px(ctx, pal, r % 2 ? 'P' : 'v', 48 + Math.cos(t) * r * 1.6, 20 + Math.sin(t) * r * 0.8, 1, 1);
+      }
+    }
+    px(ctx, pal, 'K', 46, 19, 5, 3);
+    for (let i = 0; i < 5; i++) { const x = rng.int(0, W - 10); const y = rng.int(4, H - 6); px(ctx, pal, 'k', x, y, rng.int(4, 9), 2); px(ctx, pal, 's', x + 1, y, 2, 1); }
+  },
+  new_jersey(ctx, pal, rng) {
+    // A turnpike under a hazy sky, a far-off skyline, marsh reeds and gulls.
+    for (let y = 0; y < 22; y++) px(ctx, pal, y < 8 ? 'c' : y < 16 ? 'C' : 'p', 0, y, W, 1);
+    for (let x = 0; x < W;) { const w = rng.int(3, 7); const h = rng.int(4, 12); px(ctx, pal, 's', x, 22 - h, w, h); if (rng.chance(0.4)) px(ctx, pal, 'Y', x + 1, 22 - h + 2, 1, 1); x += w + rng.int(0, 2); }
+    px(ctx, pal, 'G', 0, 22, W, 6);
+    for (let i = 0; i < 30; i++) px(ctx, pal, rng.pick(['g', 'T', 'N']), rng.int(0, W), rng.int(20, 27), 1, rng.int(2, 4));
+    px(ctx, pal, 'k', 0, 28, W, 12);
+    for (let x = 2; x < W; x += 8) px(ctx, pal, 'Y', x, 33, 4, 1);
+    for (let i = 0; i < 4; i++) { const x = rng.int(0, W - 8); px(ctx, pal, rng.pick(['R', 'b', 'W', 'Y']), x, rng.chance(0.5) ? 30 : 35, 6, 3); }
+    for (let i = 0; i < 4; i++) { const x = rng.int(4, W - 6); const y = rng.int(2, 8); px(ctx, pal, 'W', x, y, 1, 1); px(ctx, pal, 'W', x + 1, y - 1, 1, 1); px(ctx, pal, 'W', x + 2, y, 1, 1); }
+  },
 };
 
 const cache = new Map();

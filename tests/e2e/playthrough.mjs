@@ -77,8 +77,17 @@ try {
 
   // Expedition: exactly four, confirm, live log, claim once.
   await act('#nav [data-panel="explore"]');
+  await page.evaluate(() => { window.bugGarden.game.addItem('thorn_spear'); window.bugGarden.game.commit(); });
   await act('[data-act="plan"][data-area="garden"]');
   assert.equal(await page.locator('.team-slots .slot.filled').count(), 4);
+  // Equipment panels under the party: give the second bug a Thorn Spear from here.
+  assert.equal(await page.locator('.gear-panels .gear-panel[data-act="plan-gear"]').count(), 4, 'one panel per party bug');
+  const second = await page.getAttribute('.gear-panels .gear-panel[data-act="plan-gear"] >> nth=1', 'data-uid');
+  await act('.gear-panels .gear-panel[data-act="plan-gear"] >> nth=1');
+  await act('.gear-picker [data-act="plan-equip"][data-item="thorn_spear"]');
+  assert.equal(await st(() => window.bugGarden.game.state.bugs.find((b) => b.item === 'thorn_spear')?.uid), Number(second), 'equipped on the right bug');
+  assert.equal(await st(() => window.bugGarden.game.state.inventory.thorn_spear), undefined, 'taken from the bag, not copied');
+  assert.ok((await page.textContent('.gear-panels')).includes('Thorn Spear'), 'the panel shows it straight away');
   await act('[data-act="plan-count"]:has-text("8h overnight")');
   const trip = await st(async () => {
     const { encounterMs } = await import('./game/js/systems/expedition.js');
@@ -94,6 +103,7 @@ try {
   await act('[data-act="launch"]');
   await act('[data-act="confirm-yes"]');
   const exp = await st(() => window.bugGarden.game.state.expeditions[0]);
+  assert.ok(await st(() => { const g = window.bugGarden.game; return g.state.expeditions[0].party.some((u) => g.bug(u).item === 'thorn_spear'); }), 'the party set off with the new gear');
   assert.equal(exp.endsAt - exp.startAt, exp.count * exp.encounterMs, 'the timer matches the encounters');
   assert.ok(exp.encounterMs <= 5 * 60e3, 'starters or better are on pace in the Garden: 5 minutes or less each');
   await warp(15 * 60e3);
@@ -104,6 +114,8 @@ try {
   await act('#nav [data-panel="garden"]');
   await warp(2 * HOUR);
   // Pick a visitor that is still here and not under the HUD, and hold it still for the tap.
+  // Empty the pot first so no garden coin sits under the tap.
+  await page.evaluate(() => { window.bugGarden.game.collectGarden(); });
   const visitor = await st(() => {
     const s = window.bugGarden.app.scene;
     const b = s.canvas.getBoundingClientRect();
@@ -138,6 +150,41 @@ try {
   await act('[data-act="confirm-yes"]');
   assert.equal(await st(() => window.bugGarden.game.state.upgrades.improved_exploration), 1);
   await snap('upgrades');
+
+  // Garden decorations: buy a log from the Upgrades panel, then drag it.
+  await page.evaluate(() => { window.bugGarden.game.earn(2000); window.bugGarden.game.commit(); });
+  await act('#nav [data-panel="upgrades"]');
+  await act('[data-act="buy-decor"][data-id="log"]');
+  if (await page.$('[data-act="confirm-yes"]')) await act('[data-act="confirm-yes"]');
+  const log = await st(() => ({ ...window.bugGarden.game.state.garden.decor.log }));
+  assert.ok(Number.isFinite(log.x), 'the log is in the garden');
+  const toPage = (x, y) => page.evaluate(([x, y]) => { const s = window.bugGarden.app.scene; const [a, b] = s.toScreen(x, y); const r = s.canvas.getBoundingClientRect(); return [r.left + a / s.dpr, r.top + b / s.dpr]; }, [x, y]);
+  const free = await st(async () => {
+    const { decorFits } = await import('./game/js/systems/garden.js');
+    const g = window.bugGarden.game.state.garden;
+    for (let y = 120; y < 260; y += 10) for (const x of [40, 75, 110]) if (decorFits(g, 'log', x, y) && Math.hypot(x - g.decor.log.x, y - g.decor.log.y) > 30) return [x, y];
+    return null;
+  });
+  await page.mouse.move(...(await toPage(log.x, log.y)));
+  await page.mouse.down();
+  await page.mouse.move(...(await toPage(...free)), { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const moved = await st(() => window.bugGarden.game.state.garden.decor.log);
+  assert.ok(Math.hypot(moved.x - free[0], moved.y - free[1]) <= 2, `log dragged to ${free}: ${JSON.stringify(moved)}`);
+  await snap('decorations');
+
+  // Garden chests: spend keys from the garden screen.
+  await act('#nav [data-panel="garden"]');
+  await page.evaluate(() => { const g = window.bugGarden.game; g.state.inventory.key = 3; g.commit(); });
+  await act('#hud [data-act="garden-chests"]', { force: true });
+  const keysBefore = await st(() => window.bugGarden.game.state.inventory.key);
+  await act('.modal [data-act="open-chest"][data-id="small"]');
+  await page.click('.modal [data-act="open-chest"][data-id="small"]', { force: true }).catch(() => {}); // a hasty second tap while it's revealing
+  assert.equal(await st(() => window.bugGarden.game.state.inventory.key), keysBefore - 1, 'one key per opening, even with a double tap');
+  assert.ok(await page.$('.modal .chest-reveal'), 'shows what was inside');
+  await snap('garden-chest');
+  await act('.modal [data-act="close-modal"]');
 
   // Persistence across a reload.
   const sig = () => JSON.stringify({ c: window.bugGarden.game.state.coins, b: window.bugGarden.game.state.bugs.map((x) => [x.uid, x.item, x.inGarden, x.traits]), u: window.bugGarden.game.state.upgrades, h: window.bugGarden.game.state.history.length });

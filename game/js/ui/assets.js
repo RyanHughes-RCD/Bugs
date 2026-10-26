@@ -1,6 +1,7 @@
 import { SPECIES_LIST } from '../data/species.js';
 import { EGG_TIERS } from '../data/eggs.js';
 import { SPRITES } from '../data/sprites.js';
+import { DECOR } from '../data/decor.js';
 
 // Copy of pixel_bugs/palette.txt, used only if the file cannot be fetched.
 const FALLBACK_PALETTE = {
@@ -63,6 +64,7 @@ export class Assets {
     this.variants = {};
     this.sprites = {};
     this.eggs = {};
+    this.decor = {};
     this.urls = new Map();
     this.map = [];
     this.flowerSpots = [];
@@ -90,6 +92,7 @@ export class Assets {
       ...MAP_LAYERS.map((src, i) => soft(src, (img) => { this.map[i] = img; })),
       ...files.map((src) => soft(src, (img) => { baseArt[src] = this.downscale(img); })),
       ...EGG_TIERS.filter((t) => t.sprite).map((t) => soft(t.sprite, (img) => { this.eggs[t.id] = [this.downscale(img)]; })),
+      ...DECOR.filter((d) => d.sprite).map((d) => soft(d.sprite, (img) => { this.decor[d.id] = img; })),
     ];
     let done = 0;
     await Promise.all(jobs.map((j) => j.then(() => onProgress(++done / jobs.length))));
@@ -103,6 +106,7 @@ export class Assets {
     // The brown patch on the map's second layer is the dirt the rock leaves.
     this.patch = this.map[1] ? this.cropToContent(this.map[1]) : null;
     this.rock = this.makeRock(this.patch ? this.patch.width : 64);
+    if (this.decor.river) this.riverWater = this.waterCells(this.decor.river);
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
   }
 
@@ -239,6 +243,26 @@ export class Assets {
       stages.push(this.paint(cracked.map((r) => r.join(''))));
     }
     return stages;
+  }
+
+  // The river's water pixels (its most common colour), for animating waves
+  // and glitter on top of the sprite.
+  waterCells(img) {
+    const c = makeCanvas(img.width, img.height);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const counts = new Map();
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3]) counts.set(d[i] << 16 | d[i + 1] << 8 | d[i + 2], (counts.get(d[i] << 16 | d[i + 1] << 8 | d[i + 2]) || 0) + 1);
+    const water = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const cells = [];
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const i = (y * c.width + x) * 4;
+        if (d[i + 3] && (d[i] << 16 | d[i + 1] << 8 | d[i + 2]) === water) cells.push([x, y]);
+      }
+    }
+    return { w: c.width, h: c.height, cells, set: new Set(cells.map(([x, y]) => y * c.width + x)) };
   }
 
   // Flower pixels in the garden map become places bugs like to visit.

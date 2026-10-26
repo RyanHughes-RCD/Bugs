@@ -2,13 +2,16 @@ import { Rng } from './core/rng.js';
 import { SAVE_KEY, BACKUP_KEY, newGameState, serialize, deserialize, encodeSave, decodeSave } from './core/save.js';
 import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
-import { ITEMS, sellPrice } from './data/items.js';
+import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
 import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
 import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
-import { tickGarden, moveRock } from './systems/garden.js';
+import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
+import { DECOR_BY_ID, LOG } from './data/decor.js';
+import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
+import { rollGardenChest } from './systems/chests.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
 import { SPECIES } from './data/species.js';
 
@@ -190,9 +193,87 @@ export class Game {
   moveRock(x, y) {
     const cx = Math.min(124, Math.max(26, Math.round(x)));
     const cy = Math.min(280, Math.max(30, Math.round(y)));
-    if (!moveRock(this.state.garden, cx, cy, this.now())) return fail('The rock barely moved.');
+    const g = this.state.garden;
+    const after = { ...g, rock: { ...g.rock, x: cx, y: cy } };
+    if (Object.entries(g.decor).some(([id, spot]) => spot && !DECOR_BY_ID[id].fixed && !decorFits(after, id, spot.x, spot.y))) return fail('Something is already there.');
+    if (overlapsRiver(g, rockRect(after.rock))) return fail('The rock would sink in the river.');
+    if (!moveRock(g, cx, cy, this.now())) return fail('The rock barely moved.');
     this.commit();
     return { ok: true };
+  }
+
+  // ---------- garden decorations ----------
+
+  buyDecor(id) {
+    const d = DECOR_BY_ID[id];
+    const g = this.state.garden;
+    if (!d || !d.price) return fail('That is not for sale.');
+    if (g.decor[id]) return fail(`You already have the ${d.name}.`);
+    if (id === 'river' && overlapsRiver({ decor: { river: {} } }, rockRect(g.rock))) return fail('Move the rock out of the top corner first: the river runs there.');
+    const spot = d.fixed ? {} : freeDecorSpot(g, id);
+    if (!spot) return fail('There is no room left in the garden. Try moving things around.');
+    if (!this.spend(d.price)) return fail('Not enough coins.');
+    g.decor[id] = spot;
+    // The river flows where it flows: anything standing in the way moves aside.
+    for (const [other, at] of Object.entries(g.decor)) {
+      if (DECOR_BY_ID[other].fixed || decorFits(g, other, at.x, at.y)) continue;
+      g.decor[other] = { ...at, ...(freeDecorSpot(g, other) || at) };
+    }
+    this.commit();
+    return { ok: true, spot };
+  }
+
+  moveDecor(id, x, y) {
+    const g = this.state.garden;
+    const d = DECOR_BY_ID[id];
+    if (!g.decor[id] || d.fixed) return fail('That cannot be moved.');
+    const [cx, cy] = [Math.round(x), Math.round(y)];
+    if (!decorFits(g, id, cx, cy)) return fail('Not enough room there.');
+    g.decor[id] = { ...g.decor[id], x: cx, y: cy };
+    this.commit();
+    return { ok: true };
+  }
+
+  // Roll the log over: a few coins underneath, at most every couple of hours.
+  rollLog() {
+    const log = this.state.garden.decor.log;
+    if (!log) return fail('No log yet.');
+    const now = this.now();
+    if (log.rolledAt && now - log.rolledAt < LOG.everyMs) return { ok: true, coins: 0 };
+    log.rolledAt = now;
+    const coins = this.rng.int(LOG.coins[0], LOG.coins[1]);
+    this.earn(coins);
+    this.commit();
+    return { ok: true, coins };
+  }
+
+  // A bug got too close to the battery: the zap knocks a coin into the pot.
+  batteryZap() {
+    const g = this.state.garden;
+    if (!g.decor.battery) return fail('No battery.');
+    g.pot = Math.min(potCap(this.state), g.pot + 1);
+    this.save();
+    return { ok: true };
+  }
+
+  // ---------- garden chests ----------
+
+  // Spends Chest Keys from the bag on a garden chest. Everything is checked
+  // and rolled first; keys and rewards then change together in one save, so
+  // a failed opening never costs keys and a success pays out exactly once.
+  openGardenChest(id) {
+    const chest = GARDEN_CHEST_BY_ID[id];
+    if (!chest) return fail('Unknown chest.');
+    const have = this.state.inventory.key || 0;
+    if (have < chest.keys) return fail(`The ${chest.name} needs ${chest.keys} Chest Key${chest.keys > 1 ? 's' : ''}. You have ${have}.`);
+    const loot = rollGardenChest(this.state, chest, this.rng);
+    this.takeItem('key', chest.keys);
+    this.earn(loot.coins);
+    for (const [itemId, n] of Object.entries(loot.items)) this.addItem(itemId, n);
+    const eggs = loot.eggs.map((tier) => this.addEgg(tier, 'chest'));
+    this.state.stats.gardenChests = (this.state.stats.gardenChests || 0) + 1;
+    this.commit();
+    return { ok: true, chest, area: loot.area, coins: loot.coins, items: loot.items, eggs };
   }
 
   // ---------- visitors & the rock ----------
@@ -321,6 +402,8 @@ export class Game {
   buyItem(id) {
     const it = ITEMS[id];
     if (!it?.buy) return fail('That item is not for sale.');
+    const stock = itemStock(this.state, id);
+    if (!stock.ok) return fail(`${stock.reason}.`);
     if (!this.spend(it.buy)) return fail('Not enough coins.');
     this.addItem(id);
     this.commit();

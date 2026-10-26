@@ -25,7 +25,7 @@ small.inline { display: inline; }
 
 #app {
   position: relative; max-width: 480px; height: 100vh; height: 100dvh; margin: 0 auto;
-  display: flex; flex-direction: column; overflow: hidden; overflow: clip; background: #39b270;
+  display: flex; flex-direction: column; overflow: hidden; overflow: clip; background: #5c8c4c;
   box-shadow: 0 0 0 3px var(--ink), 0 0 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -508,3 +508,14 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .trip .presets { gap: 6px; margin-bottom: 6px; }
 .trip .stepper { align-items: center; gap: 10px; margin-bottom: 4px; }
 .trip .stepper .btn { min-width: 40px; }
+.upgrade.decor { align-items: center; }
+.upgrade .decor-art { width: 48px; height: 48px; object-fit: contain; flex: none; }
+.item-tier { display: inline-block; font-size: 0.65rem; padding: 0 5px; border-radius: 4px; border: 1px solid var(--ink); background: var(--tc); color: #1a1c2c; vertical-align: middle; }
+.list-row.locked { opacity: 0.6; }
+.gear-panels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 6px 0 4px; }
+.gear-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 4px 2px; background: var(--paper); border: 2px solid var(--ink); border-radius: 6px; font: inherit; color: inherit; cursor: pointer; }
+.gear-panel small { font-size: 0.65rem; line-height: 1.1; text-align: center; overflow-wrap: anywhere; }
+.gear-panel.open { background: var(--yellow); }
+.gear-panel.empty { border-style: dashed; border-color: var(--mid); background: var(--cream2); cursor: default; }
+.gear-picker { margin-bottom: 8px; padding: 6px; border: 2px solid var(--ink); border-radius: 6px; background: var(--cream2); }
+.key-balance { display: flex; align-items: center; gap: 6px; margin: 6px 0; }

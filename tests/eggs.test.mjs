@@ -169,7 +169,10 @@ test('expedition eggs roll their tier: mostly the area\'s own, rarely up to 3 ti
         assert.ok(up >= 0 && up <= 3, `${area.id} ${kind}: +${up}`);
         ups[up] += 1;
       }
-      assert.ok(ups[0] > ups[1] && ups[1] > ups[2] && ups[2] > ups[3] && ups[3] > 0, `${area.id} ${kind}: ${ups}`);
+      // Near the top of the ladder the roll is capped at the best egg there is.
+      const room = Math.min(3, EGG_TIERS.length - 1 - base);
+      for (let k = 0; k < room; k++) assert.ok(ups[k] > ups[k + 1] || (k + 1 === room && ups[k + 1] > 0), `${area.id} ${kind}: ${ups}`);
+      for (let k = room + 1; k <= 3; k++) assert.equal(ups[k], 0, `${area.id} never goes past the best egg`);
       if (kind === 'find') assert.ok(ups[3] / 20000 < 0.02, '+3 is rare');
     }
   }
