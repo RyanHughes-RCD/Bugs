@@ -48,9 +48,13 @@ export const STARTING = {
 // Coins dug up by garden bugs (per-rarity rates are in rarities.js).
 export const GARDEN_FORAGE = { cap: 200 };
 
+// The garden map, in map pixels (BugsMap/pixil-layer-0.png is this size). The
+// screen shows about a 150 x 300 window of it; drag to look around.
+export const GARDEN_MAP = { w: 300, h: 600, viewW: 150, viewH: 300 };
+
 // The garden rock. Some bugs like to hide under it. Where it rests, a dirt
 // patch slowly forms; after the rock is moved the patch lingers, then fades.
-export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 34, y: 187 } }; // the patch's spot on the map
+export const ROCK = { formMs: 3 * HOUR, lingerMs: 1 * HOUR, fadeMs: 10 * MINUTE, start: { x: 150, y: 300 } }; // starts in the middle of the garden
 
 // Eggs found on expeditions: the tier is rolled up from the area's egg tier.
 // [tiers above, weight]. Chests lean higher but never pass +3.

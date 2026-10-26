@@ -4,7 +4,7 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
+import { EXPEDITION_LENGTH, GARDEN_LIMIT, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
 import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
@@ -191,8 +191,8 @@ export class Game {
 
   // Drag the garden rock somewhere new (world coordinates of the garden map).
   moveRock(x, y) {
-    const cx = Math.min(124, Math.max(26, Math.round(x)));
-    const cy = Math.min(280, Math.max(30, Math.round(y)));
+    const cx = Math.min(GARDEN_MAP.w - 26, Math.max(26, Math.round(x)));
+    const cy = Math.min(GARDEN_MAP.h - 20, Math.max(30, Math.round(y)));
     const g = this.state.garden;
     const after = { ...g, rock: { ...g.rock, x: cx, y: cy } };
     if (Object.entries(g.decor).some(([id, spot]) => spot && !DECOR_BY_ID[id].fixed && !decorFits(after, id, spot.x, spot.y))) return fail('Something is already there.');

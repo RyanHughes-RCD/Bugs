@@ -1,6 +1,7 @@
 import { SPECIES } from '../data/species.js';
 import { EGG_BY_ID } from '../data/eggs.js';
 import { DECOR_BY_ID, BATTERY } from '../data/decor.js';
+import { GARDEN_MAP } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
@@ -9,9 +10,9 @@ import { rockFindReady } from '../systems/visitors.js';
 import { fmtTime } from './format.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
-export const WORLD_W = 150;
-export const WORLD_H = 300;
-const BOUNDS = { x0: 8, x1: 142, y0: 14, y1: 292 };
+export const WORLD_W = GARDEN_MAP.w;
+export const WORLD_H = GARDEN_MAP.h;
+const BOUNDS = { x0: 8, x1: WORLD_W - 8, y0: 14, y1: WORLD_H - 8 };
 const MOVE = { wriggler: 4, crawler: 11, beetle: 8, arachnid: 13, hopper: 9, flyer: 16 };
 const PERSONAL_SPACE = 11;
 // What a bug says when the rock lands on it: [text, weight]. A newline splits
@@ -40,9 +41,11 @@ export class GardenScene {
     this.entities = new Map();
     this.floaters = [];
     this.particles = [];
-    this.fireflies = Array.from({ length: 10 }, () => ({ x: rand(0, WORLD_W), y: rand(0, WORLD_H), p: rand(0, 6.28) }));
+    this.camX = null;
+    this.fireflies = Array.from({ length: 40 }, () => ({ x: rand(0, WORLD_W), y: rand(0, WORLD_H), p: rand(0, 6.28) }));
     const coinRng = new Rng(7);
-    this.coinSpots = Array.from({ length: 10 }, () => [coinRng.int(20, 130), coinRng.int(40, 250)]);
+    // Dug-up coins show around the middle of the garden.
+    this.coinSpots = Array.from({ length: 10 }, () => [coinRng.int(WORLD_W / 2 - 55, WORLD_W / 2 + 55), coinRng.int(WORLD_H / 2 - 110, WORLD_H / 2 + 100)]);
     this.flowers = assets.flowerSpots.filter((f) => f.x > BOUNDS.x0 && f.x < BOUNDS.x1 && f.y > BOUNDS.y0 && f.y < BOUNDS.y1);
     this.camY = null;
     this.t = 0;
@@ -81,16 +84,29 @@ export class GardenScene {
     this.canvas.width = cw;
     this.canvas.height = ch;
     this.dpr = dpr;
-    // Whole device pixels per art pixel keeps the pixel art crisp.
-    this.scale = Math.max(1, Math.ceil(Math.max(cw / WORLD_W, ch / WORLD_H)));
+    // Whole device pixels per art pixel keeps the pixel art crisp. The scale
+    // fits a view-sized window of the map; the rest is reached by dragging.
+    this.scale = Math.max(1, Math.ceil(Math.max(cw / GARDEN_MAP.viewW, ch / GARDEN_MAP.viewH)));
     this.viewW = cw / this.scale;
     this.viewH = ch / this.scale;
-    this.camX = (WORLD_W - this.viewW) / 2;
-    const maxCam = Math.max(0, WORLD_H - this.viewH);
-    // Start at the top when there's a river to show, otherwise around the rock.
-    if (this.camY === null) this.camY = this.game.state.garden.decor.river ? 0 : clamp(this.game.state.garden.rock.y - this.viewH * 0.45, 0, maxCam);
-    this.camY = clamp(this.camY, 0, maxCam);
+    // Start looking at the rock.
+    const rock = this.game.state.garden.rock;
+    if (this.camX === null) this.camX = rock.x - this.viewW / 2;
+    if (this.camY === null) this.camY = rock.y - this.viewH * 0.45;
+    this.clampCamera();
     this.bugPx = Math.max(1, Math.round(this.scale * 0.8));
+  }
+
+  clampCamera() {
+    this.camX = clamp(this.camX, 0, Math.max(0, WORLD_W - this.viewW));
+    this.camY = clamp(this.camY, 0, Math.max(0, WORLD_H - this.viewH));
+  }
+
+  // Centres the view on a map point.
+  lookAt(x, y) {
+    this.camX = x - this.viewW / 2;
+    this.camY = y - this.viewH / 2;
+    this.clampCamera();
   }
 
   toScreen(x, y) {
@@ -165,7 +181,8 @@ export class GardenScene {
     e.act = null;
     e.actTime = 0;
     e.wait = 0;
-    e.tx = e.x < WORLD_W / 2 ? -14 : WORLD_W + 14;
+    // Off the nearer side of the screen.
+    e.tx = e.x < this.camX + this.viewW / 2 ? this.camX - 14 : this.camX + this.viewW + 14;
     e.ty = e.y + rand(-10, 10);
   }
 
@@ -174,16 +191,17 @@ export class GardenScene {
     const sp = SPECIES[species];
     const fam = sp.family;
     const side = sp.view === 'side';
-    let x = rand(BOUNDS.x0, BOUNDS.x1);
+    // Somewhere on screen; new arrivals walk in from just off one side of it.
+    let x = rand(Math.max(BOUNDS.x0, this.camX + 10), Math.min(BOUNDS.x1, this.camX + this.viewW - 10));
     const y = rand(Math.max(BOUNDS.y0, this.camY + 10), Math.min(BOUNDS.y1, this.camY + this.viewH - 30));
-    if (walkIn) x = Math.random() < 0.5 ? -10 : WORLD_W + 10;
+    if (walkIn) x = Math.random() < 0.5 ? this.camX - 10 : this.camX + this.viewW + 10;
     const e = {
       species, family: fam, side, likesRock: sp.likesRock, flip: Math.random() < 0.5 ? -1 : 1,
       x, y, tx: x, ty: y, angle: side ? 0 : rand(0, Math.PI * 2), wait: rand(0, 2),
       speed: MOVE[fam] * rand(0.8, 1.2), phase: rand(0, 6.28), act: null, actTime: 0, bubble: 0, hearts: 0, surprised: 0,
     };
     if (walkIn) {
-      e.tx = clamp(x + (x < 0 ? rand(25, 50) : -rand(25, 50)), BOUNDS.x0, BOUNDS.x1);
+      e.tx = clamp(x + (x < this.camX ? rand(25, 50) : -rand(25, 50)), BOUNDS.x0, BOUNDS.x1);
       e.wait = 0;
       return e;
     }
@@ -323,7 +341,7 @@ export class GardenScene {
       e.act = null;
       e.wait = 0;
       e.actTime = 0;
-      if (e.x < -10 || e.x > WORLD_W + 10) { this.entities.delete(e.uid); return; }
+      if (e.x < this.camX - 10 || e.x > this.camX + this.viewW + 10 || e.x < -10 || e.x > WORLD_W + 10) { this.entities.delete(e.uid); return; }
     }
     for (const o of others) {
       if (o === e || o.hidden || e.leaving || e.x < BOUNDS.x0 || e.x > BOUNDS.x1) continue;
@@ -965,7 +983,7 @@ export class GardenScene {
       this.handlers.onRockLift?.(found);
       return;
     }
-    this.drag = { y: e.clientY, cam: this.camY, moved: 0, x: e.clientX };
+    this.drag = { y: e.clientY, x: e.clientX, camX: this.camX, camY: this.camY, moved: 0 };
   }
 
   onMove(e) {
@@ -982,14 +1000,19 @@ export class GardenScene {
       const [wx, wy] = this.toWorld(e.clientX, e.clientY);
       const d = this.rockDrag;
       d.moved = Math.max(d.moved, Math.hypot(e.clientX - d.startX, e.clientY - d.startY));
-      d.x = clamp(wx - d.grabX, 26, 124);
-      d.y = clamp(wy - d.grabY, 30, 280);
+      d.x = clamp(wx - d.grabX, 26, WORLD_W - 26);
+      d.y = clamp(wy - d.grabY, 30, WORLD_H - 20);
       return;
     }
     if (!this.drag) return;
+    const dx = e.clientX - this.drag.x;
     const dy = e.clientY - this.drag.y;
-    this.drag.moved = Math.max(this.drag.moved, Math.hypot(e.clientX - this.drag.x, dy));
-    if (this.drag.moved > 6) this.camY = clamp(this.drag.cam - (dy * this.dpr) / this.scale, 0, Math.max(0, WORLD_H - this.viewH));
+    this.drag.moved = Math.max(this.drag.moved, Math.hypot(dx, dy));
+    if (this.drag.moved > 6) {
+      this.camX = this.drag.camX - (dx * this.dpr) / this.scale;
+      this.camY = this.drag.camY - (dy * this.dpr) / this.scale;
+      this.clampCamera();
+    }
   }
 
   onUp(e) {
