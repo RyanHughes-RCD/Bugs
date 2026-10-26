@@ -5,12 +5,13 @@ import { ITEMS, ITEM_TYPES, sellPrice, itemEffectsText } from '../data/items.js'
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
 import { UPGRADES, upgradeCost, upgradeValue } from '../data/upgrades.js';
-import { GARDEN_LIMIT, PARTY_SIZE, GARDEN_FORAGE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
+import { GARDEN_LIMIT, PARTY_SIZE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
+import { DECOR } from '../data/decor.js';
 import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs, shopStock } from '../systems/eggs.js';
 import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours, partyPower, paceFactor } from '../systems/expedition.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
-import { gardenRatePerMin } from '../systems/garden.js';
+import { gardenRatePerMin, potCap, ownsDecor, favouriteDecor } from '../systems/garden.js';
 import { areaBackground } from './scenes.js';
 import { esc, fmtTime, fmtNum, pct, fmtClock, fmtDur } from './format.js';
 import { VERSION } from '../version.js';
@@ -87,7 +88,7 @@ export function renderHud(v) {
   if (v.ui.updateAvailable) chips.unshift(`<button class="chip update" data-act="update-app">${icon(A, 'star', 'xs')}<b>New version! Tap to update</b></button>`);
   const garden = gardenCount(st);
   return `<div class="hud-row">
-      <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${GARDEN_FORAGE.cap}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
+      <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${potCap(st)}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
       <button class="chip garden-count" data-act="nav" data-panel="bugs">${icon(A, 'flower', 'xs')} ${garden}/${GARDEN_LIMIT}</button>
     </div>
     <div class="chips">${chips.join('')}</div>`;
@@ -283,6 +284,7 @@ export function bugModal(v, uid) {
       const b = itemBonus(bug, t);
       return `<div class="trait-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(eff[t] / 15, `t-${t}`)}<span>Lv ${eff[t]}${b ? ` <em class="up">(+${b} item)</em>` : ''}</span></div>`;
     }).join('')}</div>
+    ${(() => { const fav = favouriteDecor(st, bug.species); return fav ? `<p class="meta">${icon(A, 'heart', 'xs')} Loves the <b>${fav.name}</b>: forages +${Math.round(fav.bonus * 100)}% while it lives in the garden.</p>` : ''; })()}
     <h4>Equipped item <small class="inline">(one per bug)</small></h4>
     <div class="gear-slot">${bug.item ? `${icon(A, bug.item)}<div class="grow"><b>${ITEMS[bug.item].name}</b><small>${itemEffectsText(bug.item)}</small></div>${btn('Unequip', 'unequip', { uid }, 'sm', away)}` : '<span class="muted">Nothing equipped.</span>'}</div>
     ${!away && gear.length ? `<div class="gear-pick">${gear.map((id) => `<button class="item-chip" data-act="equip" data-uid="${uid}" data-item="${id}">${icon(A, id, 'sm')}<span>${ITEMS[id].name} x${st.inventory[id]}<small>${itemEffectsText(id)}</small></span></button>`).join('')}</div>` : ''}
@@ -506,7 +508,19 @@ export function pickBugModal(v0, itemId) {
 export function renderUpgrades(v) {
   const { game, A } = v;
   const st = game.state;
-  return `<p class="muted">Permanent, global improvements. They apply to eggs and expeditions started after you buy them.</p>
+  const decor = DECOR.map((d) => {
+    const owned = ownsDecor(st, d.id);
+    const lovers = st.bugs.filter((b) => b.inGarden && favouriteDecor(st, b.species)?.id === d.id).length;
+    const art = d.sprite ? `<img class="px decor-art" src="${d.sprite}" alt="">` : icon(A, 'rock', 'decor-art');
+    return `<div class="upgrade decor ${owned ? 'maxed' : ''}">
+      ${art}<div class="grow"><b>${d.name}</b><small>${esc(d.desc)}</small>
+        <small>Bugs that love it forage <b>+${Math.round(d.bonus * 100)}%</b>${owned ? ` · ${lovers} in your garden` : ''}</small></div>
+      ${owned ? '<span class="ok">Owned</span>' : btn(coins(A, d.price), 'buy-decor', { id: d.id }, 'go sm', st.coins < d.price)}
+    </div>`;
+  }).join('');
+  return `<div class="section-title">Garden decorations <small>tap one in the garden to see who loves it; drag to move</small></div>${decor}
+    <div class="section-title">Upgrades</div>
+    <p class="muted">Permanent, global improvements. They apply to eggs and expeditions started after you buy them.</p>
     ${UPGRADES.map((u) => {
       const lvl = st.upgrades[u.id] || 0;
       const cost = upgradeCost(u.id, lvl);

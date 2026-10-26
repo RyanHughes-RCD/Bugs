@@ -1,10 +1,10 @@
 import { SPECIES } from '../data/species.js';
 import { EGG_BY_ID } from '../data/eggs.js';
-import { GARDEN_FORAGE } from '../data/balance.js';
+import { DECOR_BY_ID, BATTERY } from '../data/decor.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
-import { dirtPatches } from '../systems/garden.js';
+import { dirtPatches, favouriteDecor, potCap, decorFits, decorRect } from '../systems/garden.js';
 import { rockFindReady } from '../systems/visitors.js';
 import { fmtTime } from './format.js';
 
@@ -46,10 +46,14 @@ export class GardenScene {
     this.last = performance.now();
     this.drag = null;
     this.rockDrag = null;
+    this.decorDrag = null;
+    this.ripples = [];
+    this.logRoll = 0;
+    this.glints = Array.from({ length: 14 }, () => ({ i: Math.random(), p: rand(0, 6.28), s: rand(1.5, 3) }));
     canvas.addEventListener('pointerdown', (e) => this.onDown(e));
     canvas.addEventListener('pointermove', (e) => this.onMove(e));
     canvas.addEventListener('pointerup', (e) => this.onUp(e));
-    canvas.addEventListener('pointercancel', () => { this.drag = null; this.rockDrag = null; });
+    canvas.addEventListener('pointercancel', () => { this.drag = null; this.rockDrag = null; this.decorDrag = null; });
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     this.resize();
   }
@@ -133,6 +137,7 @@ export class GardenScene {
         e.ty = clamp(e.y, BOUNDS.y0, BOUNDS.y1);
       }
       const sp = SPECIES[species];
+      e.fav = favouriteDecor(st, species)?.id || null;
       e.species = species;
       e.aura = sp.aura;
       e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
@@ -207,11 +212,15 @@ export class GardenScene {
     return found;
   }
 
-  // Picks the next thing to do: wander, visit a flower, dig, or hide under the rock.
+  // Picks the next thing to do: hang around a favourite decoration, wander,
+  // visit a flower, dig, or hide under the rock.
   pickTarget(e) {
     e.act = null;
     const roll = Math.random();
-    if (e.likesRock && !this.rockDrag && roll < 0.3) {
+    const fav = e.fav && e.fav !== 'rock' && this.decorSpot(e.fav);
+    if (fav && roll < 0.6) {
+      this.visitDecor(e, e.fav, fav);
+    } else if (e.likesRock && !this.rockDrag && roll < 0.3) {
       const r = this.game.state.garden.rock;
       e.tx = r.x;
       e.ty = r.y;
@@ -233,6 +242,47 @@ export class GardenScene {
       const range = e.family === 'flyer' ? 60 : 32;
       e.tx = clamp(e.x + rand(-range, range), BOUNDS.x0, BOUNDS.x1);
       e.ty = clamp(e.y + rand(-range, range) * (e.side ? 0.4 : 1), BOUNDS.y0, BOUNDS.y1);
+    }
+  }
+
+  // Where a placed decoration is right now (the river follows the top of the
+  // screen; the one being dragged follows the finger).
+  decorSpot(id) {
+    if (this.decorDrag?.id === id) return this.decorDrag;
+    if (id === 'river') return this.game.state.garden.decor.river ? this.riverRect() : null;
+    return this.game.state.garden.decor[id] || null;
+  }
+
+  riverRect() {
+    const art = this.assets.decor.river;
+    const w = art ? art.width : 110;
+    const h = art ? art.height : 23;
+    const x0 = (WORLD_W - w) / 2;
+    return { x: WORLD_W / 2, y: this.camY + h / 2, x0, y0: this.camY, w, h };
+  }
+
+  // Sends a bug to the decoration it loves, doing that decoration's thing.
+  visitDecor(e, id, spot) {
+    const r = id === 'river' ? spot : decorRect(id, spot.x, spot.y);
+    if (id === 'river') {
+      e.tx = clamp(rand(r.x0 + 12, r.x0 + r.w - 12), BOUNDS.x0, BOUNDS.x1);
+      e.ty = r.y0 + rand(r.h * 0.25, r.h * 0.75);
+      e.act = 'sniff';
+    } else if (id === 'battery') {
+      e.tx = spot.x + rand(-r.w * 0.25, r.w * 0.25);
+      e.ty = spot.y - r.h * 0.2 + rand(-4, 4);
+      e.act = 'charge';
+    } else if (id === 'log') {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      e.tx = clamp(spot.x + side * rand(r.w * 0.2, r.w * 0.5), BOUNDS.x0, BOUNDS.x1);
+      e.ty = clamp(spot.y + rand(r.h * 0.1, r.h * 0.5), BOUNDS.y0, BOUNDS.y1);
+      e.act = 'dig';
+    } else {
+      // Flower bed and jar: hover or sniff around the top of it.
+      const a = rand(0, Math.PI * 2);
+      e.tx = clamp(spot.x + Math.cos(a) * r.w * 0.45, BOUNDS.x0, BOUNDS.x1);
+      e.ty = clamp(spot.y + Math.sin(a) * r.h * 0.3 - (id === 'jar' ? r.h * 0.3 : 0), BOUNDS.y0, BOUNDS.y1);
+      e.act = 'sniff';
     }
   }
 
@@ -304,6 +354,7 @@ export class GardenScene {
     if (d < (e.act === 'hide' ? 10 : 0.8)) {
       if (e.act === 'hide' && !this.rockDrag) this.hide(e, rand(25, 120));
       else if (e.act === 'sniff' || e.act === 'dig') e.actTime = rand(1.5, 3);
+      else if (e.act === 'charge') e.actTime = rand(4, 8);
       else e.wait = e.family === 'flyer' ? rand(0.2, 1.2) : rand(0.6, 3.5);
       return;
     }
@@ -327,7 +378,8 @@ export class GardenScene {
 
   puff(e) {
     const dig = e.act === 'dig';
-    this.particles.push({ x: e.x + rand(-4, 4), y: e.y + rand(-2, 4), vx: rand(-6, 6), vy: dig ? rand(-14, -6) : rand(-8, -3), life: 0.8, color: dig ? '#7a4a2a' : '#ffcd75' });
+    const color = dig ? '#7a4a2a' : e.act === 'charge' ? '#fff07a' : e.fav === 'flower_bed' ? '#f0c7f0' : '#ffcd75';
+    this.particles.push({ x: e.x + rand(-4, 4), y: e.y + rand(-2, 4), vx: rand(-6, 6), vy: dig ? rand(-14, -6) : rand(-8, -3), life: 0.8, color });
   }
 
   update(dt) {
@@ -340,6 +392,9 @@ export class GardenScene {
       f.x = (f.x + Math.cos(f.p * 0.7) * dt * 6 + WORLD_W) % WORLD_W;
       f.y = (f.y + Math.sin(f.p * 0.5) * dt * 6 + WORLD_H) % WORLD_H;
     }
+    this.zapCheck(list);
+    this.ripples = this.ripples.filter((r) => (r.t += dt) < 1.2);
+    this.logRoll = Math.max(0, this.logRoll - dt);
     for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * dt; p.life -= dt; }
     this.particles = this.particles.filter((p) => p.life > 0).slice(-80);
     this.floaters = this.floaters.filter((f) => (f.life -= dt) > 0);
@@ -359,9 +414,12 @@ export class GardenScene {
     if (this.assets.map[0]) ctx.drawImage(this.assets.map[0], Math.round(mx), Math.round(my), WORLD_W * scale, WORLD_H * scale);
 
     this.drawPatches();
+    this.drawDecor();
+    this.drawRiver();
     this.drawCoins();
     const all = [...this.entities.values()].filter((e) => !e.hidden).sort((a, b) => a.y - b.y);
     for (const e of all) this.drawShadow(e);
+    for (const e of all) if (e.act === 'charge' && e.actTime > 0) this.glow(e.x, e.y, 10 + Math.sin(this.t * 9) * 2, 'rgba(255, 240, 122, 0.6)');
     for (const e of all) if (e.aura) this.glow(e.x, e.y - this.bob(e), 11 + Math.sin(this.t * 3 + e.phase) * 2, hexA(e.aura, 0.55));
     for (const e of all) if (e.variant === 'shiny') this.glow(e.x, e.y - this.bob(e), 12 + Math.sin(this.t * 2 + e.phase), 'rgba(220, 245, 255, 0.55)');
     for (const e of all) this.drawBug(e);
@@ -383,6 +441,8 @@ export class GardenScene {
     if (tod === 'night') {
       ctx.globalCompositeOperation = 'lighter';
       for (const e of all) if (e.glowing) this.glow(e.x, e.y, 14, 'rgba(255, 220, 120, 0.35)');
+      const jar = this.decorSpot('jar');
+      if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, 'rgba(255, 230, 120, 0.45)');
       for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${0.4 + 0.4 * Math.sin(f.p * 3)})`);
       ctx.globalCompositeOperation = 'source-over';
     }
@@ -637,7 +697,130 @@ export class GardenScene {
 
   coinCount() {
     const pot = this.game.state.garden.pot;
-    return pot < 1 ? 0 : clamp(Math.ceil((pot / GARDEN_FORAGE.cap) * 10), 1, 10);
+    return pot < 1 ? 0 : clamp(Math.ceil((pot / potCap(this.game.state)) * 10), 1, 10);
+  }
+
+  // ---------- decorations ----------
+
+  // Draggable decorations at their spots, back to front. The one being
+  // dragged is lifted, and tinted red where it won't fit.
+  drawDecor() {
+    const { ctx, scale } = this;
+    const placed = Object.keys(this.game.state.garden.decor).filter((id) => !DECOR_BY_ID[id].fixed && this.assets.decor[id]);
+    placed.sort((a, b) => this.decorSpot(a).y - this.decorSpot(b).y);
+    for (const id of placed) {
+      const d = DECOR_BY_ID[id];
+      const spot = this.decorSpot(id);
+      const art = this.assets.decor[id];
+      const px = Math.max(1, Math.round(scale * d.scale));
+      const [sx, sy] = this.toScreen(spot.x, spot.y);
+      const dragging = this.decorDrag?.id === id;
+      const lift = dragging ? 4 * scale : 0;
+      ctx.save();
+      ctx.translate(Math.round(sx), Math.round(sy - lift));
+      if (id === 'log' && this.logRoll > 0) ctx.rotate(Math.sin(this.logRoll * 14) * 0.25 * this.logRoll);
+      if (dragging && !decorFits(this.game.state.garden, id, spot.x, spot.y)) ctx.globalAlpha = 0.5;
+      ctx.drawImage(art, -Math.round((art.width * px) / 2), -Math.round((art.height * px) / 2), art.width * px, art.height * px);
+      ctx.restore();
+      // The battery crackles now and then.
+      if (id === 'battery' && Math.random() < 0.02) {
+        const r = decorRect(id, spot.x, spot.y);
+        for (let k = 0; k < 3; k++) this.particles.push({ x: r.x0 + r.w * rand(0.2, 0.5), y: r.y0 + rand(0, 3), vx: rand(-10, 10), vy: rand(-16, -6), life: 0.5, color: '#fff07a' });
+      }
+    }
+  }
+
+  // The river, pinned to the top edge of the screen, with waves drifting
+  // across it and sunlight glittering on the water.
+  drawRiver() {
+    const art = this.assets.decor.river;
+    if (!art || !this.game.state.garden.decor.river) return;
+    const { ctx, scale } = this;
+    const r = this.riverRect();
+    const [sx, sy] = this.toScreen(r.x0, r.y0);
+    const ox = Math.round(sx);
+    const oy = Math.round(sy);
+    ctx.drawImage(art, ox, oy, art.width * scale, art.height * scale);
+    const water = this.assets.riverWater;
+    if (!water) return;
+    const day = timeOfDay(this.game.now()) !== 'night';
+    // Waves: short light crests sliding downstream, a few rows apart.
+    ctx.fillStyle = 'rgba(115, 239, 247, 0.7)';
+    const shift = Math.floor(this.t * 5);
+    for (const [x, y] of water.cells) {
+      if (y % 6 !== 3) continue;
+      const k = (x - shift + y * 7) % 16;
+      if ((k + 16) % 16 < 4 && water.set.has((y - 1) * water.w + x) && water.set.has((y + 1) * water.w + x)) ctx.fillRect(ox + x * scale, oy + y * scale, scale, scale);
+    }
+    // Glitter: sparkles that wink on and off where the light catches.
+    for (const g of this.glints) {
+      const a = Math.sin(this.t * g.s + g.p);
+      if (a < 0.6) continue;
+      const [x, y] = water.cells[Math.floor(g.i * water.cells.length)];
+      ctx.globalAlpha = (a - 0.6) / 0.4 * (day ? 1 : 0.4);
+      this.sparkle(ox + (x + 0.5) * scale, oy + (y + 0.5) * scale, scale * 0.7, '#ffffff');
+      if (a > 0.98) g.i = Math.random();
+    }
+    ctx.globalAlpha = 1;
+    for (const rp of this.ripples) {
+      const [rx, ry] = this.toScreen(rp.x, rp.y);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * (1 - rp.t / 1.2)})`;
+      ctx.lineWidth = Math.max(1, scale * 0.6);
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, (2 + rp.t * 10) * scale, (1 + rp.t * 4) * scale, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // Which decoration is under a point, front-most first.
+  decorAt(wx, wy) {
+    const placed = Object.keys(this.game.state.garden.decor).filter((id) => this.decorSpot(id));
+    placed.sort((a, b) => this.decorSpot(b).y - this.decorSpot(a).y);
+    for (const id of placed) {
+      const spot = this.decorSpot(id);
+      const r = id === 'river' ? { x0: spot.x0, x1: spot.x0 + spot.w, y0: spot.y0, y1: spot.y0 + spot.h } : decorRect(id, spot.x, spot.y);
+      if (wx >= r.x0 && wx <= r.x1 && wy >= r.y0 && wy <= r.y1) return id;
+    }
+    return null;
+  }
+
+  // Bugs that wander too close to the battery get a zap and hop away.
+  // Electric bugs love it and never get zapped.
+  zapCheck(list) {
+    const spot = this.decorSpot('battery');
+    if (!spot || this.decorDrag?.id === 'battery') return;
+    const r = decorRect('battery', spot.x, spot.y);
+    const now = performance.now();
+    for (const e of list) {
+      if (e.hidden || e.leaving || e.fav === 'battery' || (e.zapUntil || 0) > now) continue;
+      const inside = e.x > r.x0 - BATTERY.reach && e.x < r.x1 + BATTERY.reach && e.y > r.y0 - BATTERY.reach && e.y < r.y1 + BATTERY.reach;
+      if (!inside) continue;
+      e.zapUntil = now + BATTERY.cooldownMs;
+      Object.assign(e, { label: 'Bzzt!', labelColor: '#fff07a', bubble: 1.4, surprised: 1.2, act: null, actTime: 0, wait: 0.8 });
+      const a = Math.atan2(e.y - spot.y, e.x - spot.x);
+      e.x = clamp(spot.x + Math.cos(a) * (r.w / 2 + BATTERY.reach + 3), BOUNDS.x0, BOUNDS.x1);
+      e.y = clamp(spot.y + Math.sin(a) * (r.h / 2 + BATTERY.reach + 3), BOUNDS.y0, BOUNDS.y1);
+      for (let k = 0; k < 6; k++) this.particles.push({ x: e.x, y: e.y - 4, vx: rand(-20, 20), vy: rand(-20, -4), life: 0.5, color: k % 2 ? '#fff07a' : '#ffffff' });
+      if (this.handlers.onZap?.()) this.float(e.x + 8, e.y - 4, '+1');
+    }
+  }
+
+  // Tapping a decoration: the log rolls over, the river ripples.
+  tapDecor(id, x, y) {
+    if (id === 'river') this.ripples.push({ x, y, t: 0 });
+    if (id === 'log') {
+      this.logRoll = 0.9;
+      const spot = this.decorSpot('log');
+      for (const e of this.entities.values()) {
+        if (e.hidden || Math.hypot(e.x - spot.x, e.y - spot.y) > 30) continue;
+        Object.assign(e, { surprised: 1.5, act: null, actTime: 0, wait: 0 });
+        e.tx = clamp(e.x + (e.x - spot.x) * 1.5, BOUNDS.x0, BOUNDS.x1);
+        e.ty = clamp(e.y + (e.y - spot.y) * 1.5 + 10, BOUNDS.y0, BOUNDS.y1);
+      }
+      for (let k = 0; k < 10; k++) this.particles.push({ x: spot.x + rand(-15, 15), y: spot.y + rand(0, 6), vx: rand(-12, 12), vy: rand(-18, -6), life: 0.9, color: k % 3 ? '#7a4a2a' : '#f4f4f4' });
+    }
+    const res = this.handlers.onDecorTap?.(id);
+    if (res?.coins) this.float(x, y - 6, `+${res.coins}`);
   }
 
   drawCoins() {
@@ -673,6 +856,13 @@ export class GardenScene {
     this.canvas.setPointerCapture?.(e.pointerId);
     const onNest = this.nestLayout().some((n) => Math.abs(cx - n.x) < n.size / 2 && Math.abs(cy - n.y) < n.size / 2);
     const r = this.game.state.garden.rock;
+    const onBug = [...this.entities.values()].some((b) => !b.hidden && !b.leaving && Math.hypot(b.x - wx, b.y - this.bob(b) - wy) < 8);
+    const decor = !onNest && !onBug && this.decorAt(wx, wy);
+    if (decor && !this.onRock(wx, wy)) {
+      const spot = this.decorSpot(decor);
+      this.decorDrag = { id: decor, x: spot.x, y: spot.y, grabX: wx - spot.x, grabY: wy - spot.y, moved: 0, startX: e.clientX, startY: e.clientY, fixed: !!DECOR_BY_ID[decor].fixed, tapX: wx, tapY: wy };
+      return;
+    }
     if (!onNest && this.onRock(wx, wy)) {
       this.rockDrag = { x: r.x, y: r.y, grabX: wx - r.x, grabY: wy - r.y, moved: 0, startX: e.clientX, startY: e.clientY };
       const found = this.reveal();
@@ -683,6 +873,15 @@ export class GardenScene {
   }
 
   onMove(e) {
+    if (this.decorDrag) {
+      const d = this.decorDrag;
+      d.moved = Math.max(d.moved, Math.hypot(e.clientX - d.startX, e.clientY - d.startY));
+      if (d.fixed || d.moved <= 6) return;
+      const [wx, wy] = this.toWorld(e.clientX, e.clientY);
+      d.x = clamp(wx - d.grabX, BOUNDS.x0, BOUNDS.x1);
+      d.y = clamp(wy - d.grabY, BOUNDS.y0, BOUNDS.y1);
+      return;
+    }
     if (this.rockDrag) {
       const [wx, wy] = this.toWorld(e.clientX, e.clientY);
       const d = this.rockDrag;
@@ -698,6 +897,13 @@ export class GardenScene {
   }
 
   onUp(e) {
+    if (this.decorDrag) {
+      const d = this.decorDrag;
+      this.decorDrag = null;
+      if (d.moved > 6 && !d.fixed) this.handlers.onDecorMoved?.(d.id, d.x, d.y);
+      else if (d.moved <= 8) this.tapDecor(d.id, d.tapX, d.tapY);
+      return;
+    }
     if (this.rockDrag) {
       const d = this.rockDrag;
       this.rockDrag = null;

@@ -1,7 +1,8 @@
 import { GARDEN_LIMIT, VISITORS, ROCK_FIND, MINUTE, HOUR } from '../data/balance.js';
 import { SPECIES_LIST } from '../data/species.js';
 import { bugsOnExpedition } from './bugs.js';
-import { patchStrength } from './garden.js';
+import { patchStrength, ownsDecor } from './garden.js';
+import { DECOR } from '../data/decor.js';
 
 // Places in the garden not taken by bugs that are actually home right now.
 export function freeGardenSpots(state) {
@@ -13,12 +14,17 @@ function rollGap(rng) {
   return rng.float(VISITORS.everyMin[0], VISITORS.everyMin[1]) * MINUTE;
 }
 
+// Decorations draw in the visitors that love them.
+function visitorWeight(state, sp) {
+  return DECOR.reduce((w, d) => (ownsDecor(state, d.id) && d.loves(sp) ? Math.max(w, d.attracts) : w), 1);
+}
+
 function newVisitor(state, rng, at) {
   const rarity = rng.weighted(VISITORS.rarity);
   const pool = SPECIES_LIST.filter((s) => s.rarity === rarity);
   return {
     id: state.nextUid++,
-    species: rng.pick(pool).id,
+    species: rng.weighted(pool.map((s) => [s, visitorWeight(state, s)])).id,
     arrivedAt: at,
     leavesAt: at + rng.float(VISITORS.stayMin[0], VISITORS.stayMin[1]) * MINUTE,
     greeted: false,

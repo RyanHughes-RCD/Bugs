@@ -104,6 +104,8 @@ try {
   await act('#nav [data-panel="garden"]');
   await warp(2 * HOUR);
   // Pick a visitor that is still here and not under the HUD, and hold it still for the tap.
+  // Empty the pot first so no garden coin sits under the tap.
+  await page.evaluate(() => { window.bugGarden.game.collectGarden(); });
   const visitor = await st(() => {
     const s = window.bugGarden.app.scene;
     const b = s.canvas.getBoundingClientRect();
@@ -138,6 +140,29 @@ try {
   await act('[data-act="confirm-yes"]');
   assert.equal(await st(() => window.bugGarden.game.state.upgrades.improved_exploration), 1);
   await snap('upgrades');
+
+  // Garden decorations: buy a log from the Upgrades panel, then drag it.
+  await page.evaluate(() => { window.bugGarden.game.earn(2000); window.bugGarden.game.commit(); });
+  await act('#nav [data-panel="upgrades"]');
+  await act('[data-act="buy-decor"][data-id="log"]');
+  if (await page.$('[data-act="confirm-yes"]')) await act('[data-act="confirm-yes"]');
+  const log = await st(() => ({ ...window.bugGarden.game.state.garden.decor.log }));
+  assert.ok(Number.isFinite(log.x), 'the log is in the garden');
+  const toPage = (x, y) => page.evaluate(([x, y]) => { const s = window.bugGarden.app.scene; const [a, b] = s.toScreen(x, y); const r = s.canvas.getBoundingClientRect(); return [r.left + a / s.dpr, r.top + b / s.dpr]; }, [x, y]);
+  const free = await st(async () => {
+    const { decorFits } = await import('./game/js/systems/garden.js');
+    const g = window.bugGarden.game.state.garden;
+    for (let y = 120; y < 260; y += 10) for (const x of [40, 75, 110]) if (decorFits(g, 'log', x, y) && Math.hypot(x - g.decor.log.x, y - g.decor.log.y) > 30) return [x, y];
+    return null;
+  });
+  await page.mouse.move(...(await toPage(log.x, log.y)));
+  await page.mouse.down();
+  await page.mouse.move(...(await toPage(...free)), { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const moved = await st(() => window.bugGarden.game.state.garden.decor.log);
+  assert.ok(Math.hypot(moved.x - free[0], moved.y - free[1]) <= 2, `log dragged to ${free}: ${JSON.stringify(moved)}`);
+  await snap('decorations');
 
   // Persistence across a reload.
   const sig = () => JSON.stringify({ c: window.bugGarden.game.state.coins, b: window.bugGarden.game.state.bugs.map((x) => [x.uid, x.item, x.inGarden, x.traits]), u: window.bugGarden.game.state.upgrades, h: window.bugGarden.game.state.history.length });

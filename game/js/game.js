@@ -8,7 +8,8 @@ import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } fr
 import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
-import { tickGarden, moveRock } from './systems/garden.js';
+import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap } from './systems/garden.js';
+import { DECOR_BY_ID, LOG } from './data/decor.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
 import { SPECIES } from './data/species.js';
 
@@ -190,8 +191,59 @@ export class Game {
   moveRock(x, y) {
     const cx = Math.min(124, Math.max(26, Math.round(x)));
     const cy = Math.min(280, Math.max(30, Math.round(y)));
-    if (!moveRock(this.state.garden, cx, cy, this.now())) return fail('The rock barely moved.');
+    const g = this.state.garden;
+    const after = { ...g, rock: { ...g.rock, x: cx, y: cy } };
+    if (Object.entries(g.decor).some(([id, spot]) => spot && !DECOR_BY_ID[id].fixed && !decorFits(after, id, spot.x, spot.y))) return fail('Something is already there.');
+    if (!moveRock(g, cx, cy, this.now())) return fail('The rock barely moved.');
     this.commit();
+    return { ok: true };
+  }
+
+  // ---------- garden decorations ----------
+
+  buyDecor(id) {
+    const d = DECOR_BY_ID[id];
+    const g = this.state.garden;
+    if (!d || !d.price) return fail('That is not for sale.');
+    if (g.decor[id]) return fail(`You already have the ${d.name}.`);
+    const spot = d.fixed ? {} : freeDecorSpot(g, id);
+    if (!spot) return fail('There is no room left in the garden. Try moving things around.');
+    if (!this.spend(d.price)) return fail('Not enough coins.');
+    g.decor[id] = spot;
+    this.commit();
+    return { ok: true, spot };
+  }
+
+  moveDecor(id, x, y) {
+    const g = this.state.garden;
+    const d = DECOR_BY_ID[id];
+    if (!g.decor[id] || d.fixed) return fail('That cannot be moved.');
+    const [cx, cy] = [Math.round(x), Math.round(y)];
+    if (!decorFits(g, id, cx, cy)) return fail('Not enough room there.');
+    g.decor[id] = { ...g.decor[id], x: cx, y: cy };
+    this.commit();
+    return { ok: true };
+  }
+
+  // Roll the log over: a few coins underneath, at most every couple of hours.
+  rollLog() {
+    const log = this.state.garden.decor.log;
+    if (!log) return fail('No log yet.');
+    const now = this.now();
+    if (log.rolledAt && now - log.rolledAt < LOG.everyMs) return { ok: true, coins: 0 };
+    log.rolledAt = now;
+    const coins = this.rng.int(LOG.coins[0], LOG.coins[1]);
+    this.earn(coins);
+    this.commit();
+    return { ok: true, coins };
+  }
+
+  // A bug got too close to the battery: the zap knocks a coin into the pot.
+  batteryZap() {
+    const g = this.state.garden;
+    if (!g.decor.battery) return fail('No battery.');
+    g.pot = Math.min(potCap(this.state), g.pot + 1);
+    this.save();
     return { ok: true };
   }
 

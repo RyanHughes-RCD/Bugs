@@ -508,3 +508,5 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .trip .presets { gap: 6px; margin-bottom: 6px; }
 .trip .stepper { align-items: center; gap: 10px; margin-bottom: 4px; }
 .trip .stepper .btn { min-width: 40px; }
+.upgrade.decor { align-items: center; }
+.upgrade .decor-art { width: 48px; height: 48px; object-fit: contain; flex: none; }

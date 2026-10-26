@@ -9,7 +9,8 @@ import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
 import { SPECIES } from '../data/species.js';
 import { clampEncounterCount, defaultEncounterCount, encounterMs } from '../systems/expedition.js';
 import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
-import { gardenRatePerMin } from '../systems/garden.js';
+import { gardenRatePerMin, favouriteDecor } from '../systems/garden.js';
+import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 
@@ -90,7 +91,13 @@ export class App {
         else this.toast(`The wild ${res.name} says hi back and leaves you ${res.coins} coins.`, 'good');
         return res;
       },
-      onRockMoved: (x, y) => this.game.moveRock(x, y),
+      onRockMoved: (x, y) => {
+        const res = this.game.moveRock(x, y);
+        if (!res.ok && res.error !== 'The rock barely moved.') this.toast(res.error, 'bad');
+      },
+      onDecorMoved: (id, x, y) => this.result(this.game.moveDecor(id, x, y)),
+      onDecorTap: (id) => this.decorTap(id),
+      onZap: () => this.game.batteryZap().ok,
     });
     this.scene.start();
 
@@ -279,6 +286,20 @@ export class App {
     this.pending = null;
     this.el.modalRoot.innerHTML = '';
     this.el.app.classList.remove('has-modal');
+  }
+
+  // Tapping a decoration says what it does; the log also rolls over.
+  decorTap(id) {
+    this.hideQuick();
+    const d = DECOR_BY_ID[id];
+    if (id === 'log') {
+      const res = this.game.rollLog();
+      this.toast(res.coins ? `You roll the log over. ${res.coins} coins were tucked underneath!` : 'You roll the log over. Just some sleepy grubs this time.', res.coins ? 'good' : '');
+      return res;
+    }
+    const lovers = this.game.state.bugs.filter((b) => b.inGarden && favouriteDecor(this.game.state, b.species)?.id === id).length;
+    this.toast(`${d.name}: ${d.desc} ${lovers ? `${lovers} of your garden bug${lovers > 1 ? 's' : ''} love${lovers > 1 ? '' : 's'} it: +${Math.round(d.bonus * 100)}% foraging.` : ''}`);
+    return null;
   }
 
   lastBackup() {
@@ -479,6 +500,14 @@ export class App {
         const u = UPGRADE_BY_ID[d.id];
         const cost = upgradeCost(d.id, st.upgrades[d.id] || 0);
         this.spendCheck(cost, `${u.name} level ${(st.upgrades[d.id] || 0) + 1}`, () => this.result(g.buyUpgrade(d.id), `${u.name} upgraded!`));
+        break;
+      }
+      case 'buy-decor': {
+        const dec = DECOR_BY_ID[d.id];
+        this.spendCheck(dec.price, `the ${dec.name}`, () => {
+          if (!this.result(g.buyDecor(d.id), `The ${dec.name} is in your garden!${dec.fixed ? '' : ' Drag it wherever you like.'}`)) return;
+          this.closePanel();
+        });
         break;
       }
       case 'unlock': {
