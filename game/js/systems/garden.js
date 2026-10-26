@@ -1,7 +1,7 @@
 import { GARDEN_FORAGE, ROCK } from '../data/balance.js';
 import { RARITIES } from '../data/rarities.js';
 import { SPECIES } from '../data/species.js';
-import { DECOR, DECOR_BY_ID } from '../data/decor.js';
+import { DECOR, DECOR_BY_ID, RIVER_ROWS } from '../data/decor.js';
 import { rarityOf } from './bugs.js';
 
 // ---------- decorations ----------
@@ -29,16 +29,30 @@ export function decorRect(id, x, y) {
 }
 
 const ROCK_SIZE = { w: 48, h: 33 }; // matches the rock sprite drawn by the garden scene
+
+// Whether a map rectangle touches the river's water (if there is a river).
+export function overlapsRiver(garden, r) {
+  if (!garden.decor.river) return false;
+  const [rx, ry] = DECOR_BY_ID.river.fixed;
+  for (let y = Math.max(0, Math.floor(r.y0 - ry)); y <= Math.min(RIVER_ROWS.length - 1, Math.ceil(r.y1 - ry)); y++) {
+    const [a, b] = RIVER_ROWS[y];
+    if (r.x0 < rx + b + 1 && r.x1 > rx + a) return true;
+  }
+  return false;
+}
+
+export function rockRect(rock) {
+  return { x0: rock.x - ROCK_SIZE.w / 2, x1: rock.x + ROCK_SIZE.w / 2, y0: rock.y - ROCK_SIZE.h * 0.62, y1: rock.y + ROCK_SIZE.h * 0.38 };
+}
 const BOUNDS = { x0: 4, x1: 146, y0: 30, y1: 284 };
 
 // Whether a draggable decoration fits at (x, y): inside the garden and clear
-// of the rock and every other placed decoration.
+// of the rock, the river and every other placed decoration.
 export function decorFits(garden, id, x, y) {
   const r = decorRect(id, x, y);
   if (r.x0 < BOUNDS.x0 || r.x1 > BOUNDS.x1 || r.y0 < BOUNDS.y0 || r.y1 > BOUNDS.y1) return false;
   const hit = (o) => r.x0 < o.x1 && r.x1 > o.x0 && r.y0 < o.y1 && r.y1 > o.y0;
-  const rk = garden.rock;
-  if (hit({ x0: rk.x - ROCK_SIZE.w / 2, x1: rk.x + ROCK_SIZE.w / 2, y0: rk.y - ROCK_SIZE.h * 0.62, y1: rk.y + ROCK_SIZE.h * 0.38 })) return false;
+  if (hit(rockRect(garden.rock)) || overlapsRiver(garden, r)) return false;
   for (const [other, spot] of Object.entries(garden.decor)) {
     if (other === id || DECOR_BY_ID[other].fixed || !spot) continue;
     if (hit(decorRect(other, spot.x, spot.y))) return false;

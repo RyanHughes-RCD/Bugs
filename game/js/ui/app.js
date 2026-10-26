@@ -506,6 +506,7 @@ export class App {
         const dec = DECOR_BY_ID[d.id];
         this.spendCheck(dec.price, `the ${dec.name}`, () => {
           if (!this.result(g.buyDecor(d.id), `The ${dec.name} is in your garden!${dec.fixed ? '' : ' Drag it wherever you like.'}`)) return;
+          if (dec.fixed) this.scene.camY = 0; // show off the river
           this.closePanel();
         });
         break;

@@ -47,9 +47,8 @@ export class GardenScene {
     this.drag = null;
     this.rockDrag = null;
     this.decorDrag = null;
-    this.ripples = [];
+    this.water = null; // the river's animated surface, built once its art has loaded
     this.logRoll = 0;
-    this.glints = Array.from({ length: 14 }, () => ({ i: Math.random(), p: rand(0, 6.28), s: rand(1.5, 3) }));
     canvas.addEventListener('pointerdown', (e) => this.onDown(e));
     canvas.addEventListener('pointermove', (e) => this.onMove(e));
     canvas.addEventListener('pointerup', (e) => this.onUp(e));
@@ -85,7 +84,8 @@ export class GardenScene {
     this.viewH = ch / this.scale;
     this.camX = (WORLD_W - this.viewW) / 2;
     const maxCam = Math.max(0, WORLD_H - this.viewH);
-    if (this.camY === null) this.camY = clamp(this.game.state.garden.rock.y - this.viewH * 0.45, 0, maxCam);
+    // Start at the top when there's a river to show, otherwise around the rock.
+    if (this.camY === null) this.camY = this.game.state.garden.decor.river ? 0 : clamp(this.game.state.garden.rock.y - this.viewH * 0.45, 0, maxCam);
     this.camY = clamp(this.camY, 0, maxCam);
     this.bugPx = Math.max(1, Math.round(this.scale * 0.8));
   }
@@ -254,19 +254,28 @@ export class GardenScene {
   }
 
   riverRect() {
-    const art = this.assets.decor.river;
-    const w = art ? art.width : 110;
-    const h = art ? art.height : 23;
-    const x0 = (WORLD_W - w) / 2;
-    return { x: WORLD_W / 2, y: this.camY + h / 2, x0, y0: this.camY, w, h };
+    const d = DECOR_BY_ID.river;
+    const [x0, y0] = d.fixed;
+    const [w, h] = d.size;
+    return { x: x0 + w / 2, y: y0 + h / 2, x0, y0, w, h };
+  }
+
+  // A random point on the river's water, in map pixels.
+  riverPoint() {
+    const cells = this.assets.riverWater?.cells;
+    const r = this.riverRect();
+    if (!cells?.length) return [r.x, r.y];
+    const [x, y] = cells[Math.floor(Math.random() * cells.length)];
+    return [r.x0 + x + 0.5, r.y0 + y + 0.5];
   }
 
   // Sends a bug to the decoration it loves, doing that decoration's thing.
   visitDecor(e, id, spot) {
     const r = id === 'river' ? spot : decorRect(id, spot.x, spot.y);
     if (id === 'river') {
-      e.tx = clamp(rand(r.x0 + 12, r.x0 + r.w - 12), BOUNDS.x0, BOUNDS.x1);
-      e.ty = r.y0 + rand(r.h * 0.25, r.h * 0.75);
+      [e.tx, e.ty] = this.riverPoint();
+      e.tx = clamp(e.tx, BOUNDS.x0, BOUNDS.x1);
+      e.ty = clamp(e.ty, BOUNDS.y0, BOUNDS.y1);
       e.act = 'sniff';
     } else if (id === 'battery') {
       e.tx = spot.x + rand(-r.w * 0.25, r.w * 0.25);
@@ -393,7 +402,7 @@ export class GardenScene {
       f.y = (f.y + Math.sin(f.p * 0.5) * dt * 6 + WORLD_H) % WORLD_H;
     }
     this.zapCheck(list);
-    this.ripples = this.ripples.filter((r) => (r.t += dt) < 1.2);
+    this.updateWater(dt);
     this.logRoll = Math.max(0, this.logRoll - dt);
     for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * dt; p.life -= dt; }
     this.particles = this.particles.filter((p) => p.life > 0).slice(-80);
@@ -730,46 +739,110 @@ export class GardenScene {
     }
   }
 
-  // The river, pinned to the top edge of the screen, with waves drifting
-  // across it and sunlight glittering on the water.
+  // ---------- the river ----------
+  // The water is untextured, so it is brought to life by an animated surface
+  // drawn at the art's own resolution: currents drifting downstream, rings
+  // spreading from little splashes, and glints of light, all clipped to the
+  // water and scaled up with the sprite.
+
+  makeWater() {
+    const water = this.assets.riverWater;
+    if (!water) return null;
+    const make = () => { const c = document.createElement('canvas'); c.width = water.w; c.height = water.h; return c; };
+    const mask = make();
+    const mctx = mask.getContext('2d');
+    mctx.fillStyle = '#fff';
+    for (const [x, y] of water.cells) mctx.fillRect(x, y, 1, 1);
+    const surface = make();
+    return { cells: water.cells, mask, surface, ctx: surface.getContext('2d'), currents: [], rings: [], glints: [], spawn: 0 };
+  }
+
+  updateWater(dt) {
+    if (!this.game.state.garden.decor.river) return;
+    if (!this.water) this.water = this.makeWater();
+    const w = this.water;
+    if (!w) return;
+    const pick = () => w.cells[Math.floor(Math.random() * w.cells.length)];
+    // Currents: short light streaks drifting downstream (the river runs from
+    // the top-left down to the right).
+    while (w.currents.length < 85) {
+      const [x, y] = pick();
+      w.currents.push({ x, y, len: 2 + Math.floor(Math.random() * 4), age: 0, life: rand(1.2, 2.6), vx: rand(5, 9), vy: rand(2, 4) });
+    }
+    for (const c of w.currents) { c.age += dt; c.x += c.vx * dt; c.y += c.vy * dt; }
+    w.currents = w.currents.filter((c) => c.age < c.life);
+    // Rings: a steady patter of little splashes.
+    w.spawn += dt * 7;
+    while (w.spawn >= 1) {
+      w.spawn -= 1;
+      const [x, y] = pick();
+      w.rings.push({ x, y, age: 0, life: rand(0.8, 1.4), size: rand(2.5, 4.5) });
+    }
+    for (const r of w.rings) r.age += dt;
+    w.rings = w.rings.filter((r) => r.age < r.life);
+    // Glints: sparkles of light that wink on and off.
+    while (w.glints.length < 18) {
+      const [x, y] = pick();
+      w.glints.push({ x, y, age: 0, life: rand(0.5, 1.2) });
+    }
+    for (const g of w.glints) g.age += dt;
+    w.glints = w.glints.filter((g) => g.age < g.life);
+  }
+
+  // Draws the water's moving surface onto its small canvas, clipped to the water.
+  paintWater(day) {
+    const w = this.water;
+    const c = w.ctx;
+    c.clearRect(0, 0, w.surface.width, w.surface.height);
+    for (const cur of w.currents) {
+      c.globalAlpha = Math.sin((cur.age / cur.life) * Math.PI) * 0.65;
+      c.fillStyle = '#8fdcff';
+      c.fillRect(Math.floor(cur.x), Math.floor(cur.y), cur.len, 1);
+    }
+    for (const r of w.rings) {
+      if (r.age < 0) continue;
+      const t = r.age / r.life;
+      const rad = 0.8 + t * r.size;
+      c.globalAlpha = (1 - t) * 0.75;
+      c.fillStyle = '#dff6ff';
+      const steps = Math.max(8, Math.round(rad * 7));
+      for (let k = 0; k < steps; k++) {
+        const a = (k / steps) * Math.PI * 2;
+        c.fillRect(Math.round(r.x + Math.cos(a) * rad), Math.round(r.y + Math.sin(a) * rad * 0.55), 1, 1);
+      }
+    }
+    for (const g of w.glints) {
+      c.globalAlpha = Math.sin((g.age / g.life) * Math.PI) * (day ? 1 : 0.35);
+      c.fillStyle = '#ffffff';
+      c.fillRect(g.x, g.y, 1, 1);
+      if (g.age / g.life > 0.3 && g.age / g.life < 0.7) { c.fillRect(g.x - 1, g.y, 3, 1); c.fillRect(g.x, g.y - 1, 1, 3); }
+    }
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'destination-in';
+    c.drawImage(w.mask, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+  }
+
   drawRiver() {
     const art = this.assets.decor.river;
     if (!art || !this.game.state.garden.decor.river) return;
     const { ctx, scale } = this;
     const r = this.riverRect();
     const [sx, sy] = this.toScreen(r.x0, r.y0);
-    const ox = Math.round(sx);
-    const oy = Math.round(sy);
-    ctx.drawImage(art, ox, oy, art.width * scale, art.height * scale);
-    const water = this.assets.riverWater;
-    if (!water) return;
-    const day = timeOfDay(this.game.now()) !== 'night';
-    // Waves: short light crests sliding downstream, a few rows apart.
-    ctx.fillStyle = 'rgba(115, 239, 247, 0.7)';
-    const shift = Math.floor(this.t * 5);
-    for (const [x, y] of water.cells) {
-      if (y % 6 !== 3) continue;
-      const k = (x - shift + y * 7) % 16;
-      if ((k + 16) % 16 < 4 && water.set.has((y - 1) * water.w + x) && water.set.has((y + 1) * water.w + x)) ctx.fillRect(ox + x * scale, oy + y * scale, scale, scale);
-    }
-    // Glitter: sparkles that wink on and off where the light catches.
-    for (const g of this.glints) {
-      const a = Math.sin(this.t * g.s + g.p);
-      if (a < 0.6) continue;
-      const [x, y] = water.cells[Math.floor(g.i * water.cells.length)];
-      ctx.globalAlpha = (a - 0.6) / 0.4 * (day ? 1 : 0.4);
-      this.sparkle(ox + (x + 0.5) * scale, oy + (y + 0.5) * scale, scale * 0.7, '#ffffff');
-      if (a > 0.98) g.i = Math.random();
-    }
-    ctx.globalAlpha = 1;
-    for (const rp of this.ripples) {
-      const [rx, ry] = this.toScreen(rp.x, rp.y);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * (1 - rp.t / 1.2)})`;
-      ctx.lineWidth = Math.max(1, scale * 0.6);
-      ctx.beginPath();
-      ctx.ellipse(rx, ry, (2 + rp.t * 10) * scale, (1 + rp.t * 4) * scale, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    ctx.drawImage(art, Math.round(sx), Math.round(sy), art.width * scale, art.height * scale);
+    if (!this.water) return;
+    this.paintWater(timeOfDay(this.game.now()) !== 'night');
+    ctx.drawImage(this.water.surface, Math.round(sx), Math.round(sy), art.width * scale, art.height * scale);
+  }
+
+  // Whether a map point is on the river's water.
+  onRiver(wx, wy) {
+    const cells = this.assets.riverWater;
+    if (!cells || !this.game.state.garden.decor.river) return false;
+    const r = this.riverRect();
+    const x = Math.floor(wx - r.x0);
+    const y = Math.floor(wy - r.y0);
+    return x >= 0 && y >= 0 && x < cells.w && y < cells.h && cells.set.has(y * cells.w + x);
   }
 
   // Which decoration is under a point, front-most first.
@@ -778,7 +851,11 @@ export class GardenScene {
     placed.sort((a, b) => this.decorSpot(b).y - this.decorSpot(a).y);
     for (const id of placed) {
       const spot = this.decorSpot(id);
-      const r = id === 'river' ? { x0: spot.x0, x1: spot.x0 + spot.w, y0: spot.y0, y1: spot.y0 + spot.h } : decorRect(id, spot.x, spot.y);
+      if (id === 'river') {
+        if (this.onRiver(wx, wy)) return id;
+        continue;
+      }
+      const r = decorRect(id, spot.x, spot.y);
       if (wx >= r.x0 && wx <= r.x1 && wy >= r.y0 && wy <= r.y1) return id;
     }
     return null;
@@ -807,7 +884,10 @@ export class GardenScene {
 
   // Tapping a decoration: the log rolls over, the river ripples.
   tapDecor(id, x, y) {
-    if (id === 'river') this.ripples.push({ x, y, t: 0 });
+    if (id === 'river' && this.water) {
+      const r = this.riverRect();
+      for (let k = 0; k < 3; k++) this.water.rings.push({ x: x - r.x0, y: y - r.y0, age: -k * 0.18, life: 1.6, size: 7 });
+    }
     if (id === 'log') {
       this.logRoll = 0.9;
       const spot = this.decorSpot('log');

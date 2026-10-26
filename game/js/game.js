@@ -8,7 +8,7 @@ import { EXPEDITION_LENGTH, GARDEN_LIMIT, HISTORY_LIMIT, STARTING, VISITORS } fr
 import { createBug, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
-import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap } from './systems/garden.js';
+import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
 import { DECOR_BY_ID, LOG } from './data/decor.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
 import { SPECIES } from './data/species.js';
@@ -194,6 +194,7 @@ export class Game {
     const g = this.state.garden;
     const after = { ...g, rock: { ...g.rock, x: cx, y: cy } };
     if (Object.entries(g.decor).some(([id, spot]) => spot && !DECOR_BY_ID[id].fixed && !decorFits(after, id, spot.x, spot.y))) return fail('Something is already there.');
+    if (overlapsRiver(g, rockRect(after.rock))) return fail('The rock would sink in the river.');
     if (!moveRock(g, cx, cy, this.now())) return fail('The rock barely moved.');
     this.commit();
     return { ok: true };
@@ -206,10 +207,16 @@ export class Game {
     const g = this.state.garden;
     if (!d || !d.price) return fail('That is not for sale.');
     if (g.decor[id]) return fail(`You already have the ${d.name}.`);
+    if (id === 'river' && overlapsRiver({ decor: { river: {} } }, rockRect(g.rock))) return fail('Move the rock out of the top corner first: the river runs there.');
     const spot = d.fixed ? {} : freeDecorSpot(g, id);
     if (!spot) return fail('There is no room left in the garden. Try moving things around.');
     if (!this.spend(d.price)) return fail('Not enough coins.');
     g.decor[id] = spot;
+    // The river flows where it flows: anything standing in the way moves aside.
+    for (const [other, at] of Object.entries(g.decor)) {
+      if (DECOR_BY_ID[other].fixed || decorFits(g, other, at.x, at.y)) continue;
+      g.decor[other] = { ...at, ...(freeDecorSpot(g, other) || at) };
+    }
     this.commit();
     return { ok: true, spot };
   }
