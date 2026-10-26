@@ -67,6 +67,7 @@ export class Game {
     const awayMs = this.now() - (this.state.lastSeen || this.now());
     tickGarden(this.state, this.now());
     tickVisitors(this.state, this.now(), this.rng);
+    this.refitDecor();
     this.commit();
     return { fresh: false, awayMs };
   }
@@ -221,6 +222,18 @@ export class Game {
     }
     this.commit();
     return { ok: true, spot };
+  }
+
+  // A decoration that grew in an update and no longer fits where it stood
+  // moves to the nearest free spot (it stays put if there is none).
+  refitDecor() {
+    const g = this.state.garden;
+    for (const [id, at] of Object.entries(g.decor)) {
+      const d = DECOR_BY_ID[id];
+      if (!at || !d?.size || d.fixed || decorFits(g, id, at.x, at.y)) continue;
+      const spot = freeDecorSpot(g, id);
+      if (spot) g.decor[id] = { ...at, ...spot };
+    }
   }
 
   moveDecor(id, x, y) {

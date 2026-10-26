@@ -35,7 +35,7 @@ export const DECOR = [
     desc: 'Electric bugs charge up on it and forage double. Anyone else who gets too close gets a zap (and leaves a coin).',
   },
   {
-    id: 'flower_bed', name: 'Flower Bed', price: 2500, sprite: 'decor/flower_bed.png', size: [82, 77], scale: 0.42, bonus: 0.5, attracts: 2,
+    id: 'flower_bed', name: 'Flower Bed', price: 2500, sprite: 'decor/flower_bed.png', size: [82, 77], scale: 0.84, bonus: 0.5, attracts: 2,
     loves: (sp) => sp.family === 'flyer',
     desc: 'Flyers sip nectar here and forage more.',
   },

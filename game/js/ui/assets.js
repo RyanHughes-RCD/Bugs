@@ -212,7 +212,7 @@ export class Assets {
   // edges into finer pixels. rockScale is how many map pixels each of those
   // finer pixels covers, so the rock stays about as wide as the dirt patch.
   makeRock(targetWidth) {
-    const art = scale3x(this.cropToContent(this.sprites.rock));
+    const art = thinOutline(scale3x(this.cropToContent(this.sprites.rock)), this.palette.K);
     this.rockScale = targetWidth / art.width;
     return art;
   }
@@ -356,6 +356,34 @@ function findEyes(px, W, view) {
 
 // Scale3x / AdvMAME3x pixel-art upscaler: every pixel becomes a 3x3 block,
 // with corners taken from matching neighbours so diagonals stay smooth.
+// Thins a sprite's outline (colour `hex`) to one pixel: outline pixels with
+// no transparent neighbour take the colour of the stone just inside them.
+function thinOutline(c, hex) {
+  const w = c.width;
+  const h = c.height;
+  const ctx = c.getContext('2d');
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = new Uint32Array(img.data.buffer);
+  const n = parseInt(hex.slice(1), 16);
+  const ink = (0xff << 24 | (n & 0xff) << 16 | (n & 0xff00) | n >> 16) >>> 0; // ABGR, as the canvas stores it
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : d[y * w + x]);
+  const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let pass = 0; pass < 3; pass++) {
+    const next = d.slice();
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[y * w + x] !== ink) continue;
+        if (N4.some(([dx, dy]) => (at(x + dx, y + dy) >>> 24) === 0)) continue;
+        const fill = N4.map(([dx, dy]) => at(x + dx, y + dy)).find((v) => v >>> 24 && v !== ink);
+        if (fill) next[y * w + x] = fill;
+      }
+    }
+    d.set(next);
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
 function scale3x(src) {
   const w = src.width;
   const h = src.height;
