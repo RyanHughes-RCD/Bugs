@@ -41,6 +41,17 @@ try {
   assert.equal(await st(() => window.bugGarden.app.scene.entities.size), 4, 'garden shows the four starter bugs');
   await snap('garden');
 
+  // The map is bigger than the screen: dragging the grass pans the view both ways.
+  const cam0 = await st(() => ({ x: window.bugGarden.app.scene.camX, y: window.bugGarden.app.scene.camY }));
+  const box = await page.locator('#garden').boundingBox();
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.75);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.45, { steps: 10 });
+  await page.mouse.up();
+  const cam1 = await st(() => ({ x: window.bugGarden.app.scene.camX, y: window.bugGarden.app.scene.camY }));
+  assert.ok(cam1.x > cam0.x + 5 && cam1.y > cam0.y + 5, `panned right and down: ${JSON.stringify([cam0, cam1])}`);
+  await page.evaluate(() => { const s = window.bugGarden.app.scene; const r = s.game.state.garden.rock; s.lookAt(r.x, r.y); });
+
   // Drag the garden rock to a new spot; the old dirt patch is left behind.
   const rockBefore = await st(() => ({ ...window.bugGarden.game.state.garden.rock }));
   const at = await st(() => { const s = window.bugGarden.app.scene; const r = s.game.state.garden.rock; const [x, y] = s.toScreen(r.x, r.y - 4); const b = s.canvas.getBoundingClientRect(); return [b.left + x / s.dpr, b.top + y / s.dpr]; });
@@ -157,12 +168,24 @@ try {
   await act('[data-act="buy-decor"][data-id="log"]');
   if (await page.$('[data-act="confirm-yes"]')) await act('[data-act="confirm-yes"]');
   const log = await st(() => ({ ...window.bugGarden.game.state.garden.decor.log }));
+  // Bring it into view, and park the bugs elsewhere so the drag grabs the log, not a bug on it.
+  await page.evaluate(({ x, y }) => {
+    const s = window.bugGarden.app.scene;
+    s.lookAt(x, y);
+    for (const e of s.entities.values()) Object.assign(e, { x: 12, y: 20, tx: 12, ty: 20, wait: 60, act: null, actTime: 0 });
+  }, log);
   assert.ok(Number.isFinite(log.x), 'the log is in the garden');
   const toPage = (x, y) => page.evaluate(([x, y]) => { const s = window.bugGarden.app.scene; const [a, b] = s.toScreen(x, y); const r = s.canvas.getBoundingClientRect(); return [r.left + a / s.dpr, r.top + b / s.dpr]; }, [x, y]);
   const free = await st(async () => {
     const { decorFits } = await import('./game/js/systems/garden.js');
     const g = window.bugGarden.game.state.garden;
-    for (let y = 120; y < 260; y += 10) for (const x of [40, 75, 110]) if (decorFits(g, 'log', x, y) && Math.hypot(x - g.decor.log.x, y - g.decor.log.y) > 30) return [x, y];
+    const s = window.bugGarden.app.scene;
+    // A free spot that's on screen (the map is bigger than the view).
+    for (let y = s.camY + 50; y < s.camY + s.viewH - 70; y += 10) {
+      for (let x = s.camX + 30; x < s.camX + s.viewW - 30; x += 15) {
+        if (decorFits(g, 'log', Math.round(x), Math.round(y)) && Math.hypot(x - g.decor.log.x, y - g.decor.log.y) > 30) return [Math.round(x), Math.round(y)];
+      }
+    }
     return null;
   });
   await page.mouse.move(...(await toPage(log.x, log.y)));

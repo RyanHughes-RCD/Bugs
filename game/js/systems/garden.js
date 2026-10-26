@@ -1,4 +1,4 @@
-import { GARDEN_FORAGE, ROCK } from '../data/balance.js';
+import { GARDEN_FORAGE, GARDEN_MAP, ROCK } from '../data/balance.js';
 import { RARITIES } from '../data/rarities.js';
 import { SPECIES } from '../data/species.js';
 import { DECOR, DECOR_BY_ID, RIVER_ROWS } from '../data/decor.js';
@@ -44,7 +44,7 @@ export function overlapsRiver(garden, r) {
 export function rockRect(rock) {
   return { x0: rock.x - ROCK_SIZE.w / 2, x1: rock.x + ROCK_SIZE.w / 2, y0: rock.y - ROCK_SIZE.h * 0.62, y1: rock.y + ROCK_SIZE.h * 0.38 };
 }
-const BOUNDS = { x0: 4, x1: 146, y0: 30, y1: 284 };
+const BOUNDS = { x0: 4, x1: GARDEN_MAP.w - 4, y0: 30, y1: GARDEN_MAP.h - 16 };
 
 // Whether a draggable decoration fits at (x, y): inside the garden and clear
 // of the rock, the river and every other placed decoration.
@@ -60,13 +60,17 @@ export function decorFits(garden, id, x, y) {
   return true;
 }
 
-// The first free spot for a newly bought decoration, starting from the
-// middle of the garden (where the view usually is) and working outwards.
+// The first free spot for a newly bought decoration, starting next to the
+// rock (where the view usually is) and working outwards.
 export function freeDecorSpot(garden, id) {
-  const rows = [];
-  for (let k = 0; k <= 20; k++) rows.push(150 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 12);
-  for (const y of rows) {
-    for (const x of [110, 40, 75, 128, 22]) if (decorFits(garden, id, x, y)) return { x, y };
+  const { x: rx, y: ry } = garden.rock;
+  for (let ring = 1; ring <= 12; ring++) {
+    for (let k = 0; k < ring * 8; k++) {
+      const a = (k / (ring * 8)) * Math.PI * 2;
+      const x = Math.round(rx + Math.cos(a) * ring * 22);
+      const y = Math.round(ry + Math.sin(a) * ring * 22);
+      if (decorFits(garden, id, x, y)) return { x, y };
+    }
   }
   return null;
 }

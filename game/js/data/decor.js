@@ -40,7 +40,7 @@ export const DECOR = [
     desc: 'Flyers sip nectar here and forage more.',
   },
   {
-    id: 'river', name: 'Tiny River', price: 4000, sprite: 'decor/river.png', size: [111, 92], scale: 1, fixed: [39, 0], bonus: 0.5, attracts: 3, potCap: 200,
+    id: 'river', name: 'Tiny River', price: 4000, sprite: 'decor/river.png', size: [111, 92], scale: 1, fixed: [189, 0], bonus: 0.5, attracts: 3, potCap: 200,
     loves: (sp) => WATER.has(sp.base) || sp.id === 'pond_snail',
     desc: 'Flows in along the top of the garden. Water bugs love it, and it doubles the coin pot.',
   },

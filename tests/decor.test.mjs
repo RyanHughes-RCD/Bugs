@@ -128,12 +128,12 @@ test('decorations draw in the visitors that love them', () => {
 test('the river keeps decorations and the rock off its water', () => {
   const { game } = rich();
   game.buyDecor('log');
-  assert.ok(game.moveDecor('log', 110, 52).ok, 'the top corner is free before the river');
+  assert.ok(game.moveDecor('log', 250, 52).ok, 'the top corner is free before the river');
   game.buyDecor('river');
   const g = game.state.garden;
   assert.ok(decorFits(g, 'log', g.decor.log.x, g.decor.log.y), 'the log was moved out of the water');
-  assert.notDeepEqual([g.decor.log.x, g.decor.log.y], [110, 52]);
-  assert.equal(game.moveDecor('log', 110, 52).ok, false, 'and cannot go back in');
-  assert.equal(game.moveRock(110, 50).ok, false, 'nor can the rock');
+  assert.notDeepEqual([g.decor.log.x, g.decor.log.y], [250, 52]);
+  assert.equal(game.moveDecor('log', 250, 52).ok, false, 'and cannot go back in');
+  assert.equal(game.moveRock(250, 50).ok, false, 'nor can the rock');
   assert.ok(game.moveDecor('log', 40, 240).ok, 'dry land is fine');
 });
