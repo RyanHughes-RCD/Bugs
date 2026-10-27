@@ -65,4 +65,4 @@ export const LOG = { everyMs: 2 * HOUR, coins: [10, 30] };
 // pulseRadius map pixels; bugs it catches move boostSpeed times as fast for
 // boostMs (just for show: foraging and expeditions are unchanged). A bug
 // drops at most one coin per cooldownMs, from zaps and pulses alike.
-export const BATTERY = { reach: 6, cooldownMs: 20e3, pulseRadius: 60, pulseMs: 700, boostMs: 60e3, boostSpeed: 2.2 };
+export const BATTERY = { reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2 };
