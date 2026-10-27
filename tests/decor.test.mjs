@@ -4,7 +4,7 @@ import { DECOR, DECOR_BY_ID, LOG } from '../game/js/data/decor.js';
 import { GARDEN_FORAGE } from '../game/js/data/balance.js';
 import { RARITIES } from '../game/js/data/rarities.js';
 import { SPECIES } from '../game/js/data/species.js';
-import { gardenRatePerMin, bugForageRate, favouriteDecor, potCap, decorFits } from '../game/js/systems/garden.js';
+import { gardenRatePerMin, bugForageRate, favouriteDecor, potCap, decorFits, overlapsRiver, rockRect } from '../game/js/systems/garden.js';
 import { makeGame, addBug, MIN, HOUR } from './helpers.mjs';
 
 const rich = () => { const g = makeGame(); g.game.state.coins = 1e6; return g; };
@@ -146,4 +146,17 @@ test('a decoration that grew in an update moves to a free spot when the save loa
   const { game: again } = makeGame({ storage, clock });
   const at = again.state.garden.decor.flower_bed;
   assert.ok(decorFits(again.state.garden, 'flower_bed', at.x, at.y));
+});
+
+test('the river is twice its old size, and a rock it now covers moves to dry land on load', () => {
+  const { game, storage, clock } = makeGame();
+  game.state.coins = 1e6;
+  assert.ok(game.buyDecor('river').ok);
+  const g = game.state.garden;
+  assert.ok(overlapsRiver(g, { x0: 199, x1: 201, y0: 109, y1: 111 }), 'water reaches further down than the old river did');
+  assert.equal(game.moveRock(200, 110).ok, false);
+  g.rock = { ...g.rock, x: 200, y: 110 }; // a save from before the river grew
+  game.commit();
+  const { game: again } = makeGame({ storage, clock });
+  assert.equal(overlapsRiver(again.state.garden, rockRect(again.state.garden.rock)), false);
 });

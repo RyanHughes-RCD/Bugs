@@ -228,6 +228,22 @@ export class Game {
   // moves to the nearest free spot (it stays put if there is none).
   refitDecor() {
     const g = this.state.garden;
+    // A rock the river has grown over is carried to the nearest dry spot.
+    if (overlapsRiver(g, rockRect(g.rock))) {
+      const fits = (x, y) => {
+        const after = { ...g, rock: { ...g.rock, x, y } };
+        return x >= 26 && x <= GARDEN_MAP.w - 26 && y >= 30 && y <= GARDEN_MAP.h - 20 && !overlapsRiver(g, rockRect(after.rock))
+          && Object.entries(g.decor).every(([id, spot]) => !spot || DECOR_BY_ID[id].fixed || decorFits(after, id, spot.x, spot.y));
+      };
+      search: for (let ring = 1; ring <= 30; ring++) {
+        for (let k = 0; k < ring * 8; k++) {
+          const a = (k / (ring * 8)) * Math.PI * 2;
+          const x = Math.round(g.rock.x + Math.cos(a) * ring * 10);
+          const y = Math.round(g.rock.y + Math.sin(a) * ring * 10);
+          if (fits(x, y)) { g.rock = { ...g.rock, x, y }; break search; }
+        }
+      }
+    }
     for (const [id, at] of Object.entries(g.decor)) {
       const d = DECOR_BY_ID[id];
       if (!at || !d?.size || d.fixed || decorFits(g, id, at.x, at.y)) continue;

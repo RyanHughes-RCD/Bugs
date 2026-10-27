@@ -33,10 +33,10 @@ const ROCK_SIZE = { w: 48, h: 33 }; // matches the rock sprite drawn by the gard
 // Whether a map rectangle touches the river's water (if there is a river).
 export function overlapsRiver(garden, r) {
   if (!garden.decor.river) return false;
-  const [rx, ry] = DECOR_BY_ID.river.fixed;
-  for (let y = Math.max(0, Math.floor(r.y0 - ry)); y <= Math.min(RIVER_ROWS.length - 1, Math.ceil(r.y1 - ry)); y++) {
+  const { fixed: [rx, ry], scale: s } = DECOR_BY_ID.river;
+  for (let y = Math.max(0, Math.floor((r.y0 - ry) / s)); y <= Math.min(RIVER_ROWS.length - 1, Math.ceil((r.y1 - ry) / s)); y++) {
     const [a, b] = RIVER_ROWS[y];
-    if (r.x0 < rx + b + 1 && r.x1 > rx + a) return true;
+    if (r.x0 < rx + (b + 1) * s && r.x1 > rx + a * s) return true;
   }
   return false;
 }
