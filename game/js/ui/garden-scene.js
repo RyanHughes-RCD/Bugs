@@ -1040,12 +1040,12 @@ export class GardenScene {
       this.logRoll = 0.9;
       const spot = this.decorSpot('log');
       for (const e of this.entities.values()) {
-        if (e.hidden || Math.hypot(e.x - spot.x, e.y - spot.y) > 30) continue;
+        if (e.hidden || Math.hypot(e.x - spot.x, e.y - spot.y) > 50) continue;
         Object.assign(e, { surprised: 1.5, act: null, actTime: 0, wait: 0 });
         e.tx = clamp(e.x + (e.x - spot.x) * 1.5, BOUNDS.x0, BOUNDS.x1);
         e.ty = clamp(e.y + (e.y - spot.y) * 1.5 + 10, BOUNDS.y0, BOUNDS.y1);
       }
-      for (let k = 0; k < 10; k++) this.particles.push({ x: spot.x + rand(-15, 15), y: spot.y + rand(0, 6), vx: rand(-12, 12), vy: rand(-18, -6), life: 0.9, color: k % 3 ? '#7a4a2a' : '#f4f4f4' });
+      for (let k = 0; k < 16; k++) this.particles.push({ x: spot.x + rand(-30, 30), y: spot.y + rand(0, 12), vx: rand(-12, 12), vy: rand(-18, -6), life: 0.9, color: k % 3 ? '#7a4a2a' : '#f4f4f4' });
     }
     const res = this.handlers.onDecorTap?.(id);
     if (res?.coins) this.float(x, y - 6, `+${res.coins}`);
