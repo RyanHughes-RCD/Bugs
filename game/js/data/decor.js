@@ -25,7 +25,7 @@ export const DECOR = [
     desc: 'Shade-lovers hide underneath. Lift it for a find every few hours.',
   },
   {
-    id: 'log', name: 'Mossy Log', price: 800, sprite: 'decor/log.png', size: [85, 70], scale: 0.45, bonus: 0.5, attracts: 2,
+    id: 'log', name: 'Mossy Log', price: 800, sprite: 'decor/log.png', size: [85, 70], scale: 0.9, bonus: 0.5, attracts: 2,
     loves: (sp) => sp.family === 'beetle' || sp.traits[0] === 'dig',
     desc: 'Beetles and diggers burrow into it. Tap to roll it over and see what was underneath.',
   },
