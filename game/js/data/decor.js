@@ -40,7 +40,7 @@ export const DECOR = [
     desc: 'Flyers sip nectar here and forage more.',
   },
   {
-    id: 'river', name: 'Tiny River', price: 4000, sprite: 'decor/river.png', size: [111, 92], scale: 1, fixed: [189, 0], bonus: 0.5, attracts: 3, potCap: 200,
+    id: 'river', name: 'Tiny River', price: 4000, sprite: 'decor/river.png', size: [111, 92], scale: 2, fixed: [78, 0], bonus: 0.5, attracts: 3, potCap: 200,
     loves: (sp) => WATER.has(sp.base) || sp.id === 'pond_snail',
     desc: 'Flows in along the top of the garden. Water bugs love it, and it doubles the coin pot.',
   },
@@ -52,7 +52,7 @@ export const DECOR = [
 ];
 
 // The river's outline: for each row of its sprite, the first and last
-// pixel with water. Used to keep decorations and the rock off the water.
+// pixel with water (in art pixels, before the river's scale). Used to keep decorations and the rock off the water.
 export const RIVER_ROWS = '4-37,3-37,3-36,3-36,3-35,3-34,3-34,3-34,2-34,2-34,2-35,1-37,1-38,1-40,1-41,1-69,0-72,0-73,0-74,0-74,0-75,0-76,1-77,2-77,2-78,3-78,4-78,4-79,5-79,5-80,6-80,6-80,8-80,9-80,10-80,11-81,12-81,15-82,17-82,20-83,23-85,25-86,27-87,30-88,34-90,37-92,39-94,42-98,44-102,46-110,48-110,50-110,51-110,52-110,53-110,54-110,54-110,54-110,55-110,55-110,56-110,56-110,56-110,57-110,57-110,57-110,58-110,58-110,59-110,59-110,60-110,60-110,61-110,61-110,61-110,62-110,62-110,63-110,63-110,65-110,66-110,69-110,70-110,72-110,74-110,78-110,84-110,99-110,102-110,104-110,107-110,109-110'
   .split(',').map((r) => r.split('-').map(Number));
 
