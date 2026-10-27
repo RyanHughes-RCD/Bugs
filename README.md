@@ -49,6 +49,6 @@ All rules live in plain, testable modules; the UI only calls `Game` methods, whi
 ## Testing
 
     npm test             # 47 unit tests: odds tables, trait checks, timers, keys, claims, saves, economy
-    npm run test:e2e     # headless Chromium playthrough of the core loop (needs Playwright)
+    npm run test:e2e     # headless Chromium: core-loop playthrough + Sprite Studio flow (needs Playwright)
 
 **Developer mode:** add `?debug` to the URL. Settings then shows time warp (+10 min, +1 h, +4 h), coin, key and egg grants, and an odds lab that simulates 10,000 hatches without touching your save. None of this appears without the flag.
