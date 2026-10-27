@@ -171,7 +171,54 @@ const RELATIVES = [
 const DRAWN = [
   ['flea', 'Flea', 'flea', 'uncommon', 'hopper', ['fly'], 'Exactly one pixel of pure jumping power.'],
   ['arcane_mite', 'Arcane Mite', 'arcane_mite', 'epic', 'arachnid', ['build', 'cut'], 'Barely visible, but it hums with old magic.'],
+
+  ['ember_moth', 'Ember Moth', 'ember_moth', 'epic', 'flyer', ['fly', 'fight', 'build'], 'Sheds glowing sparks with every wingbeat. Keep it away from dry leaves.'],
+  ['bubble_diver', 'Bubble Diver', 'bubble_diver', 'epic', 'beetle', ['dig', 'lift', 'fly'], 'Carries its own air supply in a silver bubble.'],
+  ['prism_spider', 'Prism Spider', 'prism_spider', 'epic', 'arachnid', ['build', 'fight', 'cut'], 'Its glassy body splits sunlight into rainbows.'],
+  ['tesla_centipede', 'Tesla Centipede', 'tesla_centipede', 'epic', 'wriggler', ['fight', 'cut', 'dig'], 'Every one of its legs crackles with static.'],
+
+  ['solar_scarab', 'Solar Scarab', 'solar_scarab', 'legendary', 'beetle', ['lift', 'build', 'fight'], 'Rolls a tiny sun across the sky every morning.'],
+  ['phantom_moth', 'Phantom Moth', 'phantom_moth', 'legendary', 'flyer', ['fly', 'cut', 'fight'], 'Flickers in and out of the world like a candle in a draught.'],
+  ['clockwork_beetle', 'Clockwork Beetle', 'clockwork_beetle', 'legendary', 'beetle', ['build', 'lift', 'dig'], 'Tick, tick, tick. Nobody knows who wound it up.'],
+  ['lantern_fly', 'Lantern Fly', 'lantern_fly', 'legendary', 'flyer', ['fly', 'build', 'fight'], 'Lights the way home for lost bugs.'],
+
+  ['glitch_beetle', 'Glitch Beetle', 'glitch_beetle', 'mythic', 'beetle', ['dig', 'build', 'lift', 'cut'], 'Not supposed to exist. Occasionally it stops existing.'],
+  ['eclipse_moth', 'Eclipse Moth', 'eclipse_moth', 'mythic', 'flyer', ['fly', 'fight', 'cut', 'build'], 'Light bends around it and never comes back.'],
+  ['dream_weaver', 'Dream Weaver', 'dream_weaver', 'mythic', 'arachnid', ['build', 'cut', 'fight', 'lift'], 'Spins webs out of the dreams you forget by morning.'],
+  ['rime_mantis', 'Rime Mantis', 'rime_mantis', 'mythic', 'crawler', ['cut', 'fight', 'fly', 'dig'], 'Snow falls wherever it prays.'],
+
+  ['supernova_firefly', 'Supernova Firefly', 'supernova_firefly', 'celestial', 'flyer', ['fly', 'build', 'fight', 'lift', 'cut'], 'Once in a while it shines brighter than a whole galaxy.'],
+  ['constellation_spider', 'Constellation Spider', 'constellation_spider', 'celestial', 'arachnid', ['build', 'cut', 'fight', 'dig', 'lift'], 'Its web is the night sky. You have looked at it a thousand times.'],
+  ['seraph_butterfly', 'Seraph Butterfly', 'seraph_butterfly', 'celestial', 'flyer', ['fly', 'build', 'cut', 'lift', 'fight'], 'Six wings, every colour, and a hum like a choir.'],
+  ['chrono_scarab', 'Chrono Scarab', 'chrono_scarab', 'celestial', 'beetle', ['dig', 'lift', 'build', 'fight', 'fly'], 'Always arrives a moment before it leaves.'],
 ];
+
+// Special effects drawn around a bug, in the garden and in menus (see
+// ui/garden-scene.js drawFx and the .fx-* styles). Colour defaults to the aura.
+//   embers, bubbles, frost, sparkle: particles   rainbow: colour cycling
+//   phase: flickers out of sight   trail: afterimages when it moves
+//   orbit: motes circling it   pulse: breathing glow   glitch: digital tearing
+//   lightning: sparks arcing off it   void: light pulled inward
+//   nova: bursts of light   rays: turning sunbeams   constellation: linked stars
+const FX = {
+  ember_moth: ['embers'],
+  bubble_diver: ['bubbles'],
+  prism_spider: ['rainbow', 'sparkle'],
+  tesla_centipede: ['lightning'],
+  solar_scarab: ['rays'],
+  phantom_moth: ['phase', 'trail'],
+  clockwork_beetle: ['orbit'],
+  lantern_fly: ['pulse', 'embers'],
+  glitch_beetle: ['glitch'],
+  eclipse_moth: ['void'],
+  dream_weaver: ['orbit', 'trail'],
+  rime_mantis: ['frost'],
+  supernova_firefly: ['nova', 'sparkle'],
+  constellation_spider: ['constellation'],
+  seraph_butterfly: ['rainbow', 'trail', 'sparkle'],
+  chrono_scarab: ['trail', 'orbit'],
+};
+const FX_COLOR = { clockwork_beetle: '#ffcd75', bubble_diver: '#d6f6ff', prism_spider: '#f4f4f4', glitch_beetle: '#ff5fa8', dream_weaver: '#f4a0b0', chrono_scarab: '#73eff7', seraph_butterfly: '#fff3b8' };
 
 // Shade-lovers that like to hide under the garden rock (relatives inherit
 // this from their base species).
@@ -182,6 +229,8 @@ const AURAS = {
   arcane_mite: '#c86ee0', will_o_wisp: '#73eff7', flame_beetle: '#ef7d57', shadow_mantis: '#5d275d',
   star_moth: '#73eff7', comet_dragonfly: '#41a6f6', nebula_beetle: '#f4a0b0',
   psychic_jumping_spider: '#c06ad8', on_firefly: '#ff9b3d', magma_snail: '#ff9b3d', halo_bee: '#fff07a',
+  ember_moth: '#ff9b3d', tesla_centipede: '#fff07a', solar_scarab: '#ffcd75', lantern_fly: '#ff9b3d', eclipse_moth: '#5d275d',
+  dream_weaver: '#f4a0b0', rime_mantis: '#73eff7', supernova_firefly: '#fff07a', constellation_spider: '#3b5dc9', seraph_butterfly: '#fff3b8', chrono_scarab: '#73eff7',
 };
 
 // How each sprite is drawn. Most are top-down with the head pointing up; these
@@ -201,6 +250,8 @@ export const SPECIES_LIST = [
   ...DRAWN.map(([id, name, grid, rarity, family, traits, desc]) => ({
     id, name, rarity, family, traits, desc, base: id, recolor: null, grid, sprite: null, view: 'top',
   })),
-].map((s, index) => ({ ...s, aura: AURAS[s.id] || null, likesRock: ROCK_LOVERS.has(s.base), index }));
+].map((s, index) => ({
+  ...s, aura: AURAS[s.id] || null, fx: FX[s.id] || [], fxColor: FX_COLOR[s.id] || AURAS[s.id] || '#fff3b8', likesRock: ROCK_LOVERS.has(s.base), index,
+}));
 
 export const SPECIES = Object.fromEntries(SPECIES_LIST.map((s) => [s.id, s]));

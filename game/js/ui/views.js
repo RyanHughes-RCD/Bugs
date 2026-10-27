@@ -23,9 +23,17 @@ import { VERSION } from '../version.js';
 const icon = (A, id, cls = '') => `<img class="px icon ${cls}" src="${A.spriteUrl(id)}" alt="">`;
 // Bug image with its colour variant and any magical aura. Golden bugs get a
 // wrapper so CSS can draw sparkles around them.
+// Bugs with special effects (species fx) get matching CSS animations, and a
+// wrapper that draws particles around them (not on silhouettes).
+const PARTICLE_FX = ['embers', 'bubbles', 'frost', 'sparkle', 'nova', 'constellation', 'orbit', 'lightning', 'void', 'rays'];
 export const bugImg = (A, bug, cls = '') => {
   const sp = SPECIES[bug.species];
-  const img = `<img class="px bug-img ${bug.variant ? `v-${bug.variant}` : ''} ${sp.aura ? 'aura' : ''} ${sp.view} ${cls}" ${sp.aura ? `style="--aura:${sp.aura}"` : ''} src="${A.bugUrl(bug.species, bug.variant)}" alt="${esc(sp.name)}">`;
+  const sil = cls.includes('sil');
+  const fx = sil ? [] : sp.fx;
+  const style = [sp.aura ? `--aura:${sp.aura}` : '', fx.length ? `--fx:${sp.fxColor}` : ''].filter(Boolean).join(';');
+  let img = `<img class="px bug-img ${bug.variant ? `v-${bug.variant}` : ''} ${sp.aura ? 'aura' : ''} ${fx.map((f) => `fx-${f}`).join(' ')} ${sp.view} ${cls}" ${style ? `style="${style}"` : ''} src="${A.bugUrl(bug.species, bug.variant)}" alt="${esc(sp.name)}">`;
+  const particles = fx.find((f) => PARTICLE_FX.includes(f));
+  if (particles) img = `<span class="fx-wrap fxp-${particles}" style="--fx:${sp.fxColor}">${img}</span>`;
   return bug.variant === 'golden' ? `<span class="sparkle-wrap">${img}</span>` : img;
 };
 const speciesImg = (A, id, cls = '', variant = null) => bugImg(A, { species: id, variant }, cls);

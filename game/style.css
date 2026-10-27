@@ -566,3 +566,66 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .field-row .field { flex: 1; min-width: 0; }
 .trait-pick { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: var(--paper); border: 2px solid var(--ink); border-radius: 4px; font-size: 0.85rem; }
 .meta.warn { background: #fff3cf; border: 2px solid var(--yellow); border-radius: 5px; padding: 4px 8px; }
+
+/* ---------- Special effects on the rarest bugs (species fx) ---------- */
+.bug-img { --aura: transparent; --fx: #fff3b8; }
+.bug-img.fx-rainbow { animation: fxhue 3s linear infinite; }
+@keyframes fxhue {
+  from { filter: hue-rotate(0deg) drop-shadow(0 0 3px var(--aura)); }
+  to { filter: hue-rotate(360deg) drop-shadow(0 0 3px var(--aura)); }
+}
+.bug-img.fx-phase { animation: fxphase 3.4s ease-in-out infinite; }
+@keyframes fxphase { 0%, 100% { opacity: 0.9; } 40% { opacity: 0.35; } 44% { opacity: 0.04; } 48% { opacity: 0.6; } 70% { opacity: 0.75; } }
+.bug-img.fx-glitch { animation: fxglitch 2.6s linear infinite; }
+@keyframes fxglitch {
+  0%, 84%, 100% { transform: none; filter: none; opacity: 1; }
+  86% { transform: translateX(-2px) skewX(10deg); filter: drop-shadow(-2px 0 0 #ff2a5a) drop-shadow(2px 0 0 #28f0ff); }
+  89% { transform: translateX(2px); filter: drop-shadow(2px 0 0 #ff2a5a) drop-shadow(-2px 0 0 #28f0ff); }
+  91% { opacity: 0.15; }
+  93% { opacity: 1; transform: translateY(1px) skewX(-6deg); }
+  95% { transform: none; filter: none; }
+}
+.bug-img.fx-pulse { animation: fxpulse 2.4s ease-in-out infinite; }
+@keyframes fxpulse {
+  0%, 100% { filter: drop-shadow(0 0 2px var(--fx)) brightness(1); }
+  50% { filter: drop-shadow(0 0 3px var(--fx)) drop-shadow(0 0 12px var(--fx)) brightness(1.18); }
+}
+.bug-img.fx-trail { filter: drop-shadow(-5px 3px 0 rgba(214, 246, 255, 0.25)) drop-shadow(-10px 6px 0 rgba(214, 246, 255, 0.12)); }
+.bug-img.fx-trail.fx-rainbow, .bug-img.fx-trail.fx-phase { filter: none; }
+
+.fx-wrap { position: relative; display: inline-block; line-height: 0; isolation: isolate; }
+.fx-wrap::before, .fx-wrap::after { content: ''; position: absolute; pointer-events: none; }
+/* Rising embers and bubbles, falling frost. */
+.fxp-embers::before, .fxp-embers::after { width: 4px; height: 4px; background: #ff9b3d; box-shadow: 0 0 4px #fff07a; left: 35%; bottom: 30%; animation: fxrise 1.4s ease-out infinite; }
+.fxp-embers::after { left: 62%; background: #fff07a; animation-delay: 0.7s; }
+.fxp-bubbles::before, .fxp-bubbles::after { width: 7px; height: 7px; border: 2px solid #d6f6ff; border-radius: 50%; left: 30%; bottom: 35%; animation: fxrise 2.2s ease-in infinite; }
+.fxp-bubbles::after { left: 64%; width: 5px; height: 5px; animation-delay: 1.1s; }
+@keyframes fxrise { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-160%); opacity: 0; } }
+.fxp-frost::before, .fxp-frost::after { width: 4px; height: 4px; background: #f4f4f4; box-shadow: 0 0 3px #73eff7; left: 20%; top: 0; animation: fxfall 2s linear infinite; }
+.fxp-frost::after { left: 75%; animation-delay: 1s; }
+@keyframes fxfall { from { transform: translateY(-20%); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(900%); opacity: 0; } }
+/* Twinkling stars. */
+.fxp-sparkle::before, .fxp-sparkle::after, .fxp-nova::before, .fxp-constellation::before, .fxp-constellation::after {
+  content: '✦'; color: var(--fx); text-shadow: 0 0 4px var(--fx); font-size: 12px; line-height: 1; animation: twinkle 1.5s ease-in-out infinite;
+}
+.fxp-sparkle::before, .fxp-constellation::before { top: 4%; right: 6%; }
+.fxp-sparkle::after, .fxp-constellation::after { bottom: 10%; left: 4%; font-size: 9px; animation-delay: 0.75s; }
+.fxp-constellation::before, .fxp-constellation::after { color: #f4f4f4; }
+/* Bursts of light. */
+.fxp-nova::after { inset: 15%; border-radius: 50%; border: 2px solid #fff07a; animation: fxnova 3s ease-out infinite; z-index: -1; }
+.fxp-nova::before { top: 0; left: 8%; }
+@keyframes fxnova { 0%, 60% { transform: scale(0.4); opacity: 0; } 62% { opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+/* Motes circling the bug. */
+.fxp-orbit::before, .fxp-orbit::after { width: 5px; height: 5px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px 2px var(--fx); left: calc(50% - 2px); top: calc(50% - 2px); animation: fxorbit 2.6s linear infinite; }
+.fxp-orbit::after { animation-delay: -1.3s; }
+@keyframes fxorbit { from { transform: rotate(0deg) translateX(min(30px, 140%)) rotate(0deg); } to { transform: rotate(360deg) translateX(min(30px, 140%)) rotate(-360deg); } }
+/* Sparks and a flash. */
+.fxp-lightning::before { inset: 0; border-radius: 50%; background: radial-gradient(circle, rgba(255, 240, 122, 0.8), transparent 65%); animation: fxflash 2.2s steps(1) infinite; z-index: -1; }
+.fxp-lightning::after { width: 3px; height: 40%; background: linear-gradient(#fff, #fff07a); right: 8%; top: 10%; transform: skewX(-20deg); box-shadow: 0 0 4px #fff07a; animation: fxflash 2.2s steps(1) infinite 0.05s; }
+@keyframes fxflash { 0%, 100% { opacity: 0; } 70% { opacity: 1; } 76% { opacity: 0; } 80% { opacity: 0.8; } 84% { opacity: 0; } }
+/* Light pulled inward. */
+.fxp-void::before { inset: -20%; border-radius: 50%; border: 3px solid rgba(192, 106, 216, 0.6); box-shadow: inset 0 0 10px #2b1b4a; animation: fxvoid 1.8s ease-in infinite; z-index: -1; }
+@keyframes fxvoid { from { transform: scale(1.2); opacity: 0; } 30% { opacity: 1; } to { transform: scale(0.3); opacity: 0; } }
+/* Turning sunbeams. */
+.fxp-rays::before { inset: -35%; border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(255, 205, 117, 0.5) 0deg 9deg, transparent 9deg 45deg);
+  -webkit-mask: radial-gradient(circle, #000 20%, transparent 70%); mask: radial-gradient(circle, #000 20%, transparent 70%); animation: spin 9s linear infinite; z-index: -1; }

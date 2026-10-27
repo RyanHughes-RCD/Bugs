@@ -13,9 +13,9 @@ import { HOUR, MINUTE } from './balance.js';
 //   loves:   (species) => true for the bugs that love it.
 //   attracts: wild visitors that love it turn up this many times as often.
 //   potCap:  extra room in the garden's coin pot.
-const WATER = new Set(['water_strider', 'damselfly', 'dragonfly', 'mosquito', 'storm_dragonfly', 'bubble_ladybug', 'ice_worm']);
-export const NIGHT_FLYERS = new Set(['moth', 'luna_moth', 'atlas_moth', 'frost_moth', 'firefly', 'on_firefly']);
-const ELECTRIC = new Set(['thunder_beetle', 'storm_dragonfly']);
+const WATER = new Set(['water_strider', 'damselfly', 'dragonfly', 'mosquito', 'storm_dragonfly', 'bubble_ladybug', 'ice_worm', 'bubble_diver']);
+export const NIGHT_FLYERS = new Set(['moth', 'luna_moth', 'atlas_moth', 'frost_moth', 'firefly', 'on_firefly', 'ember_moth', 'phantom_moth', 'lantern_fly', 'eclipse_moth', 'supernova_firefly']);
+const ELECTRIC = new Set(['thunder_beetle', 'storm_dragonfly', 'tesla_centipede']);
 
 // In the order they're meant to be bought: cheapest first.
 export const DECOR = [
