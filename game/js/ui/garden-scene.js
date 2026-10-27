@@ -951,6 +951,14 @@ export class GardenScene {
     }
   }
 
+  // Tapped while recharging: a feeble crackle, nothing more.
+  fizzle() {
+    const spot = this.decorSpot('battery');
+    if (!spot) return;
+    const r = decorRect('battery', spot.x, spot.y);
+    for (let k = 0; k < 4; k++) this.particles.push({ x: r.x0 + r.w * rand(0.2, 0.5), y: r.y0 + rand(0, 3), vx: rand(-8, 8), vy: rand(-10, -4), life: 0.4, color: '#566c86' });
+  }
+
   // Each bug the ring sweeps over gets a jolt: a coin and a burst of speed.
   updatePulses(dt, list) {
     const now = performance.now();
@@ -1024,7 +1032,10 @@ export class GardenScene {
       const r = this.riverRect();
       for (let k = 0; k < 3; k++) this.water.rings.push({ x: (x - r.x0) / r.s, y: (y - r.y0) / r.s, age: -k * 0.18, life: 1.6, size: 7 });
     }
-    if (id === 'battery') this.pulse();
+    if (id === 'battery') {
+      if (this.handlers.onPulse?.()) this.pulse();
+      else this.fizzle();
+    }
     if (id === 'log') {
       this.logRoll = 0.9;
       const spot = this.decorSpot('log');

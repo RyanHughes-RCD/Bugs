@@ -98,6 +98,7 @@ export class App {
       onDecorMoved: (id, x, y) => this.result(this.game.moveDecor(id, x, y)),
       onDecorTap: (id) => this.decorTap(id),
       onZap: () => this.game.batteryZap().ok,
+      onPulse: () => this.game.pulseBattery().ok,
       // How far the HUD reaches down over the garden, in canvas pixels.
       topInset: () => {
         const hud = this.el.hud.getBoundingClientRect();

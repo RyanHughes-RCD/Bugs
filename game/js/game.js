@@ -9,7 +9,7 @@ import { createBug, gardenLimit, bugName, assignmentOf, bugsOnExpedition, garden
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
 import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
 import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
-import { DECOR_BY_ID, LOG } from './data/decor.js';
+import { DECOR_BY_ID, LOG, BATTERY } from './data/decor.js';
 import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
 import { rollGardenChest } from './systems/chests.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
@@ -274,6 +274,17 @@ export class Game {
     this.earn(coins);
     this.commit();
     return { ok: true, coins };
+  }
+
+  // Tapping the battery sends out a pulse, if it has recharged since the last.
+  pulseBattery() {
+    const bat = this.state.garden.decor.battery;
+    if (!bat) return fail('No battery.');
+    const now = this.now();
+    if (bat.pulsedAt && now - bat.pulsedAt < BATTERY.rechargeMs) return fail('Still recharging.');
+    bat.pulsedAt = now;
+    this.save();
+    return { ok: true };
   }
 
   // A bug got too close to the battery: the zap knocks a coin into the pot.
