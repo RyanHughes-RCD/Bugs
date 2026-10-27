@@ -211,8 +211,9 @@ export function renderCollection(v0) {
   const v = withAway(v0);
   const { game, ui, A } = v;
   const st = game.state;
-  const tabs = `<div class="tabs">${btn(`My bugs (${st.bugs.length})`, 'bugs-tab', { tab: 'mine' }, ui.bugsTab === 'mine' ? 'on' : '')}${btn('Bugdex', 'bugs-tab', { tab: 'dex' }, ui.bugsTab === 'dex' ? 'on' : '')}</div>`;
+  const tabs = `<div class="tabs">${btn(`My bugs (${st.bugs.length})`, 'bugs-tab', { tab: 'mine' }, ui.bugsTab === 'mine' ? 'on' : '')}${btn('Bugdex', 'bugs-tab', { tab: 'dex' }, ui.bugsTab === 'dex' ? 'on' : '')}${btn('Studio', 'bugs-tab', { tab: 'studio' }, ui.bugsTab === 'studio' ? 'on' : '')}</div>`;
   if (ui.bugsTab === 'dex') return tabs + renderDex(v);
+  if (ui.bugsTab === 'studio') return tabs + renderStudio(v);
   const f = ui.filter;
   let list = st.bugs.filter((b) => (!f.rarity || rarityOf(b) === f.rarity) && (!f.trait || effectiveTraits(b)[f.trait]) && (!f.place || assignmentOf(b, st, v.away) === f.place));
   const sorts = {
@@ -264,7 +265,136 @@ export function speciesModal(v, id) {
       return `<div class="variant-cell ${found ? '' : 'missing'}">${found ? speciesImg(A, id, 'big', k) : speciesImg(A, id, 'big sil')}<span class="variant-tag v-${k}">${va.name}</span><small>${found ? 'Found!' : `${pct(va.chance, 1)} per hatch`}</small></div>`;
     }).join('')}</div>
     <p class="meta">Signature trait first. Drab and Common hatchlings get only their signature trait; rarer ones get more traits at higher levels.</p>
-    <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
+    <div class="row sticky-foot">${v.studio?.available ? btn('Edit sprite', 'ed-fix', { id }, 'sm') : ''}${btn('Close', 'close-modal')}</div>`;
+}
+
+// ---------- Sprite Studio ----------
+
+const ago = (t) => `${fmtTime(Math.max(0, Date.now() - t))} ago`;
+const STATUS_LABEL = { pending: 'Waiting for approval', approved: 'Approved', rejected: 'Not approved' };
+
+export function renderStudio(v) {
+  const { A, ui } = v;
+  const studio = v.studio;
+  const head = `<div class="studio-head"><b>Sprite Studio</b>
+      <small>Redraw a wonky sprite or invent a brand-new bug. The game's owner approves what goes in: approved fixes replace the sprite for everyone.</small></div>`;
+  if (!studio?.available) {
+    return `${head}<p class="muted">The studio works in the shared game on claude.ai, where everyone the game is shared with can draw and submit. It isn't available in this copy.</p>`;
+  }
+  const f = ui.studioFilter;
+  const list = studio.list({ kind: f.kind, status: f.mine ? null : f.status, mine: f.mine });
+  const chip = (label, data, on) => btn(label, 'studio-filter', data, `sm ${on ? 'on' : ''}`);
+  const live = Object.entries(studio.live.sprites);
+  const ideas = Object.values(studio.live.bugs).sort((a, b) => b.at - a.at);
+  return `${head}
+    <div class="row wrap studio-actions">${btn('Fix a sprite', 'studio-pick', { mode: 'fix' }, 'go')}${btn('New bug idea', 'studio-pick', { mode: 'idea' }, 'go')}</div>
+    <div class="filters">
+      <div class="row wrap">${['pending', 'approved', 'rejected'].map((st) => chip(st[0].toUpperCase() + st.slice(1), { status: st }, !f.mine && f.status === st)).join('')}${chip('Mine', { mine: 1 }, f.mine)}</div>
+      <div class="row wrap">${chip('All', { kind: '' }, !f.kind)}${chip('Fixes', { kind: 'fix' }, f.kind === 'fix')}${chip('Bug ideas', { kind: 'idea' }, f.kind === 'idea')}</div>
+    </div>
+    <div class="sub-list">${list.map((s) => submissionCard(v, s)).join('') || `<p class="muted">Nothing here yet.${f.status === 'pending' && !f.mine ? ' Be the first to submit something!' : ''}</p>`}</div>
+    ${ideas.length ? `<h4>Approved bug ideas</h4><p class="meta">These are on their way into the game.</p><div class="idea-gallery">${ideas.map((b) => `<div class="idea-cell r-${b.rarity}"><img class="px bug-img" src="${A.rowsUrl(b.rows)}" alt=""><b>${esc(b.name)}</b><small>by ${esc(studio.nameOf(b.author))}</small></div>`).join('')}</div>` : ''}
+    ${studio.isOwner && live.length ? `<h4>Live sprite fixes</h4><p class="meta">Only you see this. Put a bug back to its original art, or to an earlier approved fix.</p>
+      ${live.map(([id, fix]) => `<div class="upgrade"><img class="px bug-img" src="${A.rowsUrl(fix.rows)}" alt=""><div class="grow"><b>${esc(SPECIES[id].name)}</b><small>Live since ${ago(fix.at)}</small>
+        <div class="row wrap">${studio.history(id).filter((h) => h.ref !== fix.ref).map((h) => `<button class="hist-btn" data-act="studio-live" data-id="${id}" data-ref="${esc(h.ref)}" title="Use this fix"><img class="px" src="${A.rowsUrl(h.rows)}" alt=""></button>`).join('')}</div></div>
+        ${btn('Use original', 'studio-live', { id, ref: '' }, 'sm')}</div>`).join('')}` : ''}`;
+}
+
+function submissionCard(v, s) {
+  const { A } = v;
+  const studio = v.studio;
+  const status = studio.status(s.ref);
+  const mine = s.author === studio.me;
+  const d = studio.decisions[s.ref];
+  const art = s.kind === 'fix'
+    ? `<img class="px bug-img" src="${A.bugUrl(s.species)}" alt="now"><span class="arrow">→</span><img class="px bug-img" src="${A.rowsUrl(s.rows)}" alt="fix">`
+    : `<img class="px bug-img big" src="${A.rowsUrl(s.rows)}" alt="">`;
+  const title = s.kind === 'fix'
+    ? `<b>Fix: ${esc(SPECIES[s.species].name)}</b>`
+    : `<b>${esc(s.name)}</b> ${rarityTag(s.rarity)} <small class="inline">${FAMILIES[s.family]}</small>`;
+  const ideaInfo = s.kind === 'idea'
+    ? `${s.desc ? `<small>"${esc(s.desc)}"</small>` : ''}<small>${s.traits.map((t) => `${traitIcon(A, t)} ${TRAITS[t].name}`).join(' ')}${s.habitat ? ` · lives in ${esc(AREA_BY_ID[s.habitat].name)}` : ''}</small>`
+    : '';
+  const liked = studio.likedByMe(s.ref);
+  const actions = [
+    btn(`${liked ? '♥' : '♡'} ${studio.likeCount(s.ref)}`, 'studio-like', { ref: s.ref }, `sm like ${liked ? 'on' : ''}`),
+    mine && status === 'pending' ? btn('Edit', 'ed-edit', { ref: s.ref }, 'sm') : '',
+    mine ? btn(status === 'pending' ? 'Withdraw' : 'Remove', 'studio-withdraw', { key: s.key }, 'sm') : '',
+    studio.isOwner && status === 'pending' ? btn('Approve', 'studio-approve', { ref: s.ref }, 'sm go') : '',
+    studio.isOwner && status === 'pending' ? btn('Reject', 'studio-reject', { ref: s.ref }, 'sm danger') : '',
+  ].join('');
+  return `<div class="sub-card s-${status}">
+      <div class="sub-art">${art}</div>
+      <div class="grow">${title}${ideaInfo}
+        ${s.note ? `<small class="note">"${esc(s.note)}"</small>` : ''}
+        <small class="muted">by ${esc(studio.nameOf(s.author))} · ${ago(s.updatedAt)} · <span class="st-${status}">${STATUS_LABEL[status]}</span></small>
+        ${d?.note ? `<small class="note">Owner: "${esc(d.note)}"</small>` : ''}
+        <div class="row wrap sub-actions">${actions}</div></div>
+    </div>`;
+}
+
+// Choose what to draw: a bug to fix, or how to start a new idea.
+export function studioPickModal(v, mode) {
+  const { A, game } = v;
+  const studio = v.studio;
+  const st = game.state;
+  const known = SPECIES_LIST.filter((s) => studio.isOwner || st.dex[s.id]?.caught);
+  const cells = known.map((s) => `<button class="dex-cell known r-${s.rarity}" data-act="${mode === 'fix' ? 'ed-fix' : 'ed-idea'}" data-id="${s.id}">${speciesImg(A, s.id)}<span class="dex-name">${esc(s.name)}</span>${mode === 'fix' && studio.list({ kind: 'fix', status: 'pending', species: s.id }).length ? '<span class="dex-count">✎</span>' : ''}</button>`).join('');
+  return mode === 'fix'
+    ? `<h3>Fix a sprite</h3><p class="meta">Pick a bug you've discovered. ✎ marks bugs that already have a fix waiting for approval.</p>
+      <div class="dex-grid">${cells || '<p class="muted">Discover some bugs first.</p>'}</div><div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`
+    : `<h3>New bug idea</h3><p class="meta">Start from a blank canvas, or trace over a bug you know.</p>
+      <div class="row wrap">${btn('Blank 16×16', 'ed-idea', { size: 16 }, 'go')}${btn('Blank 32×32 (big bug)', 'ed-idea', { size: 32 })}</div>
+      <h4>Start from a bug</h4><div class="dex-grid">${cells}</div><div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
+}
+
+// The editor. Rendered once (a static modal); the app wires the canvas,
+// tools and preview after it opens.
+export function editorModal(v, ed) {
+  const { A } = v;
+  const studio = v.studio;
+  const sp = ed.species && SPECIES[ed.species];
+  const pendingOthers = ed.kind === 'fix' ? studio.list({ kind: 'fix', status: 'pending', species: ed.species }).filter((s) => s.ref !== ed.ref).length : 0;
+  const opt = (val, label, cur) => `<option value="${val}" ${val === cur ? 'selected' : ''}>${esc(label)}</option>`;
+  const f = ed.form;
+  const ideaForm = ed.kind === 'idea' ? `
+    <h4>About your bug</h4>
+    <label class="field">Name<input id="ed-name" maxlength="28" value="${esc(f.name || '')}" placeholder="e.g. Glitter Gnat"></label>
+    <label class="field">Description<textarea id="ed-desc" maxlength="160" rows="2" placeholder="One line of flavour, like the Bugdex">${esc(f.desc || '')}</textarea></label>
+    <div class="field-row">
+      <label class="field">Family<select id="ed-family">${Object.entries(FAMILIES).map(([k, n]) => opt(k, n, f.family)).join('')}</select></label>
+      <label class="field">Rarity<select id="ed-rarity">${RARITY_ORDER.map((r) => opt(r, RARITIES[r].name, f.rarity)).join('')}</select></label>
+    </div>
+    <div class="field-row">
+      <label class="field">Drawn as<select id="ed-view">${opt('top', 'Top-down, head up', f.view)}${opt('side', 'Side view, facing right', f.view)}</select></label>
+      <label class="field">Lives in<select id="ed-habitat">${opt('', 'Anywhere', f.habitat || '')}${AREAS.map((a) => opt(a.id, a.name, f.habitat)).join('')}</select></label>
+    </div>
+    <div class="field">Traits <small class="inline">(up to 4, signature first)</small><div class="row wrap">${TRAIT_IDS.map((t) => `<label class="trait-pick"><input type="checkbox" data-trait="${t}" ${f.traits?.includes(t) ? 'checked' : ''}>${traitIcon(A, t)} ${TRAITS[t].name}</label>`).join('')}</div></div>` : '';
+  return `<h3>${ed.kind === 'fix' ? `Fix: ${esc(sp.name)}` : ed.ref ? 'Edit bug idea' : 'New bug idea'}</h3>
+    ${pendingOthers ? `<p class="meta warn">${pendingOthers} other fix${pendingOthers > 1 ? 'es are' : ' is'} already waiting for this bug. Yours will sit beside ${pendingOthers > 1 ? 'them' : 'it'} for the owner to choose.</p>` : ''}
+    <p class="meta warn" id="ed-warn" hidden></p>
+    <div class="ed-canvas-wrap"><canvas id="ed-canvas"></canvas></div>
+    <div class="row wrap ed-tools">
+      ${['pen', 'erase', 'fill', 'pick'].map((t) => `<button class="btn sm" data-ed="tool" data-tool="${t}">${{ pen: 'Pen', erase: 'Eraser', fill: 'Fill', pick: 'Pick colour' }[t]}</button>`).join('')}
+      <button class="btn sm" data-ed="mirror">Mirror</button>
+      <button class="btn sm" data-ed="undo">Undo</button><button class="btn sm" data-ed="redo">Redo</button>
+      <button class="btn sm danger" data-ed="clear">Clear</button>
+      ${ed.kind === 'idea' ? `<button class="btn sm" data-ed="size">${ed.rows.length === 16 ? 'Make it 32×32' : 'Make it 16×16'}</button>` : ''}
+    </div>
+    <div class="ed-palette">${Object.entries(A.palette).map(([ch, hex]) => `<button class="swatch" data-ed="color" data-c="${ch}" style="--c:${hex}" title="${ch}"></button>`).join('')}</div>
+    <h4>Preview</h4>
+    <div class="ed-preview" id="ed-preview"></div>
+    ${ideaForm}
+    <label class="field">Note for the owner <small class="inline">(optional)</small><textarea id="ed-note" maxlength="160" rows="2" placeholder="${ed.kind === 'fix' ? 'What did you fix?' : 'Anything else about it?'}">${esc(f.note || '')}</textarea></label>
+    <div class="row sticky-foot">${btn('Cancel', 'ed-cancel')}${btn(ed.ref ? 'Save changes' : 'Submit', 'ed-submit', {}, 'go')}</div>`;
+}
+
+export function rejectModal(v, ref) {
+  const s = v.studio.subs.get(ref);
+  if (!s) return null;
+  return `<h3>Reject ${s.kind === 'fix' ? `this ${esc(SPECIES[s.species].name)} fix` : `"${esc(s.name)}"`}?</h3>
+    <label class="field">Note for ${esc(v.studio.nameOf(s.author))} <small class="inline">(optional)</small><textarea id="reject-note" maxlength="160" rows="2" placeholder="Why not, or what to change"></textarea></label>
+    <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Reject', 'studio-reject-yes', { ref }, 'danger')}</div>`;
 }
 
 export function bugModal(v, uid) {

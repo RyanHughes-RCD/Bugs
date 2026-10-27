@@ -121,7 +121,7 @@ export class Assets {
   }
 
   paint(rows, remap = {}) {
-    const c = makeCanvas();
+    const c = makeCanvas(rows[0]?.length || 16, rows.length || 16);
     const ctx = c.getContext('2d');
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
       const hex = this.palette[remap[ch] || ch];
@@ -288,6 +288,61 @@ export class Assets {
     } catch {
       return [];
     }
+  }
+
+  // A bug's current art as rows of palette characters ('.' transparent), for
+  // the sprite editor. Colours off the palette snap to the nearest one.
+  rowsOf(species) {
+    const src = this.bugs[species];
+    const c = makeCanvas(src.width, src.height);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const pal = Object.entries(this.palette).map(([ch, hex]) => [ch, hexRgb(hex)]);
+    const nearest = (r, g, b) => pal.reduce((best, [ch, [pr, pg, pb]]) => {
+      const dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+      return dist < best[1] ? [ch, dist] : best;
+    }, ['K', Infinity])[0];
+    const rows = [];
+    for (let y = 0; y < c.height; y++) {
+      let row = '';
+      for (let x = 0; x < c.width; x++) {
+        const i = (y * c.width + x) * 4;
+        row += d[i + 3] < 128 ? '.' : this.byRgb.get(`${d[i]},${d[i + 1]},${d[i + 2]}`) || nearest(d[i], d[i + 1], d[i + 2]);
+      }
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  // Approved sprite fixes from the studio: { species: rows }. Species left
+  // out go back to their original art. Returns the species that changed.
+  setOverrides(map) {
+    this.originals = this.originals || {};
+    const changed = [];
+    for (const id of new Set([...Object.keys(map), ...Object.keys(this.originals)])) {
+      if (!this.bugs[id] && !this.originals[id]) continue;
+      const key = map[id] ? map[id].join('') : null;
+      if ((this.overrideKeys?.[id] || null) === key) continue;
+      if (!this.originals[id]) this.originals[id] = this.bugs[id];
+      this.bugs[id] = key ? this.paint(map[id]) : this.originals[id];
+      if (!key) delete this.originals[id];
+      this.overrideKeys = { ...this.overrideKeys, [id]: key };
+      for (const k of Object.keys(this.variants)) if (k.startsWith(`${id}:`)) delete this.variants[k];
+      for (const k of [...this.urls.keys()]) if (k.startsWith(`bug:${id}:`)) this.urls.delete(k);
+      changed.push(id);
+    }
+    return changed;
+  }
+
+  // A data URL for any rows (studio thumbnails), cached by content.
+  rowsUrl(rows, variant = null) {
+    const key = `rows:${variant}:${rows.join('')}`;
+    if (!this.urls.has(key)) {
+      const art = this.paint(rows);
+      this.urls.set(key, (variant ? (variant === 'albino' ? this.albino(art, 'top') : this[variant](art)) : art).toDataURL());
+    }
+    return this.urls.get(key);
   }
 
   // variant: null | 'shiny' | 'albino' | 'golden'

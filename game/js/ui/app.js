@@ -13,9 +13,12 @@ import { gardenRatePerMin, favouriteDecor } from '../systems/garden.js';
 import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
+import { SpriteEditor } from '../community/editor.js';
+import { cleanRows } from '../community/studio.js';
 
 const anEgg = (tier) => { const n = EGG_BY_ID[tier].name; return `${/^[AEIOU]/.test(n) ? 'an' : 'a'} ${n}`; };
 const BACKUP_TIME_KEY = 'bug-garden-last-backup';
+const LIVE_SPRITES_KEY = 'bug-garden-studio-sprites'; // approved fixes, so they show before the studio connects
 
 const PANELS = {
   garden: { title: 'Garden', icon: 'flower' },
@@ -34,6 +37,7 @@ export class App {
     this.ui = {
       panel: null, bugsTab: 'mine', itemsTab: 'shop', sort: 'rarity', filter: {}, plan: null,
       debug: new URLSearchParams(location.search).has('debug'), exportCode: '', oddsLab: null,
+      studioFilter: { status: 'pending', kind: null, mine: false },
     };
     this.modal = null;
     this.pending = null;
@@ -42,7 +46,7 @@ export class App {
   }
 
   get v() {
-    return { game: this.game, A: this.A, ui: this.ui };
+    return { game: this.game, A: this.A, ui: this.ui, studio: this.studio };
   }
 
   init(loadInfo = {}) {
@@ -290,9 +294,156 @@ export class App {
 
   closeModal() {
     this.modal = null;
+    this.editor = null;
     this.pending = null;
     this.el.modalRoot.innerHTML = '';
     this.el.app.classList.remove('has-modal');
+  }
+
+  // ---------- Sprite Studio ----------
+
+  attachStudio(studio) {
+    this.studio = studio;
+    // Approved fixes from last time show straight away, before the studio connects.
+    try {
+      const cached = JSON.parse(localStorage.getItem(LIVE_SPRITES_KEY) || '{}');
+      this.applyLiveSprites(Object.fromEntries(Object.entries(cached).map(([id, rows]) => [id, cleanRows(rows, this.A.palette)]).filter(([id, rows]) => rows && SPECIES[id])));
+    } catch { /* no saved fixes */ }
+    studio.on((what) => {
+      if (what === 'live') {
+        const map = Object.fromEntries(Object.entries(studio.live.sprites).map(([id, fix]) => [id, fix.rows]));
+        try { localStorage.setItem(LIVE_SPRITES_KEY, JSON.stringify(map)); } catch { /* fine */ }
+        this.applyLiveSprites(map);
+        this.checkEditorBase();
+      }
+      if (this.ui.panel === 'bugs' && this.ui.bugsTab === 'studio') this.renderPanel();
+    });
+  }
+
+  applyLiveSprites(map) {
+    if (!this.A.setOverrides(map).length) return;
+    for (const img of this.el?.nav?.querySelectorAll('img') || []) if (img.src.startsWith('data:') && img.closest('[data-panel="bugs"]')) img.src = this.A.bugUrl('ladybug');
+    this.render?.();
+  }
+
+  openEditor(ed) {
+    if (!this.studio?.available) return this.toast('The studio only works in the shared game on claude.ai.', 'bad');
+    // Locked: only Cancel (which asks first) can close it, so a drawing is never lost by accident.
+    this.openModal(() => V.editorModal(this.v, ed), { static: true, locked: true, cls: 'editor' });
+    const root = this.el.modalRoot;
+    const canvas = root.querySelector('#ed-canvas');
+    const preview = root.querySelector('#ed-preview');
+    const state = { ed, dirty: false };
+    let queued = false;
+    const refresh = () => {
+      queued = false;
+      const rows = state.editor.rows();
+      const art = this.A.paint(rows);
+      const view = ed.kind === 'fix' ? SPECIES[ed.species].view : root.querySelector('#ed-view')?.value || 'top';
+      const looks = [['Normal', art], ['Shiny', this.A.shiny(art)], ['Golden', this.A.golden(art)], ['Albino', this.A.albino(art, view)]];
+      preview.innerHTML = `<div class="pv-cell"><img class="px pv-1" alt=""><small>Actual size</small></div>${looks.map(([label]) => `<div class="pv-cell"><img class="px pv-3" alt=""><small>${label}</small></div>`).join('')}`;
+      const imgs = preview.querySelectorAll('img');
+      imgs[0].src = art.toDataURL();
+      looks.forEach(([, c], i) => { imgs[i + 1].src = c.toDataURL(); });
+      for (const b of root.querySelectorAll('[data-ed="tool"]')) b.classList.toggle('on', b.dataset.tool === state.editor.tool);
+      for (const b of root.querySelectorAll('[data-ed="color"]')) b.classList.toggle('on', b.dataset.c === state.editor.color);
+      root.querySelector('[data-ed="mirror"]')?.classList.toggle('on', state.editor.mirror);
+    };
+    const changed = (what) => {
+      if (what !== 'tool') state.dirty = true;
+      if (!queued) { queued = true; requestAnimationFrame(refresh); }
+    };
+    state.editor = new SpriteEditor(canvas, this.A.palette, ed.rows, changed);
+    root.querySelector('.ed-tools').addEventListener('click', (e) => this.editorTool(e, state, changed));
+    root.querySelector('.ed-palette').addEventListener('click', (e) => this.editorTool(e, state, changed));
+    root.querySelector('#ed-view')?.addEventListener('change', () => changed('tool'));
+    root.querySelector('#ed-warn')?.addEventListener('click', (e) => this.editorTool(e, state, changed));
+    this.editor = state;
+    refresh();
+  }
+
+  editorTool(e, state, changed) {
+    const b = e.target.closest('[data-ed]');
+    if (!b) return;
+    const ed = state.editor;
+    switch (b.dataset.ed) {
+      case 'tool': ed.tool = b.dataset.tool; break;
+      case 'color': ed.color = b.dataset.c; if (ed.tool === 'erase' || ed.tool === 'pick') ed.tool = 'pen'; break;
+      case 'mirror': ed.mirror = !ed.mirror; ed.draw(); break;
+      case 'undo': ed.undo(); break;
+      case 'redo': ed.redo(); break;
+      case 'size':
+        if (state.dirty && !this.armed(b, 'Tap again: starts blank')) return;
+        ed.resizeGrid(ed.n === 16 ? 32 : 16);
+        b.textContent = ed.n === 16 ? 'Make it 32×32' : 'Make it 16×16';
+        b.classList.remove('armed');
+        break;
+      case 'clear':
+        if (!this.armed(b, 'Tap again to clear')) return;
+        ed.clear();
+        b.textContent = 'Clear';
+        break;
+      case 'rebase':
+        ed.load(this.A.rowsOf(state.ed.species));
+        state.ed.base = this.studio.liveRef(state.ed.species);
+        state.ed.original = ed.rows().join('');
+        state.dirty = false;
+        this.el.modalRoot.querySelector('#ed-warn').hidden = true;
+        break;
+      default: return;
+    }
+    changed('tool');
+  }
+
+  // Two-tap confirmation for a button inside the editor: the first tap
+  // relabels it, a second tap within a few seconds goes ahead.
+  armed(el, label) {
+    if (!el) return true;
+    if (el.classList.contains('armed')) return true;
+    const old = el.textContent;
+    el.classList.add('armed');
+    el.textContent = label;
+    setTimeout(() => { if (el.isConnected) { el.classList.remove('armed'); el.textContent = old; } }, 3000);
+    return false;
+  }
+
+  // A fix someone else got approved while you were drawing.
+  checkEditorBase() {
+    const st = this.editor;
+    if (!st || st.ed.kind !== 'fix') return;
+    const warn = this.el.modalRoot.querySelector('#ed-warn');
+    if (!warn || this.studio.liveRef(st.ed.species) === st.ed.base) return;
+    warn.hidden = false;
+    warn.innerHTML = `Heads up: another fix for this bug was just approved while you were drawing. You can still submit yours, or <button class="btn link" data-ed="rebase">start again from the new sprite</button>.`;
+  }
+
+  async submitEditor() {
+    const st = this.editor;
+    if (!st) return;
+    const root = this.el.modalRoot;
+    const val = (sel) => root.querySelector(sel)?.value || '';
+    const { ed } = st;
+    const rows = st.editor.rows();
+    if (ed.kind === 'fix' && rows.join('') === ed.original) return this.toast('Change something first: this is the same as the current sprite.', 'bad');
+    const raw = ed.kind === 'fix'
+      ? { kind: 'fix', species: ed.species, base: ed.base, rows, note: val('#ed-note') }
+      : {
+        kind: 'idea', rows, from: ed.from, name: val('#ed-name'), desc: val('#ed-desc'), family: val('#ed-family'), view: val('#ed-view'),
+        rarity: val('#ed-rarity'), habitat: val('#ed-habitat') || null, note: val('#ed-note'),
+        traits: [...root.querySelectorAll('[data-trait]:checked')].map((c) => c.dataset.trait),
+      };
+    if (raw.kind === 'idea' && raw.traits.length > 4) return this.toast('Pick up to 4 traits.', 'bad');
+    const btnEl = root.querySelector('[data-act="ed-submit"]');
+    if (btnEl) btnEl.disabled = true;
+    const res = await this.studio.submit(raw, ed.key || null);
+    if (btnEl) btnEl.disabled = false;
+    if (!res.ok) return this.toast(res.error, 'bad');
+    this.closeModal();
+    this.ui.bugsTab = 'studio';
+    this.ui.studioFilter = { ...this.ui.studioFilter, status: 'pending', mine: false };
+    if (this.ui.panel === 'bugs') this.renderPanel();
+    else this.openPanel('bugs');
+    this.toast(ed.key ? 'Saved your changes.' : 'Submitted! The owner will take a look.', 'good');
   }
 
   // Tapping a decoration says what it does; the log also rolls over.
@@ -617,6 +768,53 @@ export class App {
         break;
       case 'welcome-done': st.flags.welcomed = true; g.commit(); this.closeModal(); break;
       case 'close-modal': this.closeModal(); break;
+      case 'studio-filter':
+        if (d.mine) ui.studioFilter = { ...ui.studioFilter, mine: !ui.studioFilter.mine };
+        else if (d.status) ui.studioFilter = { ...ui.studioFilter, status: d.status, mine: false };
+        else ui.studioFilter = { ...ui.studioFilter, kind: d.kind || null };
+        this.renderPanel();
+        break;
+      case 'studio-pick': this.openModal(() => V.studioPickModal(this.v, d.mode), { static: true }); break;
+      case 'ed-fix': {
+        const rows = this.A.rowsOf(d.id);
+        this.openEditor({ kind: 'fix', species: d.id, rows, original: rows.join(''), base: this.studio.liveRef(d.id), form: {} });
+        break;
+      }
+      case 'ed-idea': {
+        const sp = d.id && SPECIES[d.id];
+        const n = Number(d.size) || 16;
+        const rows = sp ? this.A.rowsOf(d.id) : Array.from({ length: n }, () => '.'.repeat(n));
+        this.openEditor({ kind: 'idea', from: sp ? sp.id : null, rows, form: sp ? { family: sp.family, view: sp.view, rarity: sp.rarity, traits: sp.traits.slice(0, 4) } : { family: 'crawler', view: 'top', rarity: 'common', traits: [] } });
+        break;
+      }
+      case 'ed-edit': {
+        const s = this.studio.subs.get(d.ref);
+        if (!s) break;
+        this.openEditor({ kind: s.kind, species: s.species, from: s.from, ref: s.ref, key: s.key, rows: s.rows, original: s.kind === 'fix' ? this.A.rowsOf(s.species).join('') : null, base: s.base, form: { ...s } });
+        break;
+      }
+      case 'ed-cancel':
+        // A drawing in progress needs a second tap to throw away.
+        if (this.editor?.dirty && !this.armed(document.querySelector('[data-act="ed-cancel"]'), 'Tap again to discard')) break;
+        this.closeModal();
+        break;
+      case 'ed-submit': this.submitEditor(); break;
+      case 'studio-like': this.studio.toggleLike(d.ref).then((res) => { if (!res.ok) this.toast(res.error, 'bad'); }); break;
+      case 'studio-withdraw':
+        this.ask({ title: 'Withdraw this submission?', body: '<p>It will be removed from the studio. Anything already approved stays in the game.</p>', yes: 'Withdraw', danger: true }, async () => {
+          const res = await this.studio.withdraw(d.key);
+          this.result(res, 'Submission withdrawn.');
+        });
+        break;
+      case 'studio-approve': this.studio.approve(d.ref).then((res) => this.result(res, 'Approved! It is live for everyone.')); break;
+      case 'studio-reject': this.openModal(() => V.rejectModal(this.v, d.ref), { static: true }); break;
+      case 'studio-reject-yes': {
+        const note = document.querySelector('#reject-note')?.value || '';
+        this.closeModal();
+        this.studio.reject(d.ref, note).then((res) => this.result(res, 'Rejected.'));
+        break;
+      }
+      case 'studio-live': this.studio.setLiveSprite(d.id, d.ref || null).then((res) => this.result(res, d.ref ? 'Switched to that fix.' : `${SPECIES[d.id].name} is back to its original sprite.`)); break;
       // Developer tools (?debug only).
       case 'warp':
         g.warp(Number(d.ms));
