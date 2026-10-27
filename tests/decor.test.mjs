@@ -137,3 +137,13 @@ test('the river keeps decorations and the rock off its water', () => {
   assert.equal(game.moveRock(250, 50).ok, false, 'nor can the rock');
   assert.ok(game.moveDecor('log', 40, 240).ok, 'dry land is fine');
 });
+
+test('a decoration that grew in an update moves to a free spot when the save loads', () => {
+  const { game, storage, clock } = makeGame();
+  const g = game.state.garden;
+  g.decor.flower_bed = { x: g.rock.x, y: g.rock.y }; // where it now overlaps the rock
+  game.commit();
+  const { game: again } = makeGame({ storage, clock });
+  const at = again.state.garden.decor.flower_bed;
+  assert.ok(decorFits(again.state.garden, 'flower_bed', at.x, at.y));
+});

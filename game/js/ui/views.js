@@ -645,7 +645,7 @@ export function welcomeModal(v) {
     <h3>Welcome to Bug Garden!</h3>
     <p class="center motto-inline">"${HATCHERY_MOTTO}"</p>
     <ol>
-      <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here (more with Bigger Garden upgrades). Tap one to meet it, and tap coins they dig up.</li>
+      <li>${icon(A, 'flower', 'sm')} <b>Garden:</b> up to ${GARDEN_LIMIT} bugs live here (more with Bigger Garden upgrades). Tap one to meet it, and tap coins they dig up. It follows your device's clock: after dark most bugs nap, while fireflies and moths come out.</li>
       <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
       <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi. Leave it a few hours and something might turn up under it.</li>
       <li>${icon(A, 'heart', 'sm')} <b>Visitors:</b> wild bugs drop by when the garden has room, like while your party is away. Tap one to say hi and it leaves a little gift, sometimes even an egg.</li>

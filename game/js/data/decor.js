@@ -14,7 +14,7 @@ import { HOUR } from './balance.js';
 //   attracts: wild visitors that love it turn up this many times as often.
 //   potCap:  extra room in the garden's coin pot.
 const WATER = new Set(['water_strider', 'damselfly', 'dragonfly', 'mosquito', 'storm_dragonfly', 'bubble_ladybug', 'ice_worm']);
-const NIGHT_FLYERS = new Set(['moth', 'luna_moth', 'atlas_moth', 'frost_moth', 'firefly', 'on_firefly']);
+export const NIGHT_FLYERS = new Set(['moth', 'luna_moth', 'atlas_moth', 'frost_moth', 'firefly', 'on_firefly']);
 const ELECTRIC = new Set(['thunder_beetle', 'storm_dragonfly']);
 
 // In the order they're meant to be bought: cheapest first.
@@ -32,10 +32,10 @@ export const DECOR = [
   {
     id: 'battery', name: '9V Battery', price: 1500, sprite: 'decor/battery.png', size: [84, 68], scale: 0.6, bonus: 1, attracts: 4,
     loves: (sp) => ELECTRIC.has(sp.id),
-    desc: 'Electric bugs charge up on it and forage double. Anyone else who gets too close gets a zap (and leaves a coin).',
+    desc: 'Electric bugs charge up on it and forage double. Anyone else who gets too close gets a zap (and leaves a coin). Tap it to send out a pulse: every bug it catches drops a coin and zips around for a minute.',
   },
   {
-    id: 'flower_bed', name: 'Flower Bed', price: 2500, sprite: 'decor/flower_bed.png', size: [82, 77], scale: 0.42, bonus: 0.5, attracts: 2,
+    id: 'flower_bed', name: 'Flower Bed', price: 2500, sprite: 'decor/flower_bed.png', size: [82, 77], scale: 0.84, bonus: 0.5, attracts: 2,
     loves: (sp) => sp.family === 'flyer',
     desc: 'Flyers sip nectar here and forage more.',
   },
@@ -61,5 +61,8 @@ export const DECOR_BY_ID = Object.fromEntries(DECOR.map((d) => [d.id, d]));
 // Rolling the log over: a few coins at most every LOG.everyMs.
 export const LOG = { everyMs: 2 * HOUR, coins: [10, 30] };
 // The battery: how close counts as too close (map pixels), and how long a bug
-// stays wary of it after a zap.
-export const BATTERY = { reach: 6, cooldownMs: 20e3 };
+// stays wary of it after a zap. Tapping it sends out a pulse reaching
+// pulseRadius map pixels; bugs it catches move boostSpeed times as fast for
+// boostMs (just for show: foraging and expeditions are unchanged). A bug
+// drops at most one coin per cooldownMs, from zaps and pulses alike.
+export const BATTERY = { reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2 };

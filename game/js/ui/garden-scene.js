@@ -1,6 +1,6 @@
 import { SPECIES } from '../data/species.js';
 import { EGG_BY_ID } from '../data/eggs.js';
-import { DECOR_BY_ID, BATTERY } from '../data/decor.js';
+import { DECOR_BY_ID, BATTERY, NIGHT_FLYERS } from '../data/decor.js';
 import { GARDEN_MAP } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
@@ -8,6 +8,7 @@ import { incubatorCount } from '../systems/eggs.js';
 import { dirtPatches, favouriteDecor, potCap, decorFits, decorRect } from '../systems/garden.js';
 import { rockFindReady } from '../systems/visitors.js';
 import { fmtTime } from './format.js';
+import { daylight } from '../systems/daylight.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
 export const WORLD_W = GARDEN_MAP.w;
@@ -22,15 +23,6 @@ const CRUSH_REACTIONS = [['YEEEOUCH!', 47], ['OWOWOWOW', 47], ["Dude why'd you d
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-export function timeOfDay(ts) {
-  const d = new Date(ts);
-  const h = d.getHours() + d.getMinutes() / 60;
-  if (h >= 20.5 || h < 5.5) return 'night';
-  if (h >= 18.5) return 'dusk';
-  if (h < 7) return 'dawn';
-  return 'day';
-}
-
 export class GardenScene {
   constructor(canvas, game, assets, handlers) {
     this.canvas = canvas;
@@ -41,6 +33,7 @@ export class GardenScene {
     this.entities = new Map();
     this.floaters = [];
     this.particles = [];
+    this.pulses = []; // electric rings spreading from the battery
     this.camX = null;
     this.fireflies = Array.from({ length: 40 }, () => ({ x: rand(0, WORLD_W), y: rand(0, WORLD_H), p: rand(0, 6.28) }));
     const coinRng = new Rng(7);
@@ -49,6 +42,8 @@ export class GardenScene {
     this.flowers = assets.flowerSpots.filter((f) => f.x > BOUNDS.x0 && f.x < BOUNDS.x1 && f.y > BOUNDS.y0 && f.y < BOUNDS.y1);
     this.camY = null;
     this.t = 0;
+    this.dl = daylight(game.now());
+    this.shade = document.createElement('canvas'); // the night's darkness, with holes cut by lights
     this.last = performance.now();
     this.drag = null;
     this.rockDrag = null;
@@ -160,6 +155,7 @@ export class GardenScene {
       e.species = species;
       e.aura = sp.aura;
       e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
+      e.nocturnal = e.glowing || NIGHT_FLYERS.has(sp.base); // stays up all night
       return e;
     };
     for (const b of home) {
@@ -237,6 +233,12 @@ export class GardenScene {
   // visit a flower, dig, or hide under the rock.
   pickTarget(e) {
     e.act = null;
+    // At night most bugs nod off where they are; night flyers stay busy.
+    e.sleeping = !e.nocturnal && !e.leaving && !(e.boost > 0) && Math.random() < 0.75 * this.dl.dark;
+    if (e.sleeping) {
+      e.wait = rand(8, 20);
+      return;
+    }
     const roll = Math.random();
     const fav = e.fav && e.fav !== 'rock' && this.decorSpot(e.fav);
     if (fav && roll < 0.6) {
@@ -323,6 +325,11 @@ export class GardenScene {
     e.surprised = Math.max(0, e.surprised - dt);
     e.squish = Math.max(0, (e.squish || 0) - dt);
     e.slow = Math.max(0, (e.slow || 0) - dt);
+    if (e.boost > 0) {
+      e.boost -= dt;
+      if (e.wait > 0.4) e.wait = 0.4; // too wired to sit still
+      if (Math.random() < dt * 5) this.particles.push({ x: e.x + rand(-3, 3), y: e.y - rand(0, 5), vx: rand(-6, 6), vy: rand(-10, -2), life: 0.35, color: Math.random() < 0.5 ? '#fff07a' : '#73eff7' });
+    }
     e.moving = false;
     if (e.hidden) {
       e.hidden = Math.max(0, e.hidden - dt);
@@ -362,6 +369,11 @@ export class GardenScene {
     }
     if (e.wait > 0) {
       e.wait -= dt;
+      if (e.sleeping) {
+        if (Math.random() < dt * 0.4) this.floaters.push({ x: e.x + 4, y: e.y - 6, text: 'z', color: '#c8d4ff', life: 1.6 });
+        if (e.wait <= 0) this.pickTarget(e);
+        return;
+      }
       // Look around while idle: top-down bugs turn, side views about-face.
       if (e.side) {
         if (Math.random() < dt * 0.15) e.flip = -e.flip;
@@ -389,6 +401,7 @@ export class GardenScene {
       return;
     }
     let sp = e.speed * (e.slow > 0 ? 0.35 : 1); // a squished bug limps for a bit
+    if (e.boost > 0) sp *= BATTERY.boostSpeed; // charged up by a battery pulse
     if (e.leaving) sp *= 2.5; // off on an adventure, or heading home
     if (e.family === 'hopper') sp *= Math.sin(e.phase * 0.5) > 0.3 ? 3.2 : 0.2;
     const step = Math.min(d, sp * dt);
@@ -414,6 +427,7 @@ export class GardenScene {
 
   update(dt) {
     this.t += dt;
+    this.dl = daylight(this.game.now());
     this.sync();
     const list = [...this.entities.values()];
     for (const e of list) this.updateEntity(e, dt, list);
@@ -423,6 +437,7 @@ export class GardenScene {
       f.y = (f.y + Math.sin(f.p * 0.5) * dt * 6 + WORLD_H) % WORLD_H;
     }
     this.zapCheck(list);
+    this.updatePulses(dt, list);
     this.updateWater(dt);
     this.logRoll = Math.max(0, this.logRoll - dt);
     for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * dt; p.life -= dt; }
@@ -463,19 +478,8 @@ export class GardenScene {
     }
     ctx.globalAlpha = 1;
 
-    const tod = timeOfDay(this.game.now());
-    if (tod !== 'day') {
-      ctx.fillStyle = tod === 'night' ? 'rgba(20, 24, 70, 0.4)' : tod === 'dusk' ? 'rgba(180, 70, 60, 0.15)' : 'rgba(255, 180, 120, 0.12)';
-      ctx.fillRect(0, 0, cw, ch);
-    }
-    if (tod === 'night') {
-      ctx.globalCompositeOperation = 'lighter';
-      for (const e of all) if (e.glowing) this.glow(e.x, e.y, 14, 'rgba(255, 220, 120, 0.35)');
-      const jar = this.decorSpot('jar');
-      if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, 'rgba(255, 230, 120, 0.45)');
-      for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${0.4 + 0.4 * Math.sin(f.p * 3)})`);
-      ctx.globalCompositeOperation = 'source-over';
-    }
+    this.drawNight(all);
+    this.drawPulses();
     for (const e of all) this.drawOverlay(e);
     for (const f of this.floaters) {
       const [sx, sy] = this.toScreen(f.x, f.y - (1.6 - f.life) * 14);
@@ -486,13 +490,53 @@ export class GardenScene {
     this.drawNests();
   }
 
-  glow(x, y, r, color) {
+  // The day/night wash from the device clock. After dark, glowing bugs, the
+  // jar, the battery and fireflies light up little pools in the darkness.
+  drawNight(all) {
+    const { ctx } = this;
+    const { dark, tint } = this.dl;
+    if (tint[3] < 0.005) return;
+    const lights = [];
+    if (dark > 0.02) {
+      for (const e of all) {
+        if (e.glowing) lights.push([e.x, e.y - this.bob(e), 18, 0.9]);
+        else if (e.act === 'charge' && e.actTime > 0) lights.push([e.x, e.y, 12, 0.7]);
+      }
+      const jar = this.decorSpot('jar');
+      if (jar) lights.push([jar.x, jar.y, 38 + Math.sin(this.t * 2) * 2, 1]);
+      const bat = this.decorSpot('battery');
+      if (bat) lights.push([bat.x, bat.y, 16 + Math.sin(this.t * 7) * 1.5, 0.5]);
+      for (const f of this.fireflies) lights.push([f.x, f.y, 7, 0.5 + 0.4 * Math.sin(f.p * 3)]);
+    }
+    const sh = this.shade;
+    if (sh.width !== this.canvas.width || sh.height !== this.canvas.height) {
+      sh.width = this.canvas.width;
+      sh.height = this.canvas.height;
+    }
+    const c = sh.getContext('2d');
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, sh.width, sh.height);
+    c.fillStyle = `rgba(${tint[0] | 0}, ${tint[1] | 0}, ${tint[2] | 0}, ${tint[3]})`;
+    c.fillRect(0, 0, sh.width, sh.height);
+    c.globalCompositeOperation = 'destination-out';
+    for (const [x, y, r, a] of lights) this.glow(x, y, r, `rgba(0, 0, 0, ${a * dark})`, c);
+    ctx.drawImage(sh, 0, 0);
+    if (dark < 0.02) return;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const e of all) if (e.glowing) this.glow(e.x, e.y - this.bob(e), 14, `rgba(255, 220, 120, ${0.35 * dark})`);
+    const jar = this.decorSpot('jar');
+    if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, `rgba(255, 230, 120, ${0.45 * dark})`);
+    for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${(0.4 + 0.4 * Math.sin(f.p * 3)) * dark})`);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  glow(x, y, r, color, c = this.ctx) {
     const [sx, sy] = this.toScreen(x, y);
-    const g = this.ctx.createRadialGradient(sx, sy, 0, sx, sy, r * this.scale);
+    const g = c.createRadialGradient(sx, sy, 0, sx, sy, r * this.scale);
     g.addColorStop(0, color);
     g.addColorStop(1, 'rgba(0,0,0,0)');
-    this.ctx.fillStyle = g;
-    this.ctx.fillRect(sx - r * this.scale, sy - r * this.scale, r * 2 * this.scale, r * 2 * this.scale);
+    c.fillStyle = g;
+    c.fillRect(sx - r * this.scale, sy - r * this.scale, r * 2 * this.scale, r * 2 * this.scale);
   }
 
   // Outlined text centred on (sx, sy), nudged inside the canvas so it is
@@ -824,7 +868,7 @@ export class GardenScene {
   }
 
   // Draws the water's moving surface onto its small canvas, clipped to the water.
-  paintWater(day) {
+  paintWater(shine) {
     const w = this.water;
     const c = w.ctx;
     c.clearRect(0, 0, w.surface.width, w.surface.height);
@@ -846,7 +890,7 @@ export class GardenScene {
       }
     }
     for (const g of w.glints) {
-      c.globalAlpha = Math.sin((g.age / g.life) * Math.PI) * (day ? 1 : 0.35);
+      c.globalAlpha = Math.sin((g.age / g.life) * Math.PI) * shine;
       c.fillStyle = '#ffffff';
       c.fillRect(g.x, g.y, 1, 1);
       if (g.age / g.life > 0.3 && g.age / g.life < 0.7) { c.fillRect(g.x - 1, g.y, 3, 1); c.fillRect(g.x, g.y - 1, 1, 3); }
@@ -865,7 +909,7 @@ export class GardenScene {
     const [sx, sy] = this.toScreen(r.x0, r.y0);
     ctx.drawImage(art, Math.round(sx), Math.round(sy), art.width * scale, art.height * scale);
     if (!this.water) return;
-    this.paintWater(timeOfDay(this.game.now()) !== 'night');
+    this.paintWater(1 - 0.65 * this.dl.dark);
     ctx.drawImage(this.water.surface, Math.round(sx), Math.round(sy), art.width * scale, art.height * scale);
   }
 
@@ -895,6 +939,63 @@ export class GardenScene {
     return null;
   }
 
+  // Tapping the battery: a ring of electricity spreads out from it.
+  pulse() {
+    const spot = this.decorSpot('battery');
+    if (!spot) return;
+    this.pulses.push({ x: spot.x, y: spot.y, age: 0, hit: new Set() });
+    for (let k = 0; k < 14; k++) {
+      const a = rand(0, Math.PI * 2);
+      this.particles.push({ x: spot.x, y: spot.y, vx: Math.cos(a) * rand(20, 40), vy: Math.sin(a) * rand(20, 40) - 10, life: 0.5, color: k % 2 ? '#fff07a' : '#ffffff' });
+    }
+  }
+
+  // Each bug the ring sweeps over gets a jolt: a coin and a burst of speed.
+  updatePulses(dt, list) {
+    const now = performance.now();
+    for (const p of this.pulses) {
+      p.age += dt;
+      const radius = Math.min(1, p.age / (BATTERY.pulseMs / 1000)) * BATTERY.pulseRadius;
+      for (const e of list) {
+        if (e.hidden || e.leaving || p.hit.has(e) || Math.hypot(e.x - p.x, e.y - p.y) > radius) continue;
+        p.hit.add(e);
+        e.boost = BATTERY.boostMs / 1000;
+        Object.assign(e, { label: 'Bzzt!', labelColor: '#fff07a', bubble: 1.2, surprised: 1, sleeping: false, act: null, actTime: 0, wait: 0.2 });
+        for (let k = 0; k < 6; k++) this.particles.push({ x: e.x, y: e.y - 4, vx: rand(-20, 20), vy: rand(-20, -4), life: 0.5, color: k % 2 ? '#fff07a' : '#73eff7' });
+        if ((e.zapUntil || 0) > now) continue;
+        e.zapUntil = now + BATTERY.cooldownMs;
+        if (this.handlers.onZap?.()) this.float(e.x + 8, e.y - 4, '+1');
+      }
+    }
+    this.pulses = this.pulses.filter((p) => p.age < BATTERY.pulseMs / 1000 + 0.25);
+  }
+
+  // The pulse: a jagged, flickering ring that fades as it spreads.
+  drawPulses() {
+    const { ctx, scale } = this;
+    for (const p of this.pulses) {
+      const t = Math.min(1, p.age / (BATTERY.pulseMs / 1000));
+      const radius = t * BATTERY.pulseRadius;
+      const fade = 1 - Math.max(0, (p.age - BATTERY.pulseMs / 1000) / 0.25);
+      ctx.globalAlpha = (1 - t * 0.6) * fade;
+      this.glow(p.x, p.y, radius * 0.9, 'rgba(255, 240, 122, 0.18)');
+      const steps = 48;
+      for (const [color, jit] of [['#73eff7', 3], ['#fff07a', 1.8], ['#ffffff', 0.8]]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1, scale * (color === '#ffffff' ? 0.5 : 0.8));
+        ctx.beginPath();
+        for (let k = 0; k <= steps; k++) {
+          const a = (k / steps) * Math.PI * 2;
+          const r = radius + (k % steps ? rand(-jit, jit) : 0);
+          const [sx, sy] = this.toScreen(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 0.7);
+          if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Bugs that wander too close to the battery get a zap and hop away.
   // Electric bugs love it and never get zapped.
   zapCheck(list) {
@@ -922,6 +1023,7 @@ export class GardenScene {
       const r = this.riverRect();
       for (let k = 0; k < 3; k++) this.water.rings.push({ x: x - r.x0, y: y - r.y0, age: -k * 0.18, life: 1.6, size: 7 });
     }
+    if (id === 'battery') this.pulse();
     if (id === 'log') {
       this.logRoll = 0.9;
       const spot = this.decorSpot('log');
@@ -1062,6 +1164,7 @@ export class GardenScene {
       e.hearts = 1.2;
       e.wait = 2;
       e.actTime = 0;
+      e.sleeping = false; // a tap wakes a sleepy bug
       if (e.visitor) return this.greet(e);
       return this.handlers.onBug(e.uid);
     }
