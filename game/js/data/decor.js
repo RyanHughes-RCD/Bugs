@@ -1,4 +1,4 @@
-import { HOUR } from './balance.js';
+import { HOUR, MINUTE } from './balance.js';
 
 // Garden decorations. Each one is loved by some bugs: garden bugs that love a
 // decoration spend their time beside it and forage more (bonus). Because
@@ -64,5 +64,6 @@ export const LOG = { everyMs: 2 * HOUR, coins: [10, 30] };
 // stays wary of it after a zap. Tapping it sends out a pulse reaching
 // pulseRadius map pixels; bugs it catches move boostSpeed times as fast for
 // boostMs (just for show: foraging and expeditions are unchanged). A bug
-// drops at most one coin per cooldownMs, from zaps and pulses alike.
-export const BATTERY = { reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2 };
+// drops at most one coin per cooldownMs, from zaps and pulses alike. The
+// battery needs rechargeMs between pulses (no timer is shown).
+export const BATTERY = { reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2, rechargeMs: 5 * MINUTE };
