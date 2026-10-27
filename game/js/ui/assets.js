@@ -345,6 +345,34 @@ export class Assets {
     return this.urls.get(key);
   }
 
+  // Rainbow effect: the bug with every colour turned k/12 of the way round
+  // the colour wheel (done by hand: canvas filters don't work everywhere).
+  hueFrame(species, variant, k) {
+    const key = `${species}:${variant}:hue${k}`;
+    if (!this.variants[key]) {
+      const turn = k / 12;
+      this.variants[key] = this.mapPixels(this.bug(species, variant), (px) => {
+        for (const p of px) {
+          if (p.outline) continue;
+          const [h, s, l] = rgbToHsl(...p.rgb);
+          if (s < 0.08) continue; // greys and whites stay put
+          p.set = hslToRgb((h + turn) % 1, s, l);
+        }
+      });
+    }
+    return this.variants[key];
+  }
+
+  // Glitch effect: the bug as a flat red and a flat cyan silhouette.
+  glitchGhosts(species, variant) {
+    const key = `${species}:${variant}:glitch`;
+    if (!this.variants[key]) {
+      const src = this.bug(species, variant);
+      this.variants[key] = [[255, 40, 90], [40, 240, 255]].map((rgb) => this.mapPixels(src, (px) => { for (const p of px) p.set = rgb; }));
+    }
+    return this.variants[key];
+  }
+
   // variant: null | 'shiny' | 'albino' | 'golden'
   bug(species, variant = null) {
     if (!variant) return this.bugs[species];
@@ -407,6 +435,31 @@ function findEyes(px, W, view) {
     return [left, right].filter(Boolean);
   }
   return [];
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h / 6, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t) => {
+    t = (t + 1) % 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3)].map((v) => Math.round(v * 255));
 }
 
 // Scale3x / AdvMAME3x pixel-art upscaler: every pixel becomes a 3x3 block,

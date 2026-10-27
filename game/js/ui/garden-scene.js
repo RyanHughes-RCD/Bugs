@@ -9,6 +9,7 @@ import { dirtPatches, favouriteDecor, potCap, decorFits, decorRect } from '../sy
 import { rockFindReady } from '../systems/visitors.js';
 import { fmtTime } from './format.js';
 import { daylight } from '../systems/daylight.js';
+import { updateFx, drawUnder, drawOver, spriteFx } from './bug-fx.js';
 
 // World units are pixels of the BugsMap art (150 x 300).
 export const WORLD_W = GARDEN_MAP.w;
@@ -154,6 +155,8 @@ export class GardenScene {
       e.fav = favouriteDecor(st, species)?.id || null;
       e.species = species;
       e.aura = sp.aura;
+      e.fx = sp.fx;
+      e.fxColor = sp.fxColor;
       e.glowing = sp.base === 'firefly' || sp.base === 'luna_moth' || !!sp.aura;
       e.nocturnal = e.glowing || NIGHT_FLYERS.has(sp.base); // stays up all night
       return e;
@@ -431,6 +434,7 @@ export class GardenScene {
     this.sync();
     const list = [...this.entities.values()];
     for (const e of list) this.updateEntity(e, dt, list);
+    for (const e of list) updateFx(this, e, dt);
     for (const f of this.fireflies) {
       f.p += dt;
       f.x = (f.x + Math.cos(f.p * 0.7) * dt * 6 + WORLD_W) % WORLD_W;
@@ -440,8 +444,8 @@ export class GardenScene {
     this.updatePulses(dt, list);
     this.updateWater(dt);
     this.logRoll = Math.max(0, this.logRoll - dt);
-    for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * dt; p.life -= dt; }
-    this.particles = this.particles.filter((p) => p.life > 0).slice(-80);
+    for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * (p.g ?? 1) * dt; p.life -= dt; }
+    this.particles = this.particles.filter((p) => p.life > 0).slice(-220);
     this.floaters = this.floaters.filter((f) => (f.life -= dt) > 0);
   }
 
@@ -467,14 +471,25 @@ export class GardenScene {
     for (const e of all) if (e.act === 'charge' && e.actTime > 0) this.glow(e.x, e.y, 10 + Math.sin(this.t * 9) * 2, 'rgba(255, 240, 122, 0.6)');
     for (const e of all) if (e.aura) this.glow(e.x, e.y - this.bob(e), 11 + Math.sin(this.t * 3 + e.phase) * 2, hexA(e.aura, 0.55));
     for (const e of all) if (e.variant === 'shiny') this.glow(e.x, e.y - this.bob(e), 12 + Math.sin(this.t * 2 + e.phase), 'rgba(220, 245, 255, 0.55)');
+    for (const e of all) drawUnder(this, e);
     for (const e of all) this.drawBug(e);
+    for (const e of all) drawOver(this, e);
     this.drawRock();
     this.drawRockHint();
     for (const p of this.particles) {
       const [sx, sy] = this.toScreen(p.x, p.y);
       ctx.globalAlpha = Math.min(1, p.life * 2);
       ctx.fillStyle = p.color;
-      ctx.fillRect(sx, sy, scale, scale);
+      if (p.star) this.sparkle(sx, sy, scale * 0.7, p.color);
+      else if (p.ring) {
+        // A bubble: a hollow ring with a glint.
+        ctx.fillRect(sx - scale, sy - 2 * scale, 2 * scale, scale * 0.6);
+        ctx.fillRect(sx - scale, sy + scale, 2 * scale, scale * 0.6);
+        ctx.fillRect(sx - 2 * scale, sy - scale, scale * 0.6, 2 * scale);
+        ctx.fillRect(sx + 1.4 * scale, sy - scale, scale * 0.6, 2 * scale);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(sx - scale * 0.8, sy - scale * 0.8, scale * 0.6, scale * 0.6);
+      } else ctx.fillRect(sx, sy, scale, scale);
     }
     ctx.globalAlpha = 1;
 
@@ -588,19 +603,24 @@ export class GardenScene {
 
   drawBug(e) {
     const { ctx } = this;
-    const img = this.assets.bug(e.species, e.variant);
-    const size = img.width * this.bugPx; // drawn at its own pixel size, so big bugs look big
-    const [sx, sy] = this.toScreen(e.x, e.y - this.bob(e));
     const wig = e.moving || e.actTime > 0 ? 1 + Math.sin(e.phase * (e.act === 'dig' ? 2 : 1)) * 0.06 : 1;
-    ctx.save();
-    ctx.translate(Math.round(sx), Math.round(sy));
-    if (e.side) ctx.scale(e.flip, 1);
-    ctx.rotate(e.angle);
     // Squished flat by the rock, then springing back into shape.
     const flat = e.squish > 1.6 ? 1 : (e.squish || 0) / 1.6;
-    ctx.scale(wig * (1 + 0.35 * flat), (2 - wig) * (1 - 0.55 * flat));
-    ctx.drawImage(img, -size / 2, -size / 2, size, size);
-    ctx.restore();
+    const blit = (img, x, y, alpha = 1, dx = 0, angle = e.angle, flip = e.flip) => {
+      const size = img.width * this.bugPx; // drawn at its own pixel size, so big bugs look big
+      const [sx, sy] = this.toScreen(x, y - this.bob(e));
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(Math.round(sx + dx * this.bugPx), Math.round(sy));
+      if (e.side) ctx.scale(flip, 1);
+      ctx.rotate(angle);
+      ctx.scale(wig * (1 + 0.35 * flat), (2 - wig) * (1 - 0.55 * flat));
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    };
+    const img = this.assets.bug(e.species, e.variant);
+    if (e.fx?.length) spriteFx(this, e, img, blit);
+    else blit(img, e.x, e.y);
   }
 
   drawOverlay(e) {

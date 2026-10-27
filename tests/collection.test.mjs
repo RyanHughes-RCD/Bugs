@@ -11,9 +11,9 @@ import { eggOdds } from '../game/js/systems/eggs.js';
 import { dirtPatches, patchStrength } from '../game/js/systems/garden.js';
 import { makeGame, MIN, HOUR } from './helpers.mjs';
 
-test('130 species across nine rarities, from Drab to Celestial', () => {
-  assert.equal(SPECIES_LIST.length, 130);
-  assert.equal(new Set(SPECIES_LIST.map((s) => s.id)).size, 130);
+test('146 species across nine rarities, from Drab to Celestial', () => {
+  assert.equal(SPECIES_LIST.length, 146);
+  assert.equal(new Set(SPECIES_LIST.map((s) => s.id)).size, 146);
   assert.deepEqual(RARITY_ORDER, ['drab', 'common', 'uncommon', 'nice', 'rare', 'epic', 'legendary', 'mythic', 'celestial']);
   for (const r of RARITY_ORDER) assert.ok(SPECIES_LIST.some((s) => s.rarity === r), r);
   // Rarer tiers are scarcer.
@@ -134,4 +134,16 @@ test('every side-view and rock-loving entry names a real species', async () => {
     for (const id of ids) assert.ok(SPECIES[id], `${set} entry ${id}`);
   }
   assert.equal(SPECIES.dung_beetle.view, 'side');
+});
+
+test('the four top rarities each gained four drawn bugs with special effects', () => {
+  const KNOWN_FX = ['embers', 'bubbles', 'frost', 'sparkle', 'rainbow', 'phase', 'trail', 'orbit', 'pulse', 'glitch', 'lightning', 'void', 'nova', 'rays', 'constellation'];
+  const withFx = SPECIES_LIST.filter((s) => s.fx.length);
+  assert.equal(withFx.length, 16);
+  for (const r of ['epic', 'legendary', 'mythic', 'celestial']) assert.equal(withFx.filter((s) => s.rarity === r).length, 4, r);
+  for (const s of withFx) {
+    for (const f of s.fx) assert.ok(KNOWN_FX.includes(f), `${s.id}: ${f}`);
+    const rows = SPRITES[s.grid];
+    assert.ok(rows?.length === 16 && rows.every((row) => row.length === 16), `${s.id} has a 16x16 sprite`);
+  }
 });
