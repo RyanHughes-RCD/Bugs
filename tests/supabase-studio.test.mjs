@@ -119,3 +119,17 @@ test("if the Studio server can't be reached, connect fails (so the game can fall
   await assert.rejects(st.connect());
   assert.equal(st.available, false);
 });
+
+test('codes of any length Supabase is set to (6 to 10 digits) are accepted, spaces and all', async () => {
+  const store = makeFakeSupabaseStore();
+  const lib = makeFakeSupabaseLib(store);
+  const st = new SupabaseStudio(CONFIG, PALETTE, lib);
+  await st.connect();
+  const seen = [];
+  const real = st.sb.auth.verifyOtp;
+  st.sb.auth.verifyOtp = async (args) => { seen.push(args.token); return real({ ...args, token: '123456' }); };
+  await st.sendCode('ryan@example.com');
+  assert.ok((await st.verifyCode('ryan@example.com', '1602 0548')).ok);
+  assert.equal(seen[0], '16020548', 'all 8 digits reach Supabase');
+  assert.equal((await st.verifyCode('ryan@example.com', '12345678901')).ok, false, 'too long');
+});
