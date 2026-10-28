@@ -1323,7 +1323,7 @@ export class GardenScene {
     const [cx, cy] = this.toCanvas(e.clientX, e.clientY);
     this.canvas.setPointerCapture?.(e.pointerId);
     // The bird and the boat come first: they don't hang around.
-    if (this.bird && this.bird.phase !== 'out' && Math.hypot(this.bird.x - wx, this.bird.y - wy) < 11) return this.shooBird();
+    if (this.bird && this.bird.phase !== 'out' && Math.hypot(this.bird.x - wx, this.bird.y - 9 - wy) < 15) return this.shooBird();
     if (this.boat && !this.boat.caught) {
       const [bx, by] = this.boatAt(this.boat.d);
       if (Math.hypot(bx - wx, by - wy) < 11) return this.catchBoat();
