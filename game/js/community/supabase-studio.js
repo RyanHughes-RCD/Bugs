@@ -146,7 +146,8 @@ export class SupabaseStudio extends Studio {
 
   async verifyCode(email, code) {
     const token = String(code || '').replace(/\D/g, '');
-    if (token.length < 6) return { ok: false, error: 'Enter the 6-digit code from the email.' };
+    // Supabase's code length is a project setting (6 to 10 digits), so take whatever it sent.
+    if (token.length < 6 || token.length > 10) return { ok: false, error: 'Enter the code from the email: just the digits.' };
     const { data, error } = await this.sb.auth.verifyOtp({ email, token, type: 'email' });
     if (error) return { ok: false, error: 'That code didn\'t work. Check it, or send a new one.' };
     this.setSession(data?.session);

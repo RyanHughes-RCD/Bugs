@@ -62,7 +62,7 @@ lives in a Supabase project, so it works in every copy of the game:
   project's SQL Editor; it's safe to run again.
 - `game/js/community/config.js`: the project URL and its public
   *publishable* key. Never put the secret / service_role key there.
-- Sign-in is by a 6-digit code emailed to the player. The email templates
+- Sign-in is by a code (6 to 10 digits, a project setting) emailed to the player. The email templates
   must include `{{ .Token }}` (Authentication → Emails, which needs custom
   SMTP).
 - To make someone the owner (the only one who can approve), after they've

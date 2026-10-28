@@ -315,7 +315,7 @@ export function renderStudio(v) {
         ${btn('Use original', 'studio-live', { id, ref: '' }, 'sm')}</div>`).join('')}` : ''}`;
 }
 
-// Signing in to the Studio (Supabase): an emailed 6-digit code, then a
+// Signing in to the Studio (Supabase): an emailed code, then a
 // display name. Not needed to look around, only to submit, like or edit.
 function studioAccount(v) {
   const { ui } = v;
@@ -324,10 +324,10 @@ function studioAccount(v) {
   if (studio.needsSignIn) {
     const sent = ui.studioCodeFor;
     return `<div class="studio-auth">${sent
-      ? `<b>Check your email</b><small>We sent a 6-digit code to ${esc(sent)}. It can take a minute, and it might be in spam.</small>
-        <div class="row"><input id="studio-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456">${btn('Sign in', 'studio-verify', {}, 'go sm')}</div>
+      ? `<b>Check your email</b><small>We sent a sign-in code to ${esc(sent)}. It can take a minute, and it might be in spam. If you asked for more than one, use the newest.</small>
+        <div class="row"><input id="studio-code" inputmode="numeric" autocomplete="one-time-code" maxlength="14" placeholder="Code from the email">${btn('Sign in', 'studio-verify', {}, 'go sm')}</div>
         <div class="row">${btn('Send a new code', 'studio-send-code', { again: 1 }, 'link')}${btn('Use a different email', 'studio-reset-email', {}, 'link')}</div>`
-      : `<b>Sign in to draw and vote</b><small>Anyone can look around. To submit, like or edit, sign in with your email: we'll send you a 6-digit code. Your game save isn't affected.</small>
+      : `<b>Sign in to draw and vote</b><small>Anyone can look around. To submit, like or edit, sign in with your email: we'll send you a code. Your game save isn't affected.</small>
         <div class="row"><input id="studio-email" type="email" autocomplete="email" placeholder="you@example.com">${btn('Send code', 'studio-send-code', {}, 'go sm')}</div>`}</div>`;
   }
   return `<div class="studio-auth signed-in"><small>Signed in as <b>${esc(studio.email || '')}</b>${studio.isOwner ? ' · <b>owner</b>' : ''}</small>
