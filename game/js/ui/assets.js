@@ -197,12 +197,24 @@ export class Assets {
     });
   }
 
-  // Albino: pale whites and greys, with red eyes.
-  albino(src, view) {
+  // Albino: pale whites and greys, with red eyes: the marked eye pixels
+  // when the Studio gave it some ([x, y] pairs), or else a best guess.
+  albino(src, view, eyes = null) {
     return this.mapPixels(src, (px, { W }) => {
       for (const p of px) if (!p.outline) p.set = hexRgb(ALBINO_RAMP[Math.min(ALBINO_RAMP.length - 1, Math.floor(lum(...p.rgb) * ALBINO_RAMP.length))]);
-      for (const p of findEyes(px, W, view)) p.set = hexRgb(ALBINO_EYE);
+      const marked = eyes?.length ? new Set(eyes.map(([x, y]) => `${x},${y}`)) : null;
+      const red = marked ? px.filter((p) => marked.has(`${p.x},${p.y}`)) : findEyes(px, W, view);
+      for (const p of red) p.set = hexRgb(ALBINO_EYE);
     });
+  }
+
+  // Where a bug's Albino eyes are now: its marks, or the best guess.
+  eyesOf(species) {
+    if (this.eyeMarks?.[species]?.length) return this.eyeMarks[species];
+    let guess = [];
+    const view = SPECIES_LIST.find((s) => s.id === species)?.view;
+    this.mapPixels(this.bugs[species], (px, { W }) => { guess = findEyes(px, W, view).map((p) => [p.x, p.y]); });
+    return guess;
   }
 
   // Trims transparent margins (used for the dirt-patch layer of the map).
@@ -481,17 +493,21 @@ export class Assets {
     return rows;
   }
 
-  // Approved sprite fixes from the studio: { species: rows }. Species left
-  // out go back to their original art. Returns the species that changed.
+  // Approved sprite fixes from the studio: { species: { rows, eyes } } (or
+  // just rows, from older saves). Species left out go back to their original
+  // art. Returns the species that changed.
   setOverrides(map) {
     this.originals = this.originals || {};
+    this.eyeMarks = this.eyeMarks || {};
     const changed = [];
     for (const id of new Set([...Object.keys(map), ...Object.keys(this.originals)])) {
       if (!this.bugs[id] && !this.originals[id]) continue;
-      const key = map[id] ? map[id].join('') : null;
+      const fix = Array.isArray(map[id]) ? { rows: map[id], eyes: [] } : map[id];
+      const key = fix ? `${fix.rows.join('')}|${JSON.stringify(fix.eyes || [])}` : null;
       if ((this.overrideKeys?.[id] || null) === key) continue;
       if (!this.originals[id]) this.originals[id] = this.bugs[id];
-      this.bugs[id] = key ? this.paint(map[id]) : this.originals[id];
+      this.bugs[id] = key ? this.paint(fix.rows) : this.originals[id];
+      this.eyeMarks[id] = fix?.eyes?.length ? fix.eyes : null;
       if (!key) delete this.originals[id];
       this.overrideKeys = { ...this.overrideKeys, [id]: key };
       for (const k of Object.keys(this.variants)) if (k.startsWith(`${id}:`)) delete this.variants[k];
@@ -518,11 +534,11 @@ export class Assets {
   }
 
   // A data URL for any rows (studio thumbnails), cached by content.
-  rowsUrl(rows, variant = null) {
-    const key = `rows:${variant}:${rows.join('')}`;
+  rowsUrl(rows, variant = null, eyes = null) {
+    const key = `rows:${variant}:${rows.join('')}:${JSON.stringify(eyes || [])}`;
     if (!this.urls.has(key)) {
       const art = this.paint(rows);
-      this.urls.set(key, (variant ? (variant === 'albino' ? this.albino(art, 'top') : this[variant](art)) : art).toDataURL());
+      this.urls.set(key, (variant ? (variant === 'albino' ? this.albino(art, 'top', eyes) : this[variant](art)) : art).toDataURL());
     }
     return this.urls.get(key);
   }
@@ -561,7 +577,7 @@ export class Assets {
     const key = `${species}:${variant}`;
     if (!this.variants[key]) {
       const view = SPECIES_LIST.find((s) => s.id === species)?.view;
-      this.variants[key] = variant === 'albino' ? this.albino(this.bugs[species], view) : this[variant](this.bugs[species]);
+      this.variants[key] = variant === 'albino' ? this.albino(this.bugs[species], view, this.eyeMarks?.[species]) : this[variant](this.bugs[species]);
     }
     return this.variants[key];
   }

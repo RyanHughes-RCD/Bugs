@@ -410,13 +410,14 @@ export function editorModal(v, ed) {
     <p class="meta warn" id="ed-warn" hidden></p>
     <div class="ed-canvas-wrap"><canvas id="ed-canvas"></canvas></div>
     <div class="row wrap ed-tools">
-      ${['pen', 'erase', 'fill', 'pick'].map((t) => `<button class="btn sm" data-ed="tool" data-tool="${t}">${{ pen: 'Pen', erase: 'Eraser', fill: 'Fill', pick: 'Pick colour' }[t]}</button>`).join('')}
+      ${['pen', 'erase', 'fill', 'pick', 'eye'].map((t) => `<button class="btn sm" data-ed="tool" data-tool="${t}">${{ pen: 'Pen', erase: 'Eraser', fill: 'Fill', pick: 'Pick colour', eye: 'Eyes' }[t]}</button>`).join('')}
       <button class="btn sm" data-ed="mirror">Mirror</button>
       <button class="btn sm" data-ed="undo">Undo</button><button class="btn sm" data-ed="redo">Redo</button>
       <button class="btn sm danger" data-ed="clear">Clear</button>
       ${ed.kind === 'idea' ? `<button class="btn sm" data-ed="size">${ed.rows.length === 16 ? 'Make it 32×32' : 'Make it 16×16'}</button>` : ''}
     </div>
     <div class="ed-palette">${Object.entries(A.palette).map(([ch, hex]) => `<button class="swatch" data-ed="color" data-c="${ch}" style="--c:${hex}" title="${ch}"></button>`).join('')}</div>
+    <p class="meta ed-hint"><b>Eyes:</b> tap the pixels that are the bug's eyes (tap again to unmark). Albinos get red eyes there: check the Albino preview below.</p>
     <h4>Preview</h4>
     <div class="ed-preview" id="ed-preview"></div>
     ${ideaForm}

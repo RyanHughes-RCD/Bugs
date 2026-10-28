@@ -41,12 +41,30 @@ export function cleanRows(rows, palette) {
   return rows.slice();
 }
 
+// Eye marks for Albinos: [x, y] pixels of the sprite, only where something is
+// drawn, at most 8 of them. Anything else is dropped.
+export function cleanEyes(eyes, rows) {
+  if (!Array.isArray(eyes) || !rows) return [];
+  const seen = new Set();
+  const out = [];
+  for (const e of eyes) {
+    if (!Array.isArray(e)) continue;
+    const [x, y] = e.map(Number);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || rows[y]?.[x] === undefined || rows[y][x] === '.' || seen.has(`${x},${y}`)) continue;
+    seen.add(`${x},${y}`);
+    out.push([x, y]);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 export function cleanSubmission(raw, palette) {
   if (!raw || typeof raw !== 'object') return null;
   const rows = cleanRows(raw.rows, palette);
   if (!rows) return null;
   const base = {
     rows,
+    eyes: cleanEyes(raw.eyes, rows),
     note: clip(raw.note, LIMITS.note),
     createdAt: Number(raw.createdAt) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.createdAt) || 0,
@@ -148,7 +166,8 @@ export class Studio {
     const out = {};
     for (const [ref, d] of Object.entries(raw)) {
       if (!d || !['approved', 'rejected'].includes(d.status)) continue;
-      out[ref] = { status: d.status, at: Number(d.at) || 0, note: clip(d.note, LIMITS.note), species: SPECIES[d.species] ? d.species : null, rows: cleanRows(d.rows, this.palette) };
+      const rows = cleanRows(d.rows, this.palette);
+      out[ref] = { status: d.status, at: Number(d.at) || 0, note: clip(d.note, LIMITS.note), species: SPECIES[d.species] ? d.species : null, rows, eyes: cleanEyes(d.eyes, rows) };
     }
     this.decisions = out;
     this.emit('reviews');
@@ -159,7 +178,7 @@ export class Studio {
     const sprites = {};
     for (const [id, fix] of Object.entries(raw.sprites || {})) {
       const rows = SPECIES[id] && cleanRows(fix?.rows, this.palette);
-      if (rows) sprites[id] = { rows, ref: clip(fix.ref, 120), at: Number(fix.at) || 0 };
+      if (rows) sprites[id] = { rows, eyes: cleanEyes(fix.eyes, rows), ref: clip(fix.ref, 120), at: Number(fix.at) || 0 };
     }
     const bugs = {};
     for (const [ref, idea] of Object.entries(raw.bugs || {})) {
@@ -294,11 +313,12 @@ export class Studio {
     const s = this.subs.get(ref);
     if (!s) return { ok: false, error: 'That submission is gone.' };
     const decisions = { ...this.decisions };
-    decisions[ref] = { status, at: Date.now(), note: clip(note, LIMITS.note), species: s.species || null, rows: status === 'approved' && s.kind === 'fix' ? s.rows : null };
+    const fix = status === 'approved' && s.kind === 'fix';
+    decisions[ref] = { status, at: Date.now(), note: clip(note, LIMITS.note), species: s.species || null, rows: fix ? s.rows : null, eyes: fix ? s.eyes : [] };
     const res = await this.put('studio/reviews', { decisions });
     if (!res.ok || status !== 'approved') return res;
     const live = { sprites: { ...this.live.sprites }, bugs: { ...this.live.bugs } };
-    if (s.kind === 'fix') live.sprites[s.species] = { rows: s.rows, ref, at: Date.now() };
+    if (s.kind === 'fix') live.sprites[s.species] = { rows: s.rows, eyes: s.eyes, ref, at: Date.now() };
     else {
       const { key, ...idea } = s;
       live.bugs[ref] = { ...idea, at: Date.now() };
@@ -317,7 +337,7 @@ export class Studio {
     else {
       const rows = this.decisions[ref]?.rows;
       if (!rows) return { ok: false, error: 'That fix is no longer available.' };
-      sprites[species] = { rows, ref, at: Date.now() };
+      sprites[species] = { rows, eyes: this.decisions[ref].eyes || [], ref, at: Date.now() };
     }
     return this.put('studio/live', { ...this.live, sprites });
   }

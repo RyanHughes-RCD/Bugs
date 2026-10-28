@@ -96,7 +96,7 @@ export class SupabaseStudio extends Studio {
       this.readReviews({ exists: true, data: () => ({ decisions: Object.fromEntries(rows.map((r) => [r.submission_id, { ...r, at: when(r.decided_at) }])) }) });
     } else if (table === 'live_sprites' || table === 'live_bugs') {
       this[`raw_${table}`] = rows;
-      const sprites = Object.fromEntries((this.raw_live_sprites || []).map((r) => [r.species, { rows: r.rows, ref: r.ref, at: when(r.updated_at) }]));
+      const sprites = Object.fromEntries((this.raw_live_sprites || []).map((r) => [r.species, { rows: r.rows, eyes: r.eyes, ref: r.ref, at: when(r.updated_at) }]));
       const bugs = Object.fromEntries((this.raw_live_bugs || []).map((r) => [r.ref, { ...r.data, author: r.author, at: when(r.approved_at) }]));
       this.readLive({ exists: true, data: () => ({ sprites, bugs }) });
     } else if (table === 'profiles') {
@@ -192,17 +192,29 @@ export class SupabaseStudio extends Studio {
 
   // ---------- the owner's controls ----------
 
+  // Writes a row with its eye marks. A database set up before eye marks
+  // existed has no `eyes` column: then it saves the row without them.
+  async upsertWithEyes(table, row) {
+    const res = await this.sb.from(table).upsert(row);
+    if (res.error && /eyes/.test(res.error.message || '')) {
+      const { eyes, ...rest } = row;
+      return this.sb.from(table).upsert(rest);
+    }
+    return res;
+  }
+
   async decide(ref, status, note = '') {
     if (!this.isOwner) return { ok: false, error: 'Only the owner can approve submissions.' };
     const s = this.subs.get(ref);
     if (!s) return { ok: false, error: 'That submission is gone.' };
-    const res = await this.run(['decisions'], () => this.sb.from('decisions').upsert({
+    const fix = status === 'approved' && s.kind === 'fix';
+    const res = await this.run(['decisions'], () => this.upsertWithEyes('decisions', {
       submission_id: ref, status, note: String(note || '').slice(0, 160), species: s.species || null,
-      rows: status === 'approved' && s.kind === 'fix' ? s.rows : null, decided_at: new Date().toISOString(),
+      rows: fix ? s.rows : null, eyes: fix ? s.eyes : null, decided_at: new Date().toISOString(),
     }));
     if (!res.ok || status !== 'approved') return res;
     if (s.kind === 'fix') {
-      return this.run(['live_sprites'], () => this.sb.from('live_sprites').upsert({ species: s.species, rows: s.rows, ref, updated_at: new Date().toISOString() }));
+      return this.run(['live_sprites'], () => this.upsertWithEyes('live_sprites', { species: s.species, rows: s.rows, eyes: s.eyes, ref, updated_at: new Date().toISOString() }));
     }
     const { key, ref: _r, author, createdAt, updatedAt, ...idea } = s;
     return this.run(['live_bugs'], () => this.sb.from('live_bugs').upsert({ ref, author, data: idea, approved_at: new Date().toISOString() }));
@@ -213,6 +225,6 @@ export class SupabaseStudio extends Studio {
     if (!ref) return this.run(['live_sprites'], () => this.sb.from('live_sprites').delete().eq('species', species));
     const rows = this.decisions[ref]?.rows;
     if (!cleanRows(rows, this.palette)) return { ok: false, error: 'That fix is no longer available.' };
-    return this.run(['live_sprites'], () => this.sb.from('live_sprites').upsert({ species, rows, ref, updated_at: new Date().toISOString() }));
+    return this.run(['live_sprites'], () => this.upsertWithEyes('live_sprites', { species, rows, eyes: this.decisions[ref].eyes || [], ref, updated_at: new Date().toISOString() }));
   }
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Studio, cleanRows, cleanSubmission, refOf } from '../game/js/community/studio.js';
+import { Studio, cleanRows, cleanSubmission, cleanEyes, refOf } from '../game/js/community/studio.js';
 import { makeFakeClaude, makeFakeStore } from './fake-claude.mjs';
 
 const PALETTE = { K: '#1a1c2c', R: '#b13e53', Y: '#ffcd75', G: '#38b764' };
@@ -111,4 +111,21 @@ test('outside the published game there is no studio, and nothing breaks', async 
   const st = new Studio(undefined, PALETTE);
   assert.equal(await st.connect(), false);
   assert.equal((await st.submit({ kind: 'fix', species: 'ladybug', rows: sprite() })).ok, false);
+});
+
+test('eye marks for Albinos are cleaned and travel with a fix into the live sprite', async () => {
+  const rows = sprite();
+  assert.deepEqual(cleanEyes([[4, 8], [4, 8], [0, 0], [99, 1], ['x', 2], [5, 8]], rows), [[4, 8], [5, 8]], 'only drawn pixels, once each');
+  assert.equal(cleanEyes(Array.from({ length: 12 }, (_, i) => [4 + (i % 8), 8]), rows).length, 8, 'at most 8');
+  const { owner, sam } = await people();
+  const res = await sam.submit({ kind: 'fix', species: 'ladybug', rows, eyes: [[5, 8], [10, 8]] });
+  await settle();
+  assert.deepEqual(owner.subs.get(res.ref).eyes, [[5, 8], [10, 8]]);
+  assert.ok((await owner.approve(res.ref)).ok);
+  await settle();
+  assert.deepEqual(sam.live.sprites.ladybug.eyes, [[5, 8], [10, 8]]);
+  assert.ok((await owner.setLiveSprite('ladybug', null)).ok);
+  assert.ok((await owner.setLiveSprite('ladybug', res.ref)).ok, 'back to that fix, eyes and all');
+  await settle();
+  assert.deepEqual(sam.live.sprites.ladybug.eyes, [[5, 8], [10, 8]]);
 });

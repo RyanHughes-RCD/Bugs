@@ -60,6 +60,10 @@ create table if not exists public.live_bugs (
   approved_at timestamptz not null default now()
 );
 
+-- Added later: eye marks for Albinos ([x, y] pixels) on approved fixes.
+alter table public.decisions add column if not exists eyes jsonb;
+alter table public.live_sprites add column if not exists eyes jsonb;
+
 -- ---------- helpers ----------
 
 create or replace function public.is_studio_owner() returns boolean

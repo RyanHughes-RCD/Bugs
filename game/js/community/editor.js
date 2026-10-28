@@ -2,13 +2,15 @@
 // painted with the game's palette. Rows are strings of palette characters,
 // '.' for transparent, the same format as data/sprites.js.
 //
-// Tools: pen, eraser, fill and picker, with an optional left/right mirror.
-// Every finished stroke is one undo step.
-export const TOOLS = ['pen', 'erase', 'fill', 'pick'];
+// Tools: pen, eraser, fill and picker, with an optional left/right mirror,
+// plus eyes: tapping a pixel marks it as an eye (or unmarks it), which is
+// where an Albino of the bug gets its red eyes. Every finished stroke or
+// tap is one undo step, eye marks included.
+export const TOOLS = ['pen', 'erase', 'fill', 'pick', 'eye'];
 const HISTORY = 100;
 
 export class SpriteEditor {
-  constructor(canvas, palette, rows, onChange = () => {}) {
+  constructor(canvas, palette, rows, onChange = () => {}, eyes = []) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.palette = palette;
@@ -16,15 +18,16 @@ export class SpriteEditor {
     this.tool = 'pen';
     this.color = 'K';
     this.mirror = false;
-    this.load(rows);
+    this.load(rows, eyes);
     canvas.addEventListener('pointerdown', (e) => this.down(e));
     canvas.addEventListener('pointermove', (e) => this.move(e));
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(ev, () => this.up());
   }
 
-  load(rows) {
+  load(rows, eyes = []) {
     this.n = rows.length;
     this.grid = rows.map((r) => [...r]);
+    this.eyes = new Set(eyes.map(([x, y]) => `${x},${y}`));
     this.undoStack = [];
     this.redoStack = [];
     this.resize();
@@ -33,6 +36,22 @@ export class SpriteEditor {
 
   rows() {
     return this.grid.map((r) => r.join(''));
+  }
+
+  // The marked eyes as [x, y] pairs (only on pixels that are drawn).
+  eyeList() {
+    return [...this.eyes].map((k) => k.split(',').map(Number)).filter(([x, y]) => this.grid[y]?.[x] && this.grid[y][x] !== '.').sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  }
+
+  // Everything undo needs: the pixels and the eye marks.
+  snapshot() {
+    return JSON.stringify({ rows: this.rows(), eyes: this.eyeList() });
+  }
+
+  restore(snap) {
+    const { rows, eyes } = JSON.parse(snap);
+    this.grid = rows.map((r) => [...r]);
+    this.eyes = new Set(eyes.map(([x, y]) => `${x},${y}`));
   }
 
   // A fresh, blank grid at a new size (16 or 32).
@@ -68,6 +87,15 @@ export class SpriteEditor {
     }
     ctx.fillStyle = this.mirror ? 'rgba(177, 62, 83, 0.6)' : 'rgba(26, 28, 44, 0.25)';
     ctx.fillRect((n / 2) * cell - 1, 0, 2, n * cell);
+    // Eye marks: a red ring with a white centre dot.
+    const t = Math.max(2, Math.round(cell / 6));
+    for (const [x, y] of this.eyeList()) {
+      ctx.strokeStyle = '#e0323c';
+      ctx.lineWidth = t;
+      ctx.strokeRect(x * cell + t / 2, y * cell + t / 2, cell - t, cell - t);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x * cell + cell / 2 - t / 2, y * cell + cell / 2 - t / 2, t, t);
+    }
   }
 
   cellAt(e) {
@@ -89,7 +117,20 @@ export class SpriteEditor {
       this.onChange('tool');
       return;
     }
-    this.before = this.rows();
+    this.before = this.snapshot();
+    if (this.tool === 'eye') {
+      if (this.grid[at[1]][at[0]] !== '.') {
+        const key = `${at[0]},${at[1]}`;
+        const on = !this.eyes.has(key);
+        for (const x of this.mirror ? [at[0], this.n - 1 - at[0]] : [at[0]]) {
+          if (on) this.eyes.add(`${x},${at[1]}`);
+          else this.eyes.delete(`${x},${at[1]}`);
+        }
+        this.draw();
+      }
+      this.up();
+      return;
+    }
     if (this.tool === 'fill') {
       this.fill(...at, this.color);
       this.up();
@@ -127,7 +168,7 @@ export class SpriteEditor {
   up() {
     if (!this.before) return;
     this.stroking = false;
-    if (this.before.join('') !== this.rows().join('')) {
+    if (this.before !== this.snapshot()) {
       this.undoStack.push(this.before);
       if (this.undoStack.length > HISTORY) this.undoStack.shift();
       this.redoStack = [];
@@ -161,23 +202,24 @@ export class SpriteEditor {
 
   undo() {
     if (!this.undoStack.length) return;
-    this.redoStack.push(this.rows());
-    this.grid = this.undoStack.pop().map((r) => [...r]);
+    this.redoStack.push(this.snapshot());
+    this.restore(this.undoStack.pop());
     this.draw();
     this.onChange();
   }
 
   redo() {
     if (!this.redoStack.length) return;
-    this.undoStack.push(this.rows());
-    this.grid = this.redoStack.pop().map((r) => [...r]);
+    this.undoStack.push(this.snapshot());
+    this.restore(this.redoStack.pop());
     this.draw();
     this.onChange();
   }
 
   clear() {
-    this.before = this.rows();
+    this.before = this.snapshot();
     this.grid = this.grid.map((r) => r.map(() => '.'));
+    this.eyes = new Set();
     this.draw();
     this.up();
   }

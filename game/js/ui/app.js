@@ -15,7 +15,7 @@ import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 import { SpriteEditor } from '../community/editor.js';
-import { cleanRows } from '../community/studio.js';
+import { cleanRows, cleanEyes } from '../community/studio.js';
 
 const anEgg = (tier) => { const n = EGG_BY_ID[tier].name; return `${/^[AEIOU]/.test(n) ? 'an' : 'a'} ${n}`; };
 const BACKUP_TIME_KEY = 'bug-garden-last-backup';
@@ -322,11 +322,15 @@ export class App {
     // Approved fixes from last time show straight away, before the studio connects.
     try {
       const cached = JSON.parse(localStorage.getItem(LIVE_SPRITES_KEY) || '{}');
-      this.applyLiveSprites(Object.fromEntries(Object.entries(cached).map(([id, rows]) => [id, cleanRows(rows, this.A.palette)]).filter(([id, rows]) => rows && SPECIES[id])));
+      const fixes = Object.entries(cached).map(([id, fix]) => {
+        const rows = cleanRows(Array.isArray(fix) ? fix : fix?.rows, this.A.palette); // older caches held only rows
+        return [id, rows && { rows, eyes: cleanEyes(fix?.eyes, rows) }];
+      });
+      this.applyLiveSprites(Object.fromEntries(fixes.filter(([id, fix]) => fix && SPECIES[id])));
     } catch { /* no saved fixes */ }
     studio.on((what) => {
       if (what === 'live') {
-        const map = Object.fromEntries(Object.entries(studio.live.sprites).map(([id, fix]) => [id, fix.rows]));
+        const map = Object.fromEntries(Object.entries(studio.live.sprites).map(([id, fix]) => [id, { rows: fix.rows, eyes: fix.eyes || [] }]));
         try { localStorage.setItem(LIVE_SPRITES_KEY, JSON.stringify(map)); } catch { /* fine */ }
         this.applyLiveSprites(map);
         this.checkEditorBase();
@@ -377,7 +381,7 @@ export class App {
       const rows = state.editor.rows();
       const art = this.A.paint(rows);
       const view = ed.kind === 'fix' ? SPECIES[ed.species].view : root.querySelector('#ed-view')?.value || 'top';
-      const looks = [['Normal', art], ['Shiny', this.A.shiny(art)], ['Golden', this.A.golden(art)], ['Albino', this.A.albino(art, view)]];
+      const looks = [['Normal', art], ['Shiny', this.A.shiny(art)], ['Golden', this.A.golden(art)], ['Albino', this.A.albino(art, view, state.editor.eyeList())]];
       preview.innerHTML = `<div class="pv-cell"><img class="px pv-1" alt=""><small>Actual size</small></div>${looks.map(([label]) => `<div class="pv-cell"><img class="px pv-3" alt=""><small>${label}</small></div>`).join('')}`;
       const imgs = preview.querySelectorAll('img');
       imgs[0].src = art.toDataURL();
@@ -390,7 +394,7 @@ export class App {
       if (what !== 'tool') state.dirty = true;
       if (!queued) { queued = true; requestAnimationFrame(refresh); }
     };
-    state.editor = new SpriteEditor(canvas, this.A.palette, ed.rows, changed);
+    state.editor = new SpriteEditor(canvas, this.A.palette, ed.rows, changed, ed.eyes || []);
     root.querySelector('.ed-tools').addEventListener('click', (e) => this.editorTool(e, state, changed));
     root.querySelector('.ed-palette').addEventListener('click', (e) => this.editorTool(e, state, changed));
     root.querySelector('#ed-view')?.addEventListener('change', () => changed('tool'));
@@ -421,9 +425,9 @@ export class App {
         b.textContent = 'Clear';
         break;
       case 'rebase':
-        ed.load(this.A.rowsOf(state.ed.species));
+        ed.load(this.A.rowsOf(state.ed.species), this.A.eyesOf(state.ed.species));
         state.ed.base = this.studio.liveRef(state.ed.species);
-        state.ed.original = ed.rows().join('');
+        state.ed.original = JSON.stringify([ed.rows(), ed.eyeList()]);
         state.dirty = false;
         this.el.modalRoot.querySelector('#ed-warn').hidden = true;
         break;
@@ -461,11 +465,12 @@ export class App {
     const val = (sel) => root.querySelector(sel)?.value || '';
     const { ed } = st;
     const rows = st.editor.rows();
-    if (ed.kind === 'fix' && rows.join('') === ed.original) return this.toast('Change something first: this is the same as the current sprite.', 'bad');
+    const eyes = st.editor.eyeList();
+    if (ed.kind === 'fix' && JSON.stringify([rows, eyes]) === ed.original) return this.toast('Change something first: this is the same as the current sprite and eyes.', 'bad');
     const raw = ed.kind === 'fix'
-      ? { kind: 'fix', species: ed.species, base: ed.base, rows, note: val('#ed-note') }
+      ? { kind: 'fix', species: ed.species, base: ed.base, rows, eyes, note: val('#ed-note') }
       : {
-        kind: 'idea', rows, from: ed.from, name: val('#ed-name'), desc: val('#ed-desc'), family: val('#ed-family'), view: val('#ed-view'),
+        kind: 'idea', rows, eyes, from: ed.from, name: val('#ed-name'), desc: val('#ed-desc'), family: val('#ed-family'), view: val('#ed-view'),
         rarity: val('#ed-rarity'), habitat: val('#ed-habitat') || null, note: val('#ed-note'),
         traits: [...root.querySelectorAll('[data-trait]:checked')].map((c) => c.dataset.trait),
       };
@@ -877,20 +882,21 @@ export class App {
       case 'studio-signout': this.studio.signOut().then(() => { this.toast('Signed out of the Studio.'); this.renderPanel(); }); break;
       case 'ed-fix': {
         const rows = this.A.rowsOf(d.id);
-        this.openEditor({ kind: 'fix', species: d.id, rows, original: rows.join(''), base: this.studio.liveRef(d.id), form: {} });
+        const eyes = this.A.eyesOf(d.id); // starts with where the Albino's eyes are now
+        this.openEditor({ kind: 'fix', species: d.id, rows, eyes, original: JSON.stringify([rows, eyes]), base: this.studio.liveRef(d.id), form: {} });
         break;
       }
       case 'ed-idea': {
         const sp = d.id && SPECIES[d.id];
         const n = Number(d.size) || 16;
         const rows = sp ? this.A.rowsOf(d.id) : Array.from({ length: n }, () => '.'.repeat(n));
-        this.openEditor({ kind: 'idea', from: sp ? sp.id : null, rows, form: sp ? { family: sp.family, view: sp.view, rarity: sp.rarity, traits: sp.traits.slice(0, 4) } : { family: 'crawler', view: 'top', rarity: 'common', traits: [] } });
+        this.openEditor({ kind: 'idea', from: sp ? sp.id : null, rows, eyes: sp ? this.A.eyesOf(sp.id) : [], form: sp ? { family: sp.family, view: sp.view, rarity: sp.rarity, traits: sp.traits.slice(0, 4) } : { family: 'crawler', view: 'top', rarity: 'common', traits: [] } });
         break;
       }
       case 'ed-edit': {
         const s = this.studio.subs.get(d.ref);
         if (!s) break;
-        this.openEditor({ kind: s.kind, species: s.species, from: s.from, ref: s.ref, key: s.key, rows: s.rows, original: s.kind === 'fix' ? this.A.rowsOf(s.species).join('') : null, base: s.base, form: { ...s } });
+        this.openEditor({ kind: s.kind, species: s.species, from: s.from, ref: s.ref, key: s.key, rows: s.rows, eyes: s.eyes || [], original: s.kind === 'fix' ? JSON.stringify([this.A.rowsOf(s.species), this.A.eyesOf(s.species)]) : null, base: s.base, form: { ...s } });
         break;
       }
       case 'ed-cancel':

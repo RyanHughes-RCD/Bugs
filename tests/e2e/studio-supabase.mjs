@@ -71,14 +71,25 @@ try {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8, { steps: 8 });
   await page.mouse.up();
+  // Mark an eye on the stroke just drawn (cell 8, 12 of 16): the Albino preview uses it.
+  await act('[data-ed="tool"][data-tool="eye"]');
+  const before = await page.evaluate(() => window.bugGarden.app.editor.editor.eyeList());
+  await page.mouse.click(box.x + box.width * (8.5 / 16), box.y + box.height * (12.5 / 16));
+  await page.waitForTimeout(250);
+  const eyes = await page.evaluate(() => window.bugGarden.app.editor.editor.eyeList());
+  assert.ok(eyes.some(([x, y]) => x === 8 && y === 12), `marked: ${JSON.stringify(eyes)} (was ${JSON.stringify(before)})`);
+  await page.locator('#ed-preview').scrollIntoViewIfNeeded();
+  await snap('eyes');
   await act('[data-act="ed-submit"]');
   await page.waitForSelector('.sub-card');
   assert.ok(await page.isVisible('.sub-card >> text=by You'));
   await snap('submitted');
-  const before = await page.evaluate((id) => window.bugGarden.app.A.bugUrl(id), species);
+  const beforeArt = await page.evaluate((id) => window.bugGarden.app.A.bugUrl(id), species);
   await act('[data-act="studio-approve"]');
   await page.waitForFunction((id) => window.bugGarden.app.A.overrideKeys?.[id], species);
-  assert.notEqual(await page.evaluate((id) => window.bugGarden.app.A.bugUrl(id), species), before, 'the approved fix is live');
+  assert.notEqual(await page.evaluate((id) => window.bugGarden.app.A.bugUrl(id), species), beforeArt, 'the approved fix is live');
+  const liveEyes = await page.evaluate((id) => window.bugGarden.app.A.eyeMarks[id], species);
+  assert.ok(liveEyes.some(([x, y]) => x === 8 && y === 12), 'and its Albino uses the marked eyes');
   await act('[data-act="studio-signout"]');
   assert.ok(await page.isVisible('text=Sign in to draw and vote'));
   await snap('signed-out');
