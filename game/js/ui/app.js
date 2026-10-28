@@ -103,6 +103,7 @@ export class App {
       onDecorMoved: (id, x, y) => this.result(this.game.moveDecor(id, x, y)),
       onDecorTap: (id) => this.decorTap(id),
       onZap: () => this.game.batteryZap().ok,
+      onPulseZap: () => this.game.pulseZap(),
       onPulse: () => this.game.pulseBattery().ok,
       onBoat: () => {
         const res = this.game.catchBoat();

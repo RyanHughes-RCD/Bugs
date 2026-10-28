@@ -192,3 +192,23 @@ test('the battery pulses at most once every 5 minutes, even across a reload', ()
   clock.t += MIN;
   assert.ok(again.pulseBattery().ok);
 });
+
+test('a battery pulse makes each bug drop coins into the pot, more the fuller your Bugdex', () => {
+  const { game, clock } = makeGame();
+  game.state.coins = 1e6;
+  game.buyDecor('battery');
+  const ids = SPECIES_LIST.map((s) => s.id);
+  game.state.dex = Object.fromEntries(ids.slice(0, 50).map((id) => [id, { caught: 1 }]));
+  game.state.garden.pot = 0;
+  assert.equal(game.pulseZap().ok, false, 'only right after a pulse');
+  assert.ok(game.pulseBattery().ok);
+  const bugs = game.state.bugs.filter((b) => b.inGarden).length;
+  const res = game.pulseZap();
+  assert.ok(res.ok);
+  assert.equal(res.coins, 26, '1 + half of 50 species');
+  assert.equal(game.state.garden.pot, 26, 'straight into the pot');
+  for (let i = 1; i < bugs; i++) assert.ok(game.pulseZap().ok);
+  assert.equal(game.pulseZap().ok, false, 'one drop per bug per pulse');
+  clock.t += 10e3;
+  assert.equal(game.pulseZap().ok, false, 'and only for a few seconds');
+});

@@ -33,7 +33,7 @@ export const DECOR = [
   {
     id: 'battery', name: '9V Battery', price: 1500, sprite: 'decor/battery.png', size: [84, 68], scale: 0.6, shadow: [4, 4], bonus: 1, attracts: 4,
     loves: (sp) => ELECTRIC.has(sp.id),
-    desc: 'Electric bugs charge up on it and forage double. Anyone else who gets too close gets a zap (and leaves a coin). Tap it to send out a pulse: every bug it catches drops a coin and zips around for a minute.',
+    desc: 'Electric bugs charge up on it and forage double. Anyone else who gets too close gets a zap (and leaves a coin). Tap it to send out a pulse: every bug it catches drops coins into the pot (more the fuller your Bugdex) and zips around for a minute.',
   },
   {
     id: 'flower_bed', name: 'Flower Bed', price: 2500, sprite: 'decor/flower_bed.png', size: [82, 77], scale: 0.84, bonus: 0.5, attracts: 2,
@@ -65,6 +65,11 @@ export const LOG = { everyMs: 2 * HOUR, coins: [10, 30] };
 // stays wary of it after a zap. Tapping it sends out a pulse reaching
 // pulseRadius map pixels; bugs it catches move boostSpeed times as fast for
 // boostMs (just for show: foraging and expeditions are unchanged). A bug
-// drops at most one coin per cooldownMs, from zaps and pulses alike. The
-// battery needs rechargeMs between pulses (no timer is shown).
-export const BATTERY = { reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2, rechargeMs: 5 * MINUTE };
+// that wanders into it drops a coin at most once per cooldownMs. The battery
+// needs rechargeMs between pulses (no timer is shown). Each bug a pulse
+// catches drops 1 coin plus pulseCoinsPerStar for every species in the
+// Bugdex, straight into the garden's coin pot.
+export const BATTERY = {
+  reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2, rechargeMs: 5 * MINUTE,
+  pulseCoinsPerStar: 0.5, pulseWindowMs: 5000,
+};
