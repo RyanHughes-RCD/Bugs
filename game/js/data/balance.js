@@ -47,7 +47,10 @@ export const STARTING = {
 };
 
 // Coins dug up by garden bugs (per-rarity rates are in rarities.js).
-export const GARDEN_FORAGE = { cap: 200 };
+// The garden's coin pot holds `cap` coins to start, growing by `perSpecies`
+// (x1.03, so 3%) for every species in the Bugdex: about 880 at 50 species
+// and 15,000 with all of them. Decorations with potBonus add a share on top.
+export const GARDEN_FORAGE = { cap: 200, perSpecies: 1.03 };
 
 // The garden map, in map pixels (BugsMap/pixil-layer-0.png is this size). The
 // screen shows about a 150 x 300 window of it; drag to look around.

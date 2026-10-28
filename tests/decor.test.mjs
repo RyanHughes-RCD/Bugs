@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DECOR, DECOR_BY_ID, LOG } from '../game/js/data/decor.js';
 import { GARDEN_FORAGE } from '../game/js/data/balance.js';
 import { RARITIES } from '../game/js/data/rarities.js';
-import { SPECIES } from '../game/js/data/species.js';
+import { SPECIES, SPECIES_LIST } from '../game/js/data/species.js';
 import { gardenRatePerMin, bugForageRate, favouriteDecor, potCap, decorFits, overlapsRiver, rockRect } from '../game/js/systems/garden.js';
 import { makeGame, addBug, MIN, HOUR } from './helpers.mjs';
 
@@ -69,11 +69,29 @@ test('a bug that loves several decorations gets the best bonus, not all of them'
   assert.equal(bugForageRate(game.state, fly), RARITIES.legendary.forage * 2);
 });
 
-test("the river doubles the coin pot; the rock's shade-lovers get a small bonus", () => {
-  const { game } = rich();
-  assert.equal(potCap(game.state), GARDEN_FORAGE.cap);
+test('the coin pot grows with every species discovered; the river adds 25%', () => {
+  const { game } = makeGame();
+  game.state.dex = {};
+  assert.equal(potCap(game.state), GARDEN_FORAGE.cap, '200 with an empty Bugdex');
+  const ids = SPECIES_LIST.map((s) => s.id);
+  const discover = (n) => { game.state.dex = Object.fromEntries(ids.slice(0, n).map((id) => [id, { caught: 1 }])); };
+  discover(10);
+  assert.equal(potCap(game.state), 270);
+  discover(50);
+  assert.equal(potCap(game.state), 880);
+  discover(ids.length);
+  const all = potCap(game.state);
+  assert.ok(all > 14000 && all < 16000, `${all} with every species`);
+  game.state.dex[ids[0]] = { caught: 0 }; // seen but never caught doesn't count
+  assert.ok(potCap(game.state) < all);
+  discover(50);
+  game.state.coins = 1e6;
   game.buyDecor('river');
-  assert.equal(potCap(game.state), GARDEN_FORAGE.cap * 2);
+  assert.equal(potCap(game.state), 1100, '880 + 25%');
+});
+
+test("the rock's shade-lovers get a small bonus", () => {
+  const { game } = rich();
   const pill = game.state.bugs.find((b) => b.species === 'pill_bug');
   assert.equal(bugForageRate(game.state, pill), RARITIES.common.forage * 1.25);
   assert.ok(gardenRatePerMin(game.state) > 0);
