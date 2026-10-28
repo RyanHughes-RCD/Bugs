@@ -12,7 +12,8 @@ import { HOUR, MINUTE } from './balance.js';
 //   fixed:   [x, y] map position of its top-left corner; it can't be dragged.
 //   loves:   (species) => true for the bugs that love it.
 //   attracts: wild visitors that love it turn up this many times as often.
-//   potCap:  extra room in the garden's coin pot.
+//   potBonus: makes the garden's coin pot this share bigger.
+//   shadow:  [x, y] offset of its cast shadow (its silhouette), in map pixels.
 const WATER = new Set(['water_strider', 'damselfly', 'dragonfly', 'mosquito', 'storm_dragonfly', 'bubble_ladybug', 'ice_worm', 'bubble_diver']);
 export const NIGHT_FLYERS = new Set(['moth', 'luna_moth', 'atlas_moth', 'frost_moth', 'firefly', 'on_firefly', 'ember_moth', 'phantom_moth', 'lantern_fly', 'eclipse_moth', 'supernova_firefly']);
 const ELECTRIC = new Set(['thunder_beetle', 'storm_dragonfly', 'tesla_centipede']);
@@ -25,12 +26,12 @@ export const DECOR = [
     desc: 'Shade-lovers hide underneath. Lift it for a find every few hours.',
   },
   {
-    id: 'log', name: 'Mossy Log', price: 800, sprite: 'decor/log.png', size: [85, 70], scale: 0.9, bonus: 0.5, attracts: 2,
+    id: 'log', name: 'Mossy Log', price: 800, sprite: 'decor/log.png', size: [85, 70], scale: 0.9, shadow: [4, 4], bonus: 0.5, attracts: 2,
     loves: (sp) => sp.family === 'beetle' || sp.traits[0] === 'dig',
     desc: 'Beetles and diggers burrow into it. Tap to roll it over and see what was underneath.',
   },
   {
-    id: 'battery', name: '9V Battery', price: 1500, sprite: 'decor/battery.png', size: [84, 68], scale: 0.6, bonus: 1, attracts: 4,
+    id: 'battery', name: '9V Battery', price: 1500, sprite: 'decor/battery.png', size: [84, 68], scale: 0.6, shadow: [4, 4], bonus: 1, attracts: 4,
     loves: (sp) => ELECTRIC.has(sp.id),
     desc: 'Electric bugs charge up on it and forage double. Anyone else who gets too close gets a zap (and leaves a coin). Tap it to send out a pulse: every bug it catches drops a coin and zips around for a minute.',
   },
@@ -40,9 +41,9 @@ export const DECOR = [
     desc: 'Flyers sip nectar here and forage more.',
   },
   {
-    id: 'river', name: 'Tiny River', price: 4000, sprite: 'decor/river.png', size: [111, 92], scale: 2, fixed: [78, 0], bonus: 0.5, attracts: 3, potCap: 200,
+    id: 'river', name: 'Tiny River', price: 4000, sprite: 'decor/river.png', size: [111, 92], scale: 2, fixed: [78, 0], bonus: 0.5, attracts: 3, potBonus: 0.25,
     loves: (sp) => WATER.has(sp.base) || sp.id === 'pond_snail',
-    desc: 'Flows in along the top of the garden. Water bugs love it, and it doubles the coin pot.',
+    desc: 'Flows in along the top of the garden. Water bugs love it, and it makes the coin pot 25% bigger.',
   },
   {
     id: 'jar', name: 'Jar of Light', price: 6000, sprite: 'decor/jar.png', size: [44, 62], scale: 0.35, bonus: 0.5, attracts: 3,

@@ -105,7 +105,7 @@ export function renderHud(v) {
   if (v.ui.updateAvailable) chips.unshift(`<button class="chip update" data-act="update-app">${icon(A, 'star', 'xs')}<b>New version! Tap to update</b></button>`);
   const garden = gardenCount(st);
   return `<div class="hud-row">
-      <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${potCap(st)}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
+      <button class="pot ${pot >= 1 ? 'has' : ''}" data-act="collect-garden" title="Coins your garden bugs dug up">${icon(A, 'coin')}<span><b>${fmtNum(pot)}</b>/${fmtNum(potCap(st))}</span><small>+${gardenRatePerMin(st).toFixed(1)}/min</small></button>
       <button class="chip garden-count" data-act="nav" data-panel="bugs">${icon(A, 'flower', 'xs')} ${garden}/${gardenLimit(st)}</button>
       <button class="chip chests-chip" data-act="garden-chests" title="Open chests with your Chest Keys">${icon(A, 'key', 'xs')} ${st.inventory.key || 0}</button>
     </div>
@@ -251,7 +251,7 @@ function renderDex(v) {
   const st = v.game.state;
   const caught = SPECIES_LIST.filter((s) => st.dex[s.id]?.caught).length;
   return `<div class="dex-head"><b>${caught}</b> of ${SPECIES_LIST.length} species discovered ${bar(caught / SPECIES_LIST.length, 'dex-bar')}
-      <small>Each new species pays a discovery reward. Every one of them comes from an egg.</small></div>
+      <small>Each new species pays a discovery reward and makes your garden's coin pot 3% bigger (it holds ${fmtNum(potCap(st))} now). Every one of them comes from an egg.</small></div>
     <div class="dex-grid">${SPECIES_LIST.map((s) => {
       const d = st.dex[s.id];
       return `<button class="dex-cell r-${s.rarity} ${d?.caught ? 'known' : 'unknown'}" data-act="open-species" data-id="${s.id}" ${d?.caught ? '' : 'disabled'}>

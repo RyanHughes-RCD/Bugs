@@ -16,8 +16,12 @@ export function favouriteDecor(state, speciesId) {
   return DECOR.filter((d) => ownsDecor(state, d.id) && d.loves(sp)).sort((a, b) => b.bonus - a.bonus)[0] || null;
 }
 
+// How many coins the garden's pot holds: more with every species discovered,
+// plus a share from decorations like the river. Rounded to a tidy 10.
 export function potCap(state) {
-  return GARDEN_FORAGE.cap + DECOR.reduce((s, d) => s + (ownsDecor(state, d.id) && d.potCap ? d.potCap : 0), 0);
+  const discovered = Object.values(state.dex || {}).filter((d) => d.caught).length;
+  const bonus = DECOR.reduce((s, d) => s + (ownsDecor(state, d.id) && d.potBonus ? d.potBonus : 0), 0);
+  return Math.round((GARDEN_FORAGE.cap * GARDEN_FORAGE.perSpecies ** discovered * (1 + bonus)) / 10) * 10;
 }
 
 // A placed decoration's footprint in map pixels, centred on its spot.
