@@ -34,6 +34,8 @@ try {
   const act = async (selector, opts = {}) => { await page.click(selector, opts); await page.waitForTimeout(250); };
   const warp = async (ms) => { await page.evaluate((m) => window.bugGarden.game.warp(m), ms); await page.waitForTimeout(1200); };
 
+  // No Studio server in tests: the real client would reach out to the internet.
+  await page.route('**/game/vendor/supabase.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.supabase = null;' }));
   await page.goto(`http://localhost:${PORT}/?debug`);
   await page.waitForSelector('#loading', { state: 'detached' });
   await act('[data-act="welcome-done"]');

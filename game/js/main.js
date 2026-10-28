@@ -3,6 +3,8 @@ import { memoryStorage } from './core/save.js';
 import { Assets } from './ui/assets.js';
 import { App, OFFSET_KEY } from './ui/app.js';
 import { Studio } from './community/studio.js';
+import { SupabaseStudio } from './community/supabase-studio.js';
+import { SUPABASE } from './community/config.js';
 
 function pickStorage() {
   try {
@@ -26,14 +28,23 @@ async function boot() {
   }
   const info = game.load();
   const app = new App(game, assets);
-  const studio = new Studio(window.claude, assets.palette);
+  // The Sprite Studio lives on Supabase, so it works in every copy of the
+  // game. If that can't be reached, it falls back to the claude.ai shared
+  // database where there is one. The game never waits for either.
+  const studio = new SupabaseStudio(SUPABASE, assets.palette);
   app.attachStudio(studio);
   app.init(info);
-  // The Sprite Studio lights up once the shared database answers (only in the
-  // published game on claude.ai); the game never waits for it.
-  studio.connect().catch((err) => console.warn('Sprite Studio unavailable', err));
+  studio.connect().catch(async (err) => {
+    console.warn('Sprite Studio server unavailable', err);
+    const fallback = new Studio(window.claude, assets.palette);
+    if (await fallback.connect().catch(() => false)) app.attachStudio(fallback);
+    else {
+      studio.failed = true;
+      app.studioChanged();
+    }
+  });
   document.querySelector('#loading')?.remove();
-  window.bugGarden = { game, app, studio }; // handy for testing from the console
+  window.bugGarden = { game, app, get studio() { return app.studio; } }; // handy for testing from the console
 }
 
 boot().catch((err) => {

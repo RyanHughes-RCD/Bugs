@@ -52,3 +52,22 @@ All rules live in plain, testable modules; the UI only calls `Game` methods, whi
     npm run test:e2e     # headless Chromium: core-loop playthrough + Sprite Studio flow (needs Playwright)
 
 **Developer mode:** add `?debug` to the URL. Settings then shows time warp (+10 min, +1 h, +4 h), coin, key and egg grants, and an odds lab that simulates 10,000 hatches without touching your save. None of this appears without the flag.
+
+## Sprite Studio (Supabase)
+
+The Studio's shared data (submissions, likes, approvals, live sprite fixes)
+lives in a Supabase project, so it works in every copy of the game:
+
+- `supabase/schema.sql`: tables and row-level security. Run it once in the
+  project's SQL Editor; it's safe to run again.
+- `game/js/community/config.js`: the project URL and its public
+  *publishable* key. Never put the secret / service_role key there.
+- Sign-in is by a 6-digit code emailed to the player. The email templates
+  must include `{{ .Token }}` (Authentication → Emails, which needs custom
+  SMTP).
+- To make someone the owner (the only one who can approve), after they've
+  signed in once:
+  `insert into public.studio_owners (user_id) select id from auth.users where email = '...';`
+
+If Supabase can't be reached, the game falls back to the claude.ai shared
+database when it runs inside claude.ai.

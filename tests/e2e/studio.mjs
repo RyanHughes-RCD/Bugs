@@ -36,6 +36,8 @@ async function open(me, seed = []) {
     const store = makeFakeStore();
     for (const [k, v] of ${JSON.stringify(seed)}) store.docs.set(k, v);
     window.claude = makeFakeClaude({ store, me: ${JSON.stringify(me)}, owner: 'u_owner', names: { u_sam: 'Sam', u_owner: 'Ryan' } });`);
+  // No Supabase here, so the game falls back to the claude.ai shared database (the fake).
+  await page.route('**/game/vendor/supabase.js', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.supabase = null;' }));
   await page.goto(`http://localhost:${PORT}/`);
   await page.waitForSelector('#loading', { state: 'detached' });
   await page.click('[data-act="welcome-done"]');
