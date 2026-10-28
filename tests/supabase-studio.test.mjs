@@ -133,3 +133,15 @@ test('codes of any length Supabase is set to (6 to 10 digits) are accepted, spac
   assert.equal(seen[0], '16020548', 'all 8 digits reach Supabase');
   assert.equal((await st.verifyCode('ryan@example.com', '12345678901')).ok, false, 'too long');
 });
+
+test('eye marks go live with an approved fix on Supabase too', async () => {
+  const { owner, sam } = await people();
+  await signIn(owner, 'ryan@example.com');
+  await signIn(sam, 'sam@example.com');
+  const sub = await sam.submit({ kind: 'fix', species: 'ladybug', rows: sprite(), eyes: [[5, 8]] });
+  await settle(); // the owner sees it arrive
+  assert.ok((await owner.approve(sub.ref)).ok);
+  await settle();
+  assert.deepEqual(sam.live.sprites.ladybug.eyes, [[5, 8]]);
+  assert.deepEqual(sam.decisions[sub.ref].eyes, [[5, 8]]);
+});
