@@ -1199,9 +1199,8 @@ export class GardenScene {
     for (let k = 0; k < 4; k++) this.particles.push({ x: r.x0 + r.w * rand(0.2, 0.5), y: r.y0 + rand(0, 3), vx: rand(-8, 8), vy: rand(-10, -4), life: 0.4, color: '#566c86' });
   }
 
-  // Each bug the ring sweeps over gets a jolt: a coin and a burst of speed.
+  // Each bug the ring sweeps over gets a jolt: coins and a burst of speed.
   updatePulses(dt, list) {
-    const now = performance.now();
     for (const p of this.pulses) {
       p.age += dt;
       const radius = Math.min(1, p.age / (BATTERY.pulseMs / 1000)) * BATTERY.pulseRadius;
@@ -1211,9 +1210,9 @@ export class GardenScene {
         e.boost = BATTERY.boostMs / 1000;
         Object.assign(e, { label: 'Bzzt!', labelColor: '#fff07a', bubble: 1.2, surprised: 1, sleeping: false, act: null, actTime: 0, wait: 0.2 });
         for (let k = 0; k < 6; k++) this.particles.push({ x: e.x, y: e.y - 4, vx: rand(-20, 20), vy: rand(-20, -4), life: 0.5, color: k % 2 ? '#fff07a' : '#73eff7' });
-        if ((e.zapUntil || 0) > now) continue;
-        e.zapUntil = now + BATTERY.cooldownMs;
-        if (this.handlers.onZap?.()) this.float(e.x + 8, e.y - 4, '+1');
+        // Coins straight into the pot (shown even if it's already full).
+        const res = this.handlers.onPulseZap?.();
+        if (res?.ok) this.float(e.x + 8, e.y - 4, res.coins ? `+${res.coins}` : 'Pot full');
       }
     }
     this.pulses = this.pulses.filter((p) => p.age < BATTERY.pulseMs / 1000 + 0.25);

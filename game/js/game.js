@@ -285,8 +285,25 @@ export class Game {
     const now = this.now();
     if (bat.pulsedAt && now - bat.pulsedAt < BATTERY.rechargeMs) return fail('Still recharging.');
     bat.pulsedAt = now;
+    bat.pulseHits = 0;
     this.save();
     return { ok: true };
+  }
+
+  // A bug caught in a pulse drops coins into the pot, more the fuller your
+  // Bugdex. Only right after a pulse, and once per garden bug.
+  pulseZap() {
+    const g = this.state.garden;
+    const bat = g.decor.battery;
+    if (!bat?.pulsedAt || this.now() - bat.pulsedAt > BATTERY.pulseWindowMs) return fail('No pulse right now.');
+    if ((bat.pulseHits || 0) >= g.visitors.length + gardenCount(this.state)) return fail('Everyone has been zapped.');
+    bat.pulseHits = (bat.pulseHits || 0) + 1;
+    const stars = Object.values(this.state.dex).filter((d) => d.caught).length;
+    const coins = 1 + Math.floor(stars * BATTERY.pulseCoinsPerStar);
+    const room = Math.max(0, Math.floor(potCap(this.state) - g.pot));
+    g.pot = Math.min(potCap(this.state), g.pot + coins);
+    this.save();
+    return { ok: true, coins: Math.min(coins, room) };
   }
 
   // A bug got too close to the battery: the zap knocks a coin into the pot.
