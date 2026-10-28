@@ -463,8 +463,8 @@ export class GardenScene {
     if (this.assets.map[0]) ctx.drawImage(this.assets.map[0], Math.round(mx), Math.round(my), WORLD_W * scale, WORLD_H * scale);
 
     this.drawPatches();
+    this.drawRiver(); // under the decorations, so its bank never covers them
     this.drawDecor();
-    this.drawRiver();
     this.drawCoins();
     const all = [...this.entities.values()].filter((e) => !e.hidden).sort((a, b) => a.y - b.y);
     for (const e of all) this.drawShadow(e);
@@ -823,6 +823,14 @@ export class GardenScene {
       const [sx, sy] = this.toScreen(spot.x, spot.y);
       const dragging = this.decorDrag?.id === id;
       const lift = dragging ? 4 * scale : 0;
+      // A soft shadow where it meets the ground (bigger when picked up).
+      if (d.shadow) {
+        const [w, h, oy] = d.shadow;
+        ctx.fillStyle = `rgba(26, 28, 44, ${dragging ? 0.18 : 0.28})`;
+        ctx.beginPath();
+        ctx.ellipse(Math.round(sx), Math.round(sy + oy * scale), (w / 2) * scale * (dragging ? 1.1 : 1), (h / 2) * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.save();
       ctx.translate(Math.round(sx), Math.round(sy - lift));
       if (id === 'log' && this.logRoll > 0) ctx.rotate(Math.sin(this.logRoll * 14) * 0.25 * this.logRoll);
@@ -838,21 +846,25 @@ export class GardenScene {
   }
 
   // ---------- the river ----------
-  // The water is untextured, so it is brought to life by an animated surface
-  // drawn at the art's own resolution: currents drifting downstream, rings
-  // spreading from little splashes, and glints of light, all clipped to the
-  // water and scaled up with the sprite.
+  // The river is redrawn finer than its art (assets.makeRiver) and brought to
+  // life by an animated surface at that resolution: currents drifting
+  // downstream, rings spreading from little splashes, and glints of light,
+  // all clipped to the open water.
 
   makeWater() {
-    const water = this.assets.riverWater;
-    if (!water) return null;
-    const make = () => { const c = document.createElement('canvas'); c.width = water.w; c.height = water.h; return c; };
-    const mask = make();
-    const mctx = mask.getContext('2d');
-    mctx.fillStyle = '#fff';
-    for (const [x, y] of water.cells) mctx.fillRect(x, y, 1, 1);
-    const surface = make();
-    return { cells: water.cells, mask, surface, ctx: surface.getContext('2d'), currents: [], rings: [], glints: [], spawn: 0 };
+    const river = this.assets.river;
+    if (!river) return null;
+    const surface = document.createElement('canvas');
+    surface.width = river.w;
+    surface.height = river.h;
+    return { cells: river.cells, mask: river.mask, surface, ctx: surface.getContext('2d'), currents: [], rings: [], glints: [], spawn: 0 };
+  }
+
+  // A map point in the river picture's pixels.
+  riverPixel(x, y) {
+    const r = this.riverRect();
+    const { k, pad } = this.assets.river;
+    return [((x - r.x0) / r.s) * k + pad, ((y - r.y0) / r.s) * k + pad];
   }
 
   updateWater(dt) {
@@ -863,23 +875,23 @@ export class GardenScene {
     const pick = () => w.cells[Math.floor(Math.random() * w.cells.length)];
     // Currents: short light streaks drifting downstream (the river runs from
     // the top-left down to the right).
-    while (w.currents.length < 170) {
+    while (w.currents.length < 320) {
       const [x, y] = pick();
-      w.currents.push({ x, y, len: 2 + Math.floor(Math.random() * 4), age: 0, life: rand(1.2, 2.6), vx: rand(5, 9), vy: rand(2, 4) });
+      w.currents.push({ x, y, len: 3 + Math.floor(Math.random() * 8), age: 0, life: rand(1.2, 2.6), vx: rand(15, 27), vy: rand(6, 12) });
     }
     for (const c of w.currents) { c.age += dt; c.x += c.vx * dt; c.y += c.vy * dt; }
     w.currents = w.currents.filter((c) => c.age < c.life);
     // Rings: a steady patter of little splashes.
-    w.spawn += dt * 14;
+    w.spawn += dt * 18;
     while (w.spawn >= 1) {
       w.spawn -= 1;
       const [x, y] = pick();
-      w.rings.push({ x, y, age: 0, life: rand(0.8, 1.4), size: rand(2.5, 4.5) });
+      w.rings.push({ x, y, age: 0, life: rand(0.8, 1.4), size: rand(6, 12) });
     }
     for (const r of w.rings) r.age += dt;
     w.rings = w.rings.filter((r) => r.age < r.life);
     // Glints: sparkles of light that wink on and off.
-    while (w.glints.length < 36) {
+    while (w.glints.length < 60) {
       const [x, y] = pick();
       w.glints.push({ x, y, age: 0, life: rand(0.5, 1.2) });
     }
@@ -893,9 +905,10 @@ export class GardenScene {
     const c = w.ctx;
     c.clearRect(0, 0, w.surface.width, w.surface.height);
     for (const cur of w.currents) {
-      c.globalAlpha = Math.sin((cur.age / cur.life) * Math.PI) * 0.65;
-      c.fillStyle = '#8fdcff';
+      c.globalAlpha = Math.sin((cur.age / cur.life) * Math.PI) * 0.6;
+      c.fillStyle = '#a8e6ff';
       c.fillRect(Math.floor(cur.x), Math.floor(cur.y), cur.len, 1);
+      c.fillRect(Math.floor(cur.x) + 2, Math.floor(cur.y) + 1, Math.max(1, cur.len - 3), 1); // a softer trailing edge
     }
     for (const r of w.rings) {
       if (r.age < 0) continue;
@@ -913,7 +926,8 @@ export class GardenScene {
       c.globalAlpha = Math.sin((g.age / g.life) * Math.PI) * shine;
       c.fillStyle = '#ffffff';
       c.fillRect(g.x, g.y, 1, 1);
-      if (g.age / g.life > 0.3 && g.age / g.life < 0.7) { c.fillRect(g.x - 1, g.y, 3, 1); c.fillRect(g.x, g.y - 1, 1, 3); }
+      if (g.age / g.life > 0.25 && g.age / g.life < 0.75) { c.fillRect(g.x - 1, g.y, 3, 1); c.fillRect(g.x, g.y - 1, 1, 3); }
+      if (g.age / g.life > 0.4 && g.age / g.life < 0.6) { c.fillRect(g.x - 2, g.y, 5, 1); c.fillRect(g.x, g.y - 2, 1, 5); }
     }
     c.globalAlpha = 1;
     c.globalCompositeOperation = 'destination-in';
@@ -922,16 +936,17 @@ export class GardenScene {
   }
 
   drawRiver() {
-    const art = this.assets.decor.river;
-    if (!art || !this.game.state.garden.decor.river) return;
+    const river = this.assets.river;
+    if (!river || !this.game.state.garden.decor.river) return;
     const { ctx, scale } = this;
     const r = this.riverRect();
-    const [sx, sy] = this.toScreen(r.x0, r.y0);
-    const px = r.s * scale;
-    ctx.drawImage(art, Math.round(sx), Math.round(sy), art.width * px, art.height * px);
+    const px = (r.s / river.k) * scale; // screen pixels per river pixel
+    const [sx, sy] = this.toScreen(r.x0 - (river.pad * r.s) / river.k, r.y0 - (river.pad * r.s) / river.k);
+    const [dx, dy, dw, dh] = [Math.round(sx), Math.round(sy), Math.round(river.w * px), Math.round(river.h * px)];
+    ctx.drawImage(river.art, dx, dy, dw, dh);
     if (!this.water) return;
     this.paintWater(1 - 0.65 * this.dl.dark);
-    ctx.drawImage(this.water.surface, Math.round(sx), Math.round(sy), art.width * px, art.height * px);
+    ctx.drawImage(this.water.surface, dx, dy, dw, dh);
   }
 
   // Whether a map point is on the river's water.
@@ -1049,8 +1064,8 @@ export class GardenScene {
   // Tapping a decoration: the log rolls over, the river ripples.
   tapDecor(id, x, y) {
     if (id === 'river' && this.water) {
-      const r = this.riverRect();
-      for (let k = 0; k < 3; k++) this.water.rings.push({ x: (x - r.x0) / r.s, y: (y - r.y0) / r.s, age: -k * 0.18, life: 1.6, size: 7 });
+      const [rx, ry] = this.riverPixel(x, y);
+      for (let k = 0; k < 3; k++) this.water.rings.push({ x: rx, y: ry, age: -k * 0.18, life: 1.6, size: 20 });
     }
     if (id === 'battery') {
       if (this.handlers.onPulse?.()) this.pulse();

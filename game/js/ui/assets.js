@@ -2,6 +2,7 @@ import { SPECIES_LIST } from '../data/species.js';
 import { EGG_TIERS } from '../data/eggs.js';
 import { SPRITES } from '../data/sprites.js';
 import { DECOR } from '../data/decor.js';
+import { Rng } from '../core/rng.js';
 
 // Copy of pixel_bugs/palette.txt, used only if the file cannot be fetched.
 const FALLBACK_PALETTE = {
@@ -10,6 +11,19 @@ const FALLBACK_PALETTE = {
   n: '#b07a4a', p: '#f4a0b0', v: '#c06ad8', m: '#ff5fa8', f: '#ff9b3d', y: '#fff07a', i: '#d6f6ff', V: '#2b1b4a',
 };
 const MAP_LAYERS = ['BugsMap/pixil-layer-0.png', 'BugsMap/pixil-layer-1.png'];
+
+// The redrawn river: RIVER.k pixels for every pixel of its art, with `pad`
+// pixels of bank around it.
+const RIVER = {
+  k: 3, pad: 8,
+  colors: {
+    foam: '#e8fbff', shallow: '#73eff7', sandy: '#a8e8d8', mid: '#41a6f6', deep: '#3b7fd9', deepest: '#3b5dc9',
+    mud: '#4f3a2a', soil: '#6e5236', sand: '#c99a62', sandLight: '#d8ad74', pebble: '#94b0c2', pebbleDark: '#566c86',
+    stone: '#7d8a99', stoneLight: '#b9c7d2', stoneDark: '#4a5566',
+    pad: '#38b764', padLight: '#a7f070', padDark: '#257179', flower: '#f4a0b0', flowerMid: '#fff07a',
+    reed: '#38b764', reedDark: '#257179', reedLight: '#a7f070', cattail: '#7a4a2a',
+  },
+};
 
 const GOLD_RAMP = ['#7a4f12', '#b8801c', '#e6aa2e', '#ffd75e', '#fff3b8'];
 const ALBINO_RAMP = ['#aeb8c2', '#d3dae0', '#eef1f4', '#ffffff'];
@@ -106,7 +120,10 @@ export class Assets {
     // The brown patch on the map's second layer is the dirt the rock leaves.
     this.patch = this.map[1] ? this.cropToContent(this.map[1]) : null;
     this.rock = this.makeRock(this.patch ? this.patch.width : 64);
-    if (this.decor.river) this.riverWater = this.waterCells(this.decor.river);
+    if (this.decor.river) {
+      this.riverWater = this.waterCells(this.decor.river);
+      this.river = this.makeRiver(this.decor.river);
+    }
     if (this.missing.length) console.warn('Missing assets (fallbacks used):', this.missing);
   }
 
@@ -243,6 +260,155 @@ export class Assets {
       stages.push(this.paint(cracked.map((r) => r.join(''))));
     }
     return stages;
+  }
+
+  // The river, redrawn at RIVER.k times its art's resolution from its outline
+  // (smoothed like the rock): foam at the shore, shallows shading to a deep
+  // channel, a sandy bank with pebbles and reeds, lily pads and rocks. Seeded,
+  // so it looks the same every time. Returns the picture (with `pad` pixels
+  // of bank around the art's box) and the open water for the animation.
+  makeRiver(img) {
+    const { k: K, pad: PAD } = RIVER;
+    const src = makeCanvas(img.width, img.height);
+    const sctx = src.getContext('2d');
+    sctx.drawImage(img, 0, 0);
+    const sd = sctx.getImageData(0, 0, img.width, img.height).data;
+    const mask = makeCanvas(img.width, img.height);
+    const mctx = mask.getContext('2d');
+    mctx.fillStyle = '#fff';
+    for (let i = 0; i < img.width * img.height; i++) if (sd[i * 4 + 3] > 127) mctx.fillRect(i % img.width, Math.floor(i / img.width), 1, 1);
+    const smooth = scale3x(mask);
+    const W = smooth.width + PAD * 2;
+    const H = smooth.height + PAD * 2;
+    const md = smooth.getContext('2d').getImageData(0, 0, smooth.width, smooth.height).data;
+    const water = new Uint8Array(W * H);
+    for (let y = 0; y < smooth.height; y++) for (let x = 0; x < smooth.width; x++) if (md[(y * smooth.width + x) * 4 + 3] > 127) water[(y + PAD) * W + x + PAD] = 1;
+    // The art runs off the top and right of the map: so does the water.
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const sx = Math.min(smooth.width - 1, Math.max(0, x - PAD));
+      const sy = Math.min(smooth.height - 1, Math.max(0, y - PAD));
+      if ((y < PAD || x >= W - PAD) && md[(sy * smooth.width + sx) * 4 + 3] > 127) water[y * W + x] = 1;
+    }
+    // Distance to the shore, inside the water and out on the bank.
+    const dist = (inside) => {
+      const d = new Int16Array(W * H).fill(-1);
+      const q = new Int32Array(W * H);
+      let head = 0;
+      let tail = 0;
+      for (let i = 0; i < W * H; i++) if (water[i] !== inside) { d[i] = 0; q[tail++] = i; }
+      while (head < tail) {
+        const i = q[head++];
+        const x = i % W;
+        for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) {
+          if (j < 0 || j >= W * H || d[j] !== -1) continue;
+          d[j] = d[i] + 1;
+          q[tail++] = j;
+        }
+      }
+      return d;
+    };
+    const dIn = dist(1);
+    const dOut = dist(0);
+    const rng = new Rng(4242);
+    const hash = (x, y) => (Math.imul(x * 374761393 + y * 668265263, 1274126177) >>> 0) / 4294967296;
+    const C = Object.fromEntries(Object.entries(RIVER.colors).map(([kk, hex]) => [kk, hexRgb(hex)]));
+    const out = new Uint8ClampedArray(W * H * 4);
+    const put = (x, y, rgb) => {
+      if (x < 0 || y < 0 || x >= W || y >= H) return;
+      const i = (y * W + x) * 4;
+      out[i] = rgb[0]; out[i + 1] = rgb[1]; out[i + 2] = rgb[2]; out[i + 3] = 255;
+    };
+    const chk = (x, y) => (x + y) % 2 === 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const h = hash(x, y);
+        if (water[i]) {
+          const d = dIn[i];
+          let c;
+          if (d <= 1) c = h < 0.18 ? C.shallow : C.foam;
+          else if (d <= 3) c = h < 0.05 ? C.sandy : C.shallow;
+          else if (d <= 5) c = chk(x, y) ? C.shallow : C.mid;
+          else if (d <= 11) c = C.mid;
+          else if (d <= 13) c = chk(x, y) ? C.mid : C.deep;
+          else if (d <= 20) c = C.deep;
+          else if (d <= 22) c = chk(x, y) ? C.deep : C.deepest;
+          else c = C.deepest;
+          put(x, y, c);
+        } else {
+          const d = dOut[i];
+          if (d === 1) put(x, y, C.mud);
+          else if (d === 2) put(x, y, h < 0.5 ? C.mud : C.soil);
+          else if (d <= 4) put(x, y, h < 0.07 ? (h < 0.035 ? C.pebble : C.pebbleDark) : chk(x, y) ? C.sand : C.sandLight);
+          else if (d === 5 && chk(x, y)) put(x, y, C.sand);
+        }
+      }
+    }
+    const open = new Uint8Array(W * H); // water free for the animation
+    for (let i = 0; i < W * H; i++) open[i] = water[i] && dIn[i] >= 2 ? 1 : 0;
+    const spots = (test, n, gap) => {
+      const got = [];
+      for (let tries = 0; got.length < n && tries < n * 400; tries++) {
+        const x = rng.int(0, W - 1);
+        const y = rng.int(0, H - 1);
+        if (test(y * W + x) && got.every(([gx, gy]) => Math.hypot(gx - x, gy - y) > gap)) got.push([x, y]);
+      }
+      return got;
+    };
+    // Rocks breaking the surface, with foam around them.
+    for (const [cx, cy] of spots((i) => water[i] && dIn[i] >= 9 && dIn[i] <= 18, 4, 34)) {
+      const r = rng.int(3, 6);
+      for (let y = -r - 1; y <= r + 1; y++) for (let x = -r - 1; x <= r + 1; x++) {
+        const dd = Math.hypot(x, y * 1.3);
+        const i = (cy + y) * W + cx + x;
+        if (dd <= r) {
+          put(cx + x, cy + y, x + y < -r * 0.5 ? C.stoneLight : x + y > r * 0.6 ? C.stoneDark : C.stone);
+          open[i] = 0;
+        } else if (dd <= r + 1.2 && water[i]) { put(cx + x, cy + y, C.foam); open[i] = 0; }
+      }
+    }
+    // Lily pads, some flowering.
+    for (const [cx, cy] of spots((i) => open[i] && dIn[i] >= 7 && dIn[i] <= 18, 9, 20)) {
+      const r = rng.int(5, 7);
+      const notch = rng.float(0, Math.PI * 2);
+      for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+        if (Math.hypot(x, y * 1.2) > r) continue;
+        const a = Math.atan2(y, x);
+        if (Math.abs(((a - notch + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.4 && Math.hypot(x, y) > 0.5) continue;
+        put(cx + x, cy + y, x + y < -1 ? C.padLight : x + y > 2 ? C.padDark : C.pad);
+        open[(cy + y) * W + cx + x] = 0;
+      }
+      // A thin dark rim so the pad reads against the water.
+      for (let y = -r - 1; y <= r + 1; y++) for (let x = -r - 1; x <= r + 1; x++) {
+        const dd = Math.hypot(x, y * 1.2);
+        if (dd > r && dd <= r + 1 && open[(cy + y) * W + cx + x]) { put(cx + x, cy + y, C.padDark); open[(cy + y) * W + cx + x] = 0; }
+      }
+      if (rng.chance(0.45)) {
+        put(cx, cy, C.flowerMid);
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1]]) put(cx + dx, cy + dy, C.flower);
+        put(cx, cy - 2, C.flower);
+      }
+    }
+    // Reeds and cattails along the bank.
+    for (const [cx, cy] of spots((i) => !water[i] && dOut[i] >= 2 && dOut[i] <= 4, 16, 9)) {
+      const blades = rng.int(3, 5);
+      for (let b = 0; b < blades; b++) {
+        const x0 = cx + b - Math.floor(blades / 2);
+        const tall = rng.int(6, 12);
+        const lean = rng.float(-0.25, 0.25);
+        for (let t = 0; t < tall; t++) put(Math.round(x0 + lean * t), cy - t, t > tall - 3 ? C.reedLight : b % 2 ? C.reedDark : C.reed);
+        if (rng.chance(0.35)) for (let t = 0; t < 3; t++) put(Math.round(x0 + lean * (tall + t)), cy - tall - t, C.cattail);
+      }
+    }
+    const art = makeCanvas(W, H);
+    art.getContext('2d').putImageData(new ImageData(out, W, H), 0, 0);
+    const cells = [];
+    for (let i = 0; i < W * H; i++) if (open[i]) cells.push([i % W, Math.floor(i / W)]);
+    const surfaceMask = makeCanvas(W, H);
+    const sm = surfaceMask.getContext('2d');
+    sm.fillStyle = '#fff';
+    for (const [x, y] of cells) sm.fillRect(x, y, 1, 1);
+    return { art, w: W, h: H, k: K, pad: PAD, cells, mask: surfaceMask };
   }
 
   // The river's water pixels (its most common colour), for animating waves
