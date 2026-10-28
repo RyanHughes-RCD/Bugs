@@ -4,7 +4,7 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS, MINUTE, PARTY_SIZE, PRESET_LIMIT } from './data/balance.js';
+import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS, MINUTE, PARTY_SIZE, PRESET_LIMIT, BOAT, BIRD } from './data/balance.js';
 import { SYNERGIES } from './data/synergies.js';
 import { rollSynergies } from './systems/synergies.js';
 import { createBug, gardenLimit, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
@@ -14,7 +14,7 @@ import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, 
 import { DECOR_BY_ID, LOG, BATTERY } from './data/decor.js';
 import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
 import { rollGardenChest } from './systems/chests.js';
-import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind } from './systems/visitors.js';
+import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind, rollBoatEgg } from './systems/visitors.js';
 import { SPECIES } from './data/species.js';
 
 const fail = (error) => ({ ok: false, error });
@@ -347,6 +347,55 @@ export class Game {
     this.commit();
     return { ok: true, ...find };
   }
+
+  // ---------- the paper boat and the bird ----------
+  // Each comes by every so often (garden.nextBoatAt, garden.nextBirdAt), as
+  // long as you have the river or the log. The garden shows it while it's
+  // due; tapping it, or letting it go by, sets the time of the next one.
+
+  scheduleEvent(key, cfg) {
+    this.state.garden[key] = this.now() + this.rng.float(cfg.everyMin[0], cfg.everyMin[1]) * MINUTE;
+  }
+
+  eventDue(key, decor, cfg) {
+    const g = this.state.garden;
+    if (!g.decor[decor]) return false;
+    if (!g[key]) {
+      this.scheduleEvent(key, cfg);
+      this.save();
+      return false;
+    }
+    return this.now() >= g[key];
+  }
+
+  boatDue() { return this.eventDue('nextBoatAt', 'river', BOAT); }
+  birdDue() { return this.eventDue('nextBirdAt', 'log', BIRD); }
+
+  // Fishing the paper boat out of the river: an egg, rarer the fuller your Bugdex.
+  catchBoat() {
+    if (!this.boatDue()) return fail('The boat has drifted away.');
+    const stars = Object.values(this.state.dex).filter((d) => d.caught).length;
+    this.scheduleEvent('nextBoatAt', BOAT);
+    this.state.stats.boats = (this.state.stats.boats || 0) + 1;
+    const find = this.giveFind({ egg: rollBoatEgg(stars, this.rng) }, 'boat');
+    this.commit();
+    return { ok: true, ...find };
+  }
+
+  // The bird shooed off the log: each bug it scared off gives a few coins.
+  shooBird(scared) {
+    if (!this.birdDue()) return fail('The bird has already flown off.');
+    const n = Math.max(0, Math.min(Math.floor(Number(scared) || 0), gardenCount(this.state)));
+    const coins = Array.from({ length: n }, () => this.rng.int(BIRD.coins[0], BIRD.coins[1]));
+    this.earn(coins.reduce((a, b) => a + b, 0));
+    this.scheduleEvent('nextBirdAt', BIRD);
+    this.commit();
+    return { ok: true, coins };
+  }
+
+  // The boat drifted past, or the bird flew off on its own.
+  boatGone() { if (this.boatDue()) { this.scheduleEvent('nextBoatAt', BOAT); this.save(); } }
+  birdGone() { if (this.birdDue()) { this.scheduleEvent('nextBirdAt', BIRD); this.save(); } }
 
   // Pays out a find. Eggs settle straight into a free nest when there is one.
   giveFind(find, source) {

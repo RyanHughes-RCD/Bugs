@@ -1,7 +1,7 @@
 import { SPECIES } from '../data/species.js';
 import { EGG_BY_ID } from '../data/eggs.js';
 import { DECOR_BY_ID, BATTERY, NIGHT_FLYERS } from '../data/decor.js';
-import { GARDEN_MAP } from '../data/balance.js';
+import { GARDEN_MAP, BOAT, BIRD } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
@@ -22,6 +22,8 @@ const PERSONAL_SPACE = 11;
 const CRUSH_REACTIONS = [['YEEEOUCH!', 47], ['OWOWOWOW', 47], ["Dude why'd you do that?\nNot cool, man.", 6]];
 
 const rand = (a, b) => a + Math.random() * (b - a);
+// The paper boat's course down the middle of the river, in the river art's pixels.
+const BOAT_PATH = [[19, -8], [19, 8], [24, 16], [38, 22], [55, 30], [68, 40], [80, 48], [92, 56], [104, 62], [118, 67]];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export class GardenScene {
@@ -269,6 +271,7 @@ export class GardenScene {
       e.tx = clamp(e.x + rand(-range, range), BOUNDS.x0, BOUNDS.x1);
       e.ty = clamp(e.y + rand(-range, range) * (e.side ? 0.4 : 1), BOUNDS.y0, BOUNDS.y1);
     }
+    this.avoidBird(e);
   }
 
   // Where a placed decoration is right now (the river follows the top of the
@@ -443,6 +446,8 @@ export class GardenScene {
     this.zapCheck(list);
     this.updatePulses(dt, list);
     this.updateWater(dt);
+    this.updateBoat(dt);
+    this.updateBird(dt, list);
     this.logRoll = Math.max(0, this.logRoll - dt);
     for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * (p.g ?? 1) * dt; p.life -= dt; }
     this.particles = this.particles.filter((p) => p.life > 0).slice(-220);
@@ -464,6 +469,7 @@ export class GardenScene {
 
     this.drawPatches();
     this.drawRiver(); // under the decorations, so its bank never covers them
+    this.drawBoat();
     this.drawDecor();
     this.drawCoins();
     const all = [...this.entities.values()].filter((e) => !e.hidden).sort((a, b) => a.y - b.y);
@@ -474,6 +480,7 @@ export class GardenScene {
     for (const e of all) drawUnder(this, e);
     for (const e of all) this.drawBug(e);
     for (const e of all) drawOver(this, e);
+    this.drawBird();
     this.drawRock();
     this.drawRockHint();
     for (const p of this.particles) {
@@ -977,6 +984,202 @@ export class GardenScene {
     return null;
   }
 
+  // ---------- the paper boat ----------
+  // It drifts down the middle of the river, following BOAT_PATH (in the
+  // river art's pixels), and is gone once it floats off the map.
+
+  boatPath() {
+    const r = this.riverRect();
+    const pts = BOAT_PATH.map(([x, y]) => [r.x0 + x * r.s, r.y0 + y * r.s]);
+    let len = 0;
+    const segs = pts.slice(1).map((p, i) => {
+      const l = Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]);
+      len += l;
+      return { a: pts[i], b: p, l };
+    });
+    return { segs, len };
+  }
+
+  // Where the boat is after drifting `d` map pixels: [x, y, heading].
+  boatAt(d) {
+    const { segs } = this.boat.path;
+    for (const s of segs) {
+      if (d <= s.l) {
+        const t = d / s.l;
+        return [s.a[0] + (s.b[0] - s.a[0]) * t, s.a[1] + (s.b[1] - s.a[1]) * t, Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0])];
+      }
+      d -= s.l;
+    }
+    const last = segs[segs.length - 1];
+    return [last.b[0], last.b[1], 0];
+  }
+
+  updateBoat(dt) {
+    if (!this.boat) {
+      if (this.ready && this.assets.river && this.game.boatDue()) this.boat = { d: 0, path: this.boatPath(), wake: 0 };
+      return;
+    }
+    const b = this.boat;
+    if (b.caught) {
+      b.sink -= dt;
+      if (b.sink <= 0) this.boat = null;
+      return;
+    }
+    if (!this.game.state.garden.decor.river) { this.boat = null; return; }
+    b.d += BOAT.speed * dt;
+    b.wake -= dt;
+    if (b.wake <= 0 && this.water) {
+      // A soft wake behind it.
+      const [x, y] = this.boatAt(Math.max(0, b.d - 4));
+      const [rx, ry] = this.riverPixel(x, y + 3);
+      this.water.rings.push({ x: rx, y: ry, age: 0, life: 1.4, size: 9 });
+      b.wake = 0.7;
+    }
+    if (b.d >= b.path.len) {
+      this.game.boatGone();
+      this.boat = null;
+    }
+  }
+
+  drawBoat() {
+    const b = this.boat;
+    if (!b) return;
+    const [x, y, heading] = this.boatAt(b.d);
+    const img = this.assets.sprites.paper_boat;
+    const size = img.width * this.bugPx * 1.25; // a touch bigger than a bug, so it's easy to spot
+    const [sx, sy] = this.toScreen(x, y + Math.sin(this.t * 2.2) * 0.8);
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(Math.round(sx), Math.round(sy));
+    if (Math.cos(heading) < 0) ctx.scale(-1, 1);
+    ctx.rotate(Math.sin(this.t * 1.7) * 0.08);
+    if (b.caught) {
+      const p = Math.max(0, b.sink) / 0.6;
+      ctx.globalAlpha = p;
+      ctx.translate(0, (1 - p) * size * 0.4);
+    }
+    ctx.drawImage(img, -size / 2, -size * 0.7, size, size);
+    ctx.restore();
+  }
+
+  catchBoat() {
+    const res = this.handlers.onBoat?.();
+    if (!res?.ok) return;
+    const [x, y] = this.boatAt(this.boat.d);
+    this.boat.caught = true;
+    this.boat.sink = 0.6;
+    this.float(x, y - 10, 'Egg!', '#a7f070');
+    if (this.water) {
+      const [rx, ry] = this.riverPixel(x, y);
+      for (let k = 0; k < 3; k++) this.water.rings.push({ x: rx, y: ry, age: -k * 0.15, life: 1.4, size: 16 });
+    }
+  }
+
+  // ---------- the bird on the log ----------
+  // It flies in, perches on the log, and every bug within BIRD.radius
+  // scurries off until it leaves. Tap it to shoo it away.
+
+  logCentre() {
+    const spot = this.decorSpot('log');
+    return spot && this.decorDrag?.id !== 'log' ? spot : null;
+  }
+
+  updateBird(dt, list) {
+    const log = this.logCentre();
+    if (!this.bird) {
+      if (this.ready && log && this.game.birdDue()) {
+        const r = decorRect('log', log.x, log.y);
+        const px = log.x + rand(-r.w * 0.2, r.w * 0.2);
+        const py = log.y - r.h * 0.3;
+        const from = Math.random() < 0.5 ? -1 : 1;
+        this.bird = { phase: 'in', x: px + from * 150, y: py - 130, tx: px, ty: py, t: 0, stay: rand(...BIRD.staySec), scared: new Set(), face: -from };
+      }
+      return;
+    }
+    const b = this.bird;
+    b.t += dt;
+    if (!log && b.phase !== 'out') this.birdLeaves(false);
+    if (b.phase === 'perched' && b.t > b.stay) this.birdLeaves(false);
+    if (b.phase !== 'perched') {
+      const speed = b.phase === 'out' ? 110 : 75;
+      const dx = b.tx - b.x;
+      const dy = b.ty - b.y;
+      const d = Math.hypot(dx, dy);
+      if (Math.abs(dx) > 1) b.face = dx < 0 ? -1 : 1;
+      if (d < speed * dt) {
+        b.x = b.tx;
+        b.y = b.ty;
+        if (b.phase === 'in') { b.phase = 'perched'; b.t = 0; b.face = -b.face; }
+        else { this.bird = null; return; }
+      } else {
+        b.x += (dx / d) * speed * dt;
+        b.y += (dy / d) * speed * dt;
+      }
+    }
+    if (b.phase !== 'perched' || !log) return;
+    // Everyone near the log scurries off.
+    for (const e of list) {
+      if (e.hidden || e.leaving) continue;
+      if (Math.hypot(e.x - log.x, e.y - log.y) >= BIRD.radius) continue;
+      if (!b.scared.has(e.uid)) {
+        b.scared.add(e.uid);
+        Object.assign(e, { surprised: 1.4, label: 'Eek!', labelColor: '#ffcd75', bubble: 1.2, sleeping: false });
+      }
+      if (Math.hypot(e.tx - log.x, e.ty - log.y) < BIRD.radius + 4) {
+        Object.assign(e, { act: null, actTime: 0, wait: 0 });
+        this.avoidBird(e);
+      }
+    }
+  }
+
+  // Keeps a bug's destination outside the bird's reach while it's perched.
+  avoidBird(e) {
+    const log = this.bird?.phase === 'perched' && this.logCentre();
+    if (!log) return;
+    const dx = e.tx - log.x;
+    const dy = e.ty - log.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= BIRD.radius + 4) return;
+    const a = d > 0.5 ? Math.atan2(dy, dx) : Math.atan2(e.y - log.y, e.x - log.x) || rand(0, Math.PI * 2);
+    e.tx = clamp(log.x + Math.cos(a) * (BIRD.radius + rand(8, 18)), BOUNDS.x0, BOUNDS.x1);
+    e.ty = clamp(log.y + Math.sin(a) * (BIRD.radius + rand(8, 18)), BOUNDS.y0, BOUNDS.y1);
+  }
+
+  birdLeaves(shooed) {
+    const b = this.bird;
+    if (!b || b.phase === 'out') return;
+    if (!shooed) this.game.birdGone();
+    b.phase = 'out';
+    b.tx = b.x + (b.face || 1) * 160;
+    b.ty = b.y - 160;
+  }
+
+  shooBird() {
+    const b = this.bird;
+    const scared = [...b.scared].map((uid) => this.entities.get(uid)).filter((e) => e && !e.leaving);
+    const res = this.handlers.onBird?.(scared.length);
+    if (!res?.ok) return;
+    res.coins.forEach((c, i) => { if (scared[i]) { scared[i].hearts = 1.2; this.float(scared[i].x, scared[i].y - 8, `+${c}`); } });
+    for (let k = 0; k < 6; k++) this.particles.push({ x: b.x, y: b.y, vx: rand(-25, 25), vy: rand(-25, 0), life: 0.7, color: k % 2 ? '#b07a4a' : '#7a4a2a' });
+    this.birdLeaves(true);
+  }
+
+  drawBird() {
+    const b = this.bird;
+    if (!b) return;
+    const s = this.assets.sprites;
+    const img = b.phase === 'perched' ? s.bird_perch : Math.floor(this.t * 9) % 2 ? s.bird_up : s.bird_down;
+    const size = img.width * this.bugPx;
+    const hop = b.phase === 'perched' && Math.sin(this.t * 1.3) > 0.97 ? 2 : 0; // the odd little hop
+    const [sx, sy] = this.toScreen(b.x, b.y - hop);
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(Math.round(sx), Math.round(sy));
+    if (b.face < 0) ctx.scale(-1, 1);
+    ctx.drawImage(img, -size / 2, -size * 0.85, size, size);
+    ctx.restore();
+  }
+
   // Tapping the battery: a ring of electricity spreads out from it.
   pulse() {
     const spot = this.decorSpot('battery');
@@ -1119,6 +1322,12 @@ export class GardenScene {
     const [wx, wy] = this.toWorld(e.clientX, e.clientY);
     const [cx, cy] = this.toCanvas(e.clientX, e.clientY);
     this.canvas.setPointerCapture?.(e.pointerId);
+    // The bird and the boat come first: they don't hang around.
+    if (this.bird && this.bird.phase !== 'out' && Math.hypot(this.bird.x - wx, this.bird.y - wy) < 11) return this.shooBird();
+    if (this.boat && !this.boat.caught) {
+      const [bx, by] = this.boatAt(this.boat.d);
+      if (Math.hypot(bx - wx, by - wy) < 11) return this.catchBoat();
+    }
     const onNest = this.nestLayout().some((n) => Math.abs(cx - n.x) < n.size / 2 && Math.abs(cy - n.y) < n.size / 2);
     const r = this.game.state.garden.rock;
     const onBug = [...this.entities.values()].some((b) => !b.hidden && !b.leaving && Math.hypot(b.x - wx, b.y - this.bob(b) - wy) < 8);

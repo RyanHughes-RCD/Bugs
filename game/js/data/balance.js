@@ -50,6 +50,20 @@ export const STARTING = {
 // The garden's coin pot holds `cap` coins to start, growing by `perSpecies`
 // (x1.03, so 3%) for every species in the Bugdex: about 880 at 50 species
 // and 15,000 with all of them. Decorations with potBonus add a share on top.
+// A paper boat drifts down the river every so often (if you have one). Tap
+// it for an egg: the tier is rolled from eggWeights (Common first), each
+// tier's weight raised by `perStar` x its rank for every species in the
+// Bugdex, so a fuller Bugdex brings rarer eggs.
+export const BOAT = {
+  everyMin: [20, 45], speed: 5, // map pixels a second: it takes about a minute to pass
+  eggWeights: [50, 25, 13, 7, 3.2, 1.2, 0.45, 0.15], perStar: 0.05,
+};
+
+// A bird lands on the log every so often and scares off any bug nearby
+// (within `radius` map pixels). Tap it to shoo it away: each bug it scared
+// gives a few coins as thanks.
+export const BIRD = { everyMin: [12, 30], staySec: [40, 75], radius: 45, coins: [3, 8] };
+
 export const GARDEN_FORAGE = { cap: 200, perSpecies: 1.03 };
 
 // The garden map, in map pixels (BugsMap/pixil-layer-0.png is this size). The

@@ -1,4 +1,5 @@
-import { VISITORS, ROCK_FIND, MINUTE, HOUR } from '../data/balance.js';
+import { VISITORS, ROCK_FIND, MINUTE, HOUR, BOAT } from '../data/balance.js';
+import { EGG_TIERS } from '../data/eggs.js';
 import { SPECIES_LIST } from '../data/species.js';
 import { bugsOnExpedition, gardenLimit } from './bugs.js';
 import { patchStrength, ownsDecor } from './garden.js';
@@ -55,6 +56,16 @@ export function tickVisitors(state, now, rng) {
   }
   g.nextVisitAt = t;
   return changed;
+}
+
+// The paper boat's egg: Common is likeliest, and every species in the Bugdex
+// makes each rarer tier likelier, in proportion to how rare it is.
+export function boatEggOdds(stars) {
+  return EGG_TIERS.map((t, i) => [t.id, BOAT.eggWeights[i] * (1 + i * stars * BOAT.perStar)]);
+}
+
+export function rollBoatEgg(stars, rng) {
+  return rng.weighted(boatEggOdds(stars));
 }
 
 // A visitor's thank-you gift for being greeted.

@@ -104,6 +104,18 @@ export class App {
       onDecorTap: (id) => this.decorTap(id),
       onZap: () => this.game.batteryZap().ok,
       onPulse: () => this.game.pulseBattery().ok,
+      onBoat: () => {
+        const res = this.game.catchBoat();
+        if (res.ok) this.toast(`You fish the paper boat out of the river. ${anEgg(res.egg)} was tucked inside! ${res.nested ? "It's settled into a nest." : "It's waiting in the Hatchery."}`, 'good', 4500);
+        return res;
+      },
+      onBird: (scared) => {
+        const res = this.game.shooBird(scared);
+        if (!res.ok) return res;
+        const total = res.coins.reduce((a, b) => a + b, 0);
+        this.toast(total ? `You shoo the bird off the log. The bugs it scared thank you with ${total} coins!` : 'You shoo the bird off the log.', total ? 'good' : 'info');
+        return res;
+      },
       // How far the HUD reaches down over the garden, in canvas pixels.
       topInset: () => {
         const hud = this.el.hud.getBoundingClientRect();
