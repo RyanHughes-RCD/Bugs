@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AREA_BY_ID } from '../game/js/data/areas.js';
 import { ITEMS } from '../game/js/data/items.js';
-import { SYNERGIES } from '../game/js/data/synergies.js';
-import { partySynergies, boostedParty, synergyScores, synergyPower } from '../game/js/systems/synergies.js';
-import { planExpedition, encounterMs, expeditionTimeline, tripMs, sumRewards, bestParty } from '../game/js/systems/expedition.js';
+import { SYNERGIES, SYNERGY_IDS, TRIGGER } from '../game/js/data/synergies.js';
+import { partySynergies, boostedParty, synergyScores, synergyPower, rollSynergies } from '../game/js/systems/synergies.js';
+import { planExpedition, encounterMs, expeditionTimeline, tripMs, sumRewards } from '../game/js/systems/expedition.js';
 import { traitTotal } from '../game/js/systems/bugs.js';
 import { makeGame, addBug, HOUR } from './helpers.mjs';
 
@@ -164,24 +164,67 @@ test('Midas pays more coins; Prismatic guarantees a relic; Lure draws visitors a
   assert.ok(g2.state.garden.lureUntil >= clock.t + SYNERGIES.lure.lureMs - 1);
 });
 
-test('Auto-pick weighs bonuses: a golden bug beats a slightly stronger plain one', () => {
-  const { game } = makeGame();
-  const bugs = [
-    addBug(game, 'ant', { lift: 3 }), addBug(game, 'aphid', { cut: 3 }), addBug(game, 'worm', { dig: 3 }),
-    addBug(game, 'housefly', { fly: 4 }), addBug(game, 'tick', { fight: 3 }, { variant: 'golden' }),
-  ];
-  const pick = bestParty(game.state, AREA_BY_ID.garden, bugs);
-  assert.equal(pick.length, 4);
-  assert.ok(pick.some((b) => b.variant === 'golden'));
-});
-
 test('night trips launched from the game use the device hour', () => {
   const { game, clock } = makeGame();
   clock.t = new Date(2026, 0, 2, 23, 30).getTime();
   const party = ['moth', 'firefly', 'luna_moth', 'ant'].map((id) => addBug(game, id, { fly: 3 }));
   const res = game.launchExpedition('garden', party.map((b) => b.uid), 6);
   assert.ok(res.ok);
-  assert.ok(res.expedition.synergies.includes('night_shift'));
-  clock.t = new Date(2026, 0, 3, 13, 0).getTime();
+  assert.ok(res.expedition.qualified.includes('night_shift'));
   assert.ok(res.expedition.endsAt - res.expedition.startAt < 6 * HOUR);
+});
+
+test('standard bonuses kick in on 25% of trips (35% with the Jar of Light); variant bonuses always', () => {
+  const { game } = makeGame();
+  const party = ['ladybug', 'weevil', 'stag_beetle', 'ant'].map((id, i) => addBug(game, id, { lift: 3 }, { variant: i ? null : 'golden' }));
+  const rate = () => {
+    let shell = 0;
+    for (let seed = 1; seed <= 4000; seed++) {
+      const r = rollSynergies(game.state, party, seed);
+      assert.ok(r.qualified.shell_wall && r.qualified.midas);
+      assert.ok(r.triggered.midas, 'Midas every time');
+      if (r.triggered.shell_wall) shell++;
+    }
+    return shell / 4000;
+  };
+  assert.ok(Math.abs(rate() - TRIGGER.chance) < 0.03);
+  game.state.garden.decor.jar = { x: 100, y: 300 };
+  assert.ok(Math.abs(rate() - TRIGGER.jarChance) < 0.03);
+});
+
+test('a bonus that does not kick in changes nothing on the trip', () => {
+  const { game } = makeGame();
+  const weak = ['ladybug', 'weevil', 'stag_beetle', 'ant'].map((id) => addBug(game, id, { dig: 1 }));
+  const plan = planExpedition(game.state, AREA_BY_ID.new_jersey, weak, 4, 20, { active: {} });
+  assert.ok(plan.encounters.every((e) => !e.notes));
+  assert.deepEqual(plan.synergies, []);
+});
+
+test('bonuses are discovered the first time a qualifying party sets off', () => {
+  const { game } = makeGame();
+  const party = ['ladybug', 'weevil', 'stag_beetle', 'ant'].map((id) => addBug(game, id, { lift: 3 }));
+  assert.deepEqual(game.state.discovered, {});
+  const res = game.launchExpedition('garden', party.map((b) => b.uid), 6);
+  assert.ok(res.ok);
+  assert.ok(game.state.discovered.shell_wall, 'discovered whether or not it kicked in');
+  assert.ok(res.expedition.discovered.includes('shell_wall'));
+  assert.ok(SYNERGY_IDS.filter((id) => game.state.discovered[id]).every((id) => res.expedition.qualified.includes(id)));
+});
+
+test('party presets: save, keep through a release, delete; limited in number', () => {
+  const { game } = makeGame();
+  const bugs = ['ant', 'worm', 'tick', 'bee', 'aphid'].map((id) => addBug(game, id, { lift: 2 }));
+  assert.equal(game.savePreset('Too few', [bugs[0].uid]).ok, false);
+  assert.equal(game.savePreset('Twice', [bugs[0].uid, bugs[0].uid, bugs[1].uid, bugs[2].uid]).ok, false);
+  const res = game.savePreset('  My crew  ', bugs.slice(0, 4).map((b) => b.uid));
+  assert.ok(res.ok);
+  assert.equal(res.preset.name, 'My crew');
+  assert.equal(game.savePreset('', bugs.slice(1, 5).map((b) => b.uid)).preset.name, 'Party 2');
+  assert.ok(game.releaseBug(bugs[0].uid).ok);
+  assert.equal(game.state.presets[0].party.length, 4, 'a released bug leaves a gap, nothing else changes');
+  assert.ok(game.deletePreset(res.preset.id).ok);
+  assert.equal(game.state.presets.length, 1);
+  for (let i = 0; i < 11; i++) game.savePreset(`P${i}`, bugs.slice(1, 5).map((b) => b.uid));
+  assert.equal(game.state.presets.length, 12);
+  assert.equal(game.savePreset('one more', bugs.slice(1, 5).map((b) => b.uid)).ok, false);
 });

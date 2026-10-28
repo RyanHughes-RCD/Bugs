@@ -1,10 +1,11 @@
 // Party bonuses: what a party is made of, not just how strong it is.
-// Every bonus a party qualifies for applies; with only four bugs, building a
-// party that hits the right ones is the puzzle. systems/synergies.js decides
-// which are active and the expedition engine applies them.
+// systems/synergies.js decides which ones a party qualifies for; each trip,
+// the standard ones kick in by chance (TRIGGER) and the variant ones (from
+// Shiny, Albino and Golden bugs, marked `always`) every time. Players aren't
+// shown this list: a bonus is discovered the first time they launch a party
+// that qualifies for it, and only hinted at before that.
 //
-// Each bonus: name, need (shown in the planner), does (what it does), and its
-// numbers. 'variant' bonuses come from Shiny, Albino and Golden bugs.
+// Each bonus: name, need (what it takes), does (what it does), and its numbers.
 
 export const SYNERGIES = {
   shell_wall: {
@@ -80,25 +81,29 @@ export const SYNERGIES = {
 
   // ---- Variant bonuses: one per variant in the party ----
   lure: {
-    name: 'Lure', icon: 'heart', variant: 'shiny', need: 'A Shiny bug',
+    name: 'Lure', icon: 'heart', always: true, variant: 'shiny', need: 'A Shiny bug',
     does: 'Its shimmer draws eggs in: every trip brings home at least one egg, other eggs are 50% more likely, and wild visitors come twice as often for an hour after it gets home.',
     eggChance: 0.5, lureMs: 3600e3,
   },
   unseen: {
-    name: 'Unseen', icon: 'star', variant: 'albino', need: 'An Albino bug',
+    name: 'Unseen', icon: 'star', always: true, variant: 'albino', need: 'An Albino bug',
     does: 'Hard to spot: encounters are 15% faster, and a failed check still pays half its reward.',
     speed: 0.15, failPay: 0.5,
   },
   midas: {
-    name: 'Midas', icon: 'coin', variant: 'golden', need: 'A Golden bug',
+    name: 'Midas', icon: 'coin', always: true, variant: 'golden', need: 'A Golden bug',
     does: '+50% coins all trip, and every chest has a chance of an extra key or relic.',
     coinMult: 0.5, chestBonus: 0.35, relicShare: 0.15,
   },
   prismatic: {
-    name: 'Prismatic', icon: 'star', need: 'A Shiny, an Albino and a Golden bug',
+    name: 'Prismatic', icon: 'star', always: true, need: 'A Shiny, an Albino and a Golden bug',
     does: 'One of each variant guarantees a relic at the end of the trip.',
   },
 };
+
+// The chance each standard bonus kicks in on a trip (rolled at launch). The
+// Jar of Light in the garden raises it.
+export const TRIGGER = { chance: 0.25, jarChance: 0.35 };
 
 // Two of one variant count twice; a third and fourth add less.
 export const VARIANT_STACK = [0, 1, 2, 2.5, 3];

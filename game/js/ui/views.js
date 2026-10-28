@@ -12,8 +12,9 @@ import { gardenChestArea } from '../systems/chests.js';
 import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, gardenLimit, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
 import { eggOdds, incubatorCount, incubationMs, shopStock } from '../systems/eggs.js';
 import { expeditionSlots, encounterMs, partyBonuses, sumRewards, defaultEncounterCount, encountersForHours, paceFactor, encounterEnds } from '../systems/expedition.js';
-import { partySynergies, boostedParty, synergyScores, synergyPower, expectedTimeShare } from '../systems/synergies.js';
-import { SYNERGIES } from '../data/synergies.js';
+import { partySynergies, boostedParty, synergyScores, synergyPower, expectedTimeShare, guaranteedOnly, triggerChance } from '../systems/synergies.js';
+import { SYNERGIES, SYNERGY_IDS, TRIGGER } from '../data/synergies.js';
+import { PRESET_LIMIT } from '../data/balance.js';
 import { partyTraitScores, checkChance } from '../systems/traits.js';
 import { gardenRatePerMin, potCap, ownsDecor, favouriteDecor } from '../systems/garden.js';
 import { areaBackground } from './scenes.js';
@@ -74,7 +75,7 @@ function bugCard(v, bug, { act = 'open-bug', selected = false, disabled = false,
     <span class="bc-traits">${traitChips(v.A, bug)}</span>
     ${bug.item ? `<span class="bc-gear">${icon(v.A, bug.item, 'xs')}</span>` : ''}
     <span class="badge a-${asg}">${ASSIGN_LABEL[asg]}</span>${extra}
-    ${unlocks.length ? `<span class="bc-syn">+${unlocks.map((id) => esc(SYNERGIES[id].name)).join(', +')}</span>` : ''}
+    ${unlocks.length ? `<span class="bc-syn">+${unlocks.map(esc).join(', +')}</span>` : ''}
   </button>`;
 }
 
@@ -500,9 +501,12 @@ export function plannerModal(v0) {
   const party = ui.plan.party.map((u) => game.bug(u)).filter(Boolean);
   const opts = { hour: new Date(game.now()).getHours() }; // Night Shift: launching now
   const syn = partySynergies(party, opts);
-  const scores = synergyScores(boostedParty(party, syn.active), syn.active);
+  // Estimates count only the bonuses certain to kick in (the variant ones).
+  const sure = guaranteedOnly(syn.active);
+  const est = { ...opts, active: sure };
+  const scores = synergyScores(boostedParty(party, sure), sure);
   const bonus = partyBonuses(party);
-  const encMs = encounterMs(st, area, party, opts);
+  const encMs = encounterMs(st, area, party, est);
   const eligible = [...st.bugs].sort((a, b) => (v.away.has(a.uid) - v.away.has(b.uid)) || traitTotal(b) - traitTotal(a));
   const keyHolders = party.filter((b) => b.item === 'key');
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>${area.name}</span><i class="diff">Difficulty ${area.difficulty}</i></div>
@@ -511,6 +515,7 @@ export function plannerModal(v0) {
       const b = party[i];
       return b ? `<button class="slot filled" data-act="plan-toggle" data-uid="${b.uid}">${bugImg(A, b)}<small>${esc(bugName(b))}</small></button>` : '<div class="slot">+</div>';
     }).join('')}</div>
+    ${presetPanel(v, party, opts)}
     ${synergyPanel(v, syn)}
     ${partyGear(v, party)}
     <div class="coverage">${TRAIT_IDS.map((t) => {
@@ -520,10 +525,10 @@ export function plannerModal(v0) {
       return `<div class="cov-row">${traitIcon(A, t, 'sm')}<b>${TRAITS[t].name}</b>${bar(score / (area.difficulty * 2 + 2), `t-${t}`)}<span>${score ? score.toFixed(1) : '—'}</span><small>${pct(chance)}</small></div>`;
     }).join('')}<small class="muted">Party score per trait (best bug counts fully, helpers less) and the chance to pass an average ${area.name} check.</small></div>
     <div class="meta">${keyHolders.length ? `${icon(A, 'key', 'xs')} ${keyHolders.map((b) => esc(bugName(b))).join(', ')} carr${keyHolders.length > 1 ? 'y keys' : 'ies a key'} for locked chests.` : `${icon(A, 'chest', 'xs')} No Chest Key equipped. Locked chests can only be forced with very strong Lift.`}</div>
-    ${paceLine(area, party, encMs, opts, syn.active)}
-    ${tripLength(v, area, party, encMs, expectedTimeShare(syn.active))}
+    ${paceLine(area, party, encMs, est, sure)}
+    ${tripLength(v, area, party, encMs, expectedTimeShare(sure))}
     ${bonus.coinBonus || bonus.specialFind || bonus.encounterSpeed ? `<div class="meta">${[bonus.encounterSpeed && `Items: encounters -${pct(bonus.encounterSpeed)} time`, bonus.coinBonus && `+${pct(bonus.coinBonus)} coins`, bonus.specialFind && `+${pct(bonus.specialFind)} special finds`].filter(Boolean).join(' · ')}</div>` : ''}
-    <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid), unlocks: v.away.has(b.uid) ? [] : wouldUnlock(party, b, syn, opts) })).join('')}</div>
+    <div class="bug-grid compact">${eligible.map((b) => bugCard(v, b, { act: 'plan-toggle', selected: ui.plan.party.includes(b.uid), disabled: v.away.has(b.uid), unlocks: v.away.has(b.uid) ? [] : wouldUnlock(party, b, syn, opts).map((id) => synName(st, id)) })).join('')}</div>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Launch expedition', 'launch', {}, 'go big', party.length !== PARTY_SIZE)}</div>`;
 }
 
@@ -555,16 +560,27 @@ function partyGear(v, party) {
 // does to the time per encounter.
 // ---------- party bonuses ----------
 
-const synBadge = (A, id, n = 1) => `<span class="syn-badge ${SYNERGIES[id].variant ? `v-${SYNERGIES[id].variant}` : ''} ${id === 'prismatic' ? 'prism' : ''}">${icon(A, SYNERGIES[id].icon, 'xs')}${SYNERGIES[id].name}${n > 1 ? ` ×${n}` : ''}</span>`;
+const synBadge = (A, id, n = 1, cls = '') => `<span class="syn-badge ${SYNERGIES[id].variant ? `v-${SYNERGIES[id].variant}` : ''} ${id === 'prismatic' ? 'prism' : ''} ${cls}">${icon(A, SYNERGIES[id].icon, 'xs')}${SYNERGIES[id].name}${n > 1 ? ` ×${n}` : ''}</span>`;
+const unknownBadge = (A) => `<span class="syn-badge unknown">${icon(A, 'star', 'xs')}???</span>`;
+const found = (st, id) => !!st.discovered?.[id];
+// A bonus by name once it's been discovered; ??? until then.
+const synName = (st, id) => (found(st, id) ? SYNERGIES[id].name : '???');
+const chanceText = (st, id) => (SYNERGIES[id].always ? 'Every trip' : `${pct(triggerChance(st))} of trips`);
 
-// The planner's party-bonus box: what's active, and what's one bug away.
+// The planner's party-bonus box: what this party qualifies for (by name once
+// discovered), and hints at what one more bug would unlock.
 function synergyPanel(v, syn) {
-  const { A } = v;
+  const { A, game } = v;
+  const st = game.state;
   const active = Object.entries(syn.active);
+  const known = SYNERGY_IDS.filter((id) => found(st, id)).length;
   return `<div class="syn-panel">
-    <div class="section-title">Party bonuses <small>${active.length} active</small>${btn('All bonuses', 'syn-guide', {}, 'sm')}</div>
-    ${active.length ? active.map(([id, a]) => `<div class="syn-row on">${synBadge(A, id, a.n)}<small>${esc(SYNERGIES[id].does)}</small></div>`).join('') : '<p class="muted small">No bonuses yet. Mix families, bring a variant, or match bugs up: tap "All bonuses" for ideas.</p>'}
-    ${syn.hints.length ? `<div class="syn-hints">${syn.hints.slice(0, 4).map((h) => `<span class="syn-hint">${esc(SYNERGIES[h.id].name)}: needs ${esc(h.text)}</span>`).join('')}</div>` : ''}
+    <div class="section-title">Party bonuses <small>${active.length} ready</small>${btn(`Found ${known}/${SYNERGY_IDS.length}`, 'syn-guide', {}, 'sm')}</div>
+    ${active.length ? active.map(([id, a]) => (found(st, id)
+    ? `<div class="syn-row on">${synBadge(A, id, a.n)}<small>${esc(SYNERGIES[id].does)} <b class="chance">${chanceText(st, id)}</b></small></div>`
+    : `<div class="syn-row on">${unknownBadge(A)}<small>An undiscovered bonus! Launch with this party to find out what it does.</small></div>`)).join('')
+    : '<p class="muted small">No bonuses yet. Mix and match your bugs: the hints below show what one more bug would unlock.</p>'}
+    ${syn.hints.length ? `<div class="syn-hints">${syn.hints.slice(0, 4).map((h) => `<span class="syn-hint">${esc(synName(st, h.id))}: needs ${esc(h.text)}</span>`).join('')}</div>` : ''}
   </div>`;
 }
 
@@ -575,15 +591,44 @@ function wouldUnlock(party, bug, syn, opts) {
   return Object.keys(next).filter((id) => !syn.active[id]);
 }
 
+// Saved parties, with the discovered bonuses each one brings.
+function presetPanel(v, party, opts) {
+  const { A, game } = v;
+  const st = game.state;
+  const cards = st.presets.map((p) => {
+    const bugs = p.party.map((u) => game.bug(u));
+    const present = bugs.filter(Boolean);
+    const q = present.length === PARTY_SIZE ? Object.keys(partySynergies(present, opts).active) : [];
+    const known = q.filter((id) => found(st, id));
+    const unknown = q.length - known.length;
+    return `<div class="preset">
+      <button class="preset-load" data-act="preset-load" data-id="${p.id}">
+        <b>${esc(p.name)}</b>
+        <span class="preset-bugs">${bugs.map((b) => (b ? bugImg(A, b, 'xs') : '<span class="gone">?</span>')).join('')}</span>
+        <span class="preset-syn">${known.map((id) => synBadge(A, id)).join('')}${unknown ? `<span class="syn-badge unknown">+${unknown} ???</span>` : ''}${present.length < PARTY_SIZE ? '<small class="muted">A bug from this party was released.</small>' : ''}</span>
+      </button>
+      <button class="btn sm preset-del" data-act="preset-delete" data-id="${p.id}" title="Delete preset">✕</button>
+    </div>`;
+  }).join('');
+  return `<div class="presets">
+    <div class="section-title">Presets <small>${st.presets.length}/${PRESET_LIMIT}</small></div>
+    ${cards || '<p class="muted small">Save a party you like to come back to it in one tap.</p>'}
+    <div class="row preset-save"><input id="preset-name" maxlength="24" placeholder="Name this party">${btn('Save party', 'preset-save', {}, 'sm', party.length !== PARTY_SIZE || st.presets.length >= PRESET_LIMIT)}</div>
+  </div>`;
+}
+
+// The bonuses found so far. Undiscovered ones stay a mystery.
 export function synergyGuideModal(v) {
-  const { A } = v;
-  const row = ([id, s]) => `<div class="syn-row">${synBadge(A, id)}<div class="grow"><b class="need">${esc(s.need)}</b><small>${esc(s.does)}</small></div></div>`;
-  const all = Object.entries(SYNERGIES);
+  const { A, game } = v;
+  const st = game.state;
+  const known = SYNERGY_IDS.filter((id) => found(st, id));
+  const row = (id) => (found(st, id)
+    ? `<div class="syn-row">${synBadge(A, id)}<div class="grow"><b class="need">${esc(SYNERGIES[id].need)}</b><small>${esc(SYNERGIES[id].does)} <b class="chance">${chanceText(st, id)}</b></small></div></div>`
+    : `<div class="syn-row">${unknownBadge(A)}<div class="grow"><small class="muted">Not discovered yet.</small></div></div>`);
   return `<h3>Party bonuses</h3>
-    <p class="meta">Every bonus your party qualifies for applies at once, and you can see them fire in the expedition log. With only four bugs, picking the right mix is the trick. Auto-pick weighs them too.</p>
-    <h4>Party makeup</h4>${all.filter(([id, s]) => !s.variant && id !== 'prismatic').map(row).join('')}
-    <h4>Variant bonuses</h4><p class="meta">Shiny, Albino and Golden bugs each bring their own bonus. Two of the same count twice; a third adds a little more.</p>
-    ${all.filter(([id, s]) => s.variant || id === 'prismatic').map(row).join('')}
+    <p class="meta">You've found <b>${known.length}</b> of ${SYNERGY_IDS.length}. The right mix of bugs unlocks a bonus: watch the planner's hints, try a party, and launch it to find out what it does.</p>
+    <p class="meta">Most bonuses kick in on ${pct(TRIGGER.chance)} of trips (${pct(TRIGGER.jarChance)} with a Jar of Light in your garden). Bonuses from Shiny, Albino and Golden bugs kick in every time.</p>
+    ${[...known, ...SYNERGY_IDS.filter((id) => !found(st, id))].map(row).join('')}
     <div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
 }
 
@@ -643,17 +688,20 @@ export function expeditionLogModal(v, id, fromHistory = false) {
   const party = exp.party.map((uid, i) => game.bug(uid) || { gone: exp.partyNames[i], species: 'ant', variant: null });
   const ends = encounterEnds(exp);
   const synergies = (exp.synergies || []).filter((id) => SYNERGIES[id]);
+  const missed = (exp.qualified || []).filter((id) => SYNERGIES[id] && !synergies.includes(id));
   return `<div class="area-banner px-bg small" style="${areaBackground(area, A)}"><span>${area.name}</span>
       <div class="march" style="--p:${tl.fraction}">${party.map((b) => bugImg(A, b, 'sm walk')).join('')}</div></div>
     <div class="party-line">${party.map((b) => `<span>${bugImg(A, b, 'xs')}${esc(b.gone || bugName(b))}</span>`).join('')}</div>
-    ${synergies.length ? `<div class="syn-badges">${synergies.map((id) => synBadge(A, id)).join('')}</div>` : ''}
+    ${synergies.length || missed.length ? `<div class="syn-badges">${synergies.map((id) => synBadge(A, id)).join('')}${missed.map((id) => synBadge(A, id, 1, 'missed')).join('')}</div>` : ''}
+    ${missed.length ? `<p class="meta muted">${missed.map((id) => SYNERGIES[id].name).join(', ')} didn't kick in this trip.</p>` : ''}
     ${fromHistory ? '' : `${bar(tl.fraction, 'exp', exp.startAt, exp.endsAt)}
     <div class="timing"><span>Encounter <b>${tl.done ? exp.count : tl.resolved + 1}</b> of ${exp.count}</span><span>Elapsed ${tl.done ? fmtTime(exp.endsAt - exp.startAt) : since(game, exp.startAt)}</span><span>Remaining ${tl.done ? '0s' : countdown(game, exp.endsAt)}</span></div>`}
     ${cur ? `<div class="current"><b>Now:</b> ${esc(cur.intro)}<small>Resolves in ${countdown(game, tl.currentEndsAt)}</small></div>` : ''}
     <div class="section-title">Found so far</div>${rewardInline(A, soFar) || '<p class="muted">Nothing yet.</p>'}
     <div class="section-title">Expedition log</div>
     <div class="log">
-      <div class="log-line"><span class="ts">${fmtClock(0)}</span><div class="grow"><p>Your party entered ${area.name}.</p></div></div>
+      <div class="log-line"><span class="ts">${fmtClock(0)}</span><div class="grow"><p>Your party entered ${area.name}.</p>
+        ${(exp.discovered || []).filter((id) => SYNERGIES[id]).map((id) => `<p class="syn-note discovery">${synBadge(A, id)} <b>New bonus discovered!</b> ${esc(SYNERGIES[id].need)}: ${esc(SYNERGIES[id].does)}</p>`).join('')}</div></div>
       ${shown.map((e, i) => encounterLine(v, exp, e, i, ends)).join('')}
       ${tl.done ? `<div class="log-line o-great"><span class="ts">${fmtClock(exp.endsAt - exp.startAt)}</span><div class="grow"><p><b>Expedition complete!</b> ${fromHistory ? 'Rewards claimed.' : 'Rewards are ready to claim.'}</p></div></div>`
         : `<div class="log-line future"><span class="ts">${fmtClock(ends[tl.resolved] ?? exp.endsAt - exp.startAt)}</span><div class="grow"><p>${tl.resolved + 1 < exp.count ? 'Next encounter: ???' : 'The party heads home.'}</p></div></div>`}
@@ -831,7 +879,7 @@ export function welcomeModal(v) {
       <li>${eggImg(A, 'common', 'sm')} <b>Hatchery:</b> buy eggs and settle them into the nests at the bottom of the garden. After 4 hours, tap to crack them open. Higher tiers improve the odds but guarantee nothing, and any bug might hatch Shiny, Albino or Golden.</li>
       <li>${icon(A, 'rock', 'sm')} <b>The rock:</b> drag it around the garden. Shy bugs like to hide underneath, so lift it to say hi. Leave it a few hours and something might turn up under it.</li>
       <li>${icon(A, 'heart', 'sm')} <b>Visitors:</b> wild bugs drop by when the garden has room, like while your party is away. Tap one to say hi and it leaves a little gift, sometimes even an egg.</li>
-      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}. Rarer bugs have stronger traits, and a stronger party gets through each area faster. The right mix earns party bonuses, and Shiny, Albino and Golden bugs each bring their own.</li>
+      <li>${icon(A, 'map', 'sm')} <b>Explore:</b> send exactly 4 bugs out. Each encounter tests their traits: ${TRAIT_IDS.map((t) => `${traitIcon(A, t)}${TRAITS[t].name}`).join(' ')}. Rarer bugs have stronger traits, and a stronger party gets through each area faster. The right mix of bugs unlocks secret party bonuses: follow the planner's hints to discover them. Shiny, Albino and Golden bugs bring bonuses of their own.</li>
       <li>${icon(A, 'key', 'sm')} <b>Keys:</b> equip a Chest Key on a party member to open locked chests.</li>
       <li>${icon(A, 'hammer', 'sm')} <b>Upgrades:</b> permanent boosts bought with coins.</li>
     </ol>

@@ -5,14 +5,12 @@ import { BASE_ENCOUNTER_MS, BASE_EXPEDITION_SLOTS, EXPEDITION_LENGTH, PACE, PART
 import { upgradeValue } from '../data/upgrades.js';
 import { partyTraitScores, resolveCheck } from './traits.js';
 import { effectiveTraits, bugName, traitTotal } from './bugs.js';
-import { SPECIES } from '../data/species.js';
 
-const SPECIES_FAMILY = (bug) => SPECIES[bug.species].family;
 import { rollDropTier } from './eggs.js';
 import { EGG_TIERS, EGG_BY_ID } from '../data/eggs.js';
 import { AREAS } from '../data/areas.js';
 import { SYNERGIES, SYNERGY_LIMITS } from '../data/synergies.js';
-import { partySynergies, boostedParty, synergyScores, synergyPower, synergySpeed, synergyCoins, expectedTimeShare } from './synergies.js';
+import { partySynergies, boostedParty, synergyScores, synergyPower, synergySpeed, synergyCoins } from './synergies.js';
 
 export function expeditionSlots(state) {
   return BASE_EXPEDITION_SLOTS + upgradeValue(state, 'improved_exploration').slots;
@@ -38,11 +36,15 @@ export function partyPower(party) {
   return party.reduce((s, b) => s + traitTotal(b), 0);
 }
 
+// The party bonuses in play: the ones rolled for a trip (opts.active), or
+// else every one the party qualifies for. `opts.hour` is the launch hour on
+// the device clock, for Night Shift.
+const activeFor = (party, opts) => opts.active ?? partySynergies(party, opts).active;
+
 // How much longer (or shorter) each encounter takes for this party here.
 // Party bonuses that raise traits (or Mentor) count towards its power.
-// `opts.hour` is the launch hour on the device clock, for Night Shift.
 export function paceFactor(area, party, opts = {}) {
-  const { active } = partySynergies(party, opts);
+  const active = activeFor(party, opts);
   const power = synergyPower(boostedParty(party, active), active);
   const f = Math.pow(area.pace.power / Math.max(1, power), area.pace.steep);
   return Math.min(PACE.max, Math.max(PACE.min, f));
@@ -52,7 +54,7 @@ export function paceFactor(area, party, opts = {}) {
 // (skipped and instant encounters take a fraction of it).
 export function encounterMs(state, area, party, opts = {}) {
   const eff = upgradeValue(state, 'expedition_efficiency');
-  const { active } = partySynergies(party, opts);
+  const active = activeFor(party, opts);
   return Math.round(BASE_ENCOUNTER_MS * (1 - eff) * (1 - partyBonuses(party).encounterSpeed) * paceFactor(area, party, opts) * synergySpeed(active));
 }
 
@@ -115,7 +117,7 @@ export function planExpedition(state, area, party, seed, chosenCount, opts = {})
   const capScale = Math.max(1, count / defaultEncounterCount(area));
   const bonus = partyBonuses(party);
   const special = 1 + upgradeValue(state, 'improved_exploration').specialFind + bonus.specialFind;
-  const { active } = partySynergies(party, opts);
+  const active = activeFor(party, opts);
   const S = SYNERGIES;
   const coinMult = 1 + upgradeValue(state, 'better_finds') + bonus.coinBonus + synergyCoins(active);
   const scores = synergyScores(boostedParty(party, active), active);
@@ -305,46 +307,3 @@ export function validateParty(state, uids, away) {
   return null;
 }
 
-// Roughly how much each party bonus is worth when choosing a party, as a
-// share of a trip's value (used by Auto-pick, never by the trip itself).
-const SYNERGY_VALUE = {
-  shell_wall: 0.15, hive_mind: 0.3, tailwind: 0.25, pearl_divers: 0.2, ambush: 0.2, night_shift: 0.35, tunnel_network: 0.2,
-  ecosystem: 0.2, mentor: 0.15, conductor: 0.15, leyline: 0.25, leapfrog: 0.2, bonded: 0.1, spectrum: 0.4,
-  lure: 0.2, unseen: 0.2, midas: 0.45, prismatic: 1,
-};
-
-// How good a party is for an area: speed (from power and bonuses) times
-// the value its bonuses add.
-export function partyRating(state, area, party, opts = {}) {
-  const { active } = partySynergies(party, opts);
-  const speed = 1 / (encounterMs(state, area, party, opts) * expectedTimeShare(active));
-  const extra = Object.entries(active).reduce((s, [id, a]) => s + (SYNERGY_VALUE[id] || 0) * (a.n || 1), 0);
-  return speed * (1 + extra);
-}
-
-// Auto-pick: tries combinations of the most promising bugs (the strongest,
-// every variant, the best of each family and any duplicates) and keeps the
-// best-rated party of four.
-export function bestParty(state, area, bugs, opts = {}) {
-  if (bugs.length <= PARTY_SIZE) return bugs.slice();
-  const byPower = [...bugs].sort((a, b) => traitTotal(b) - traitTotal(a));
-  const pool = new Set(byPower.slice(0, 8));
-  for (const b of byPower.filter((x) => x.variant).slice(0, 4)) pool.add(b);
-  const perFamily = {};
-  for (const b of byPower) {
-    const f = SPECIES_FAMILY(b);
-    perFamily[f] = (perFamily[f] || 0) + 1;
-    if (perFamily[f] <= 2) pool.add(b);
-  }
-  const seen = {};
-  for (const b of byPower) { seen[b.species] = (seen[b.species] || 0) + 1; if (seen[b.species] === 2) { pool.add(b); pool.add(byPower.find((x) => x.species === b.species)); } }
-  const list = [...pool].slice(0, 18);
-  let best = null;
-  let bestScore = -1;
-  for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) for (let c = b + 1; c < list.length; c++) for (let d = c + 1; d < list.length; d++) {
-    const party = [list[a], list[b], list[c], list[d]];
-    const score = partyRating(state, area, party, opts);
-    if (score > bestScore) { bestScore = score; best = party; }
-  }
-  return best;
-}

@@ -1,7 +1,8 @@
 import { SPECIES } from '../data/species.js';
 import { RARITIES, RARITY_ORDER } from '../data/rarities.js';
 import { DECOR_BY_ID } from '../data/decor.js';
-import { SYNERGIES, VARIANT_STACK, SYNERGY_LIMITS } from '../data/synergies.js';
+import { SYNERGIES, VARIANT_STACK, SYNERGY_LIMITS, TRIGGER } from '../data/synergies.js';
+import { Rng } from '../core/rng.js';
 import { effectiveTraits, traitTotal } from './bugs.js';
 import { partyTraitScores, traitScore } from './traits.js';
 
@@ -117,6 +118,28 @@ export function partySynergies(party, { hour = null } = {}) {
   else if (variants === 2) near('prismatic', 'the third variant');
 
   return { active, hints };
+}
+
+// The chance a standard bonus kicks in on a trip from this garden.
+export function triggerChance(state) {
+  return state.garden?.decor?.jar ? TRIGGER.jarChance : TRIGGER.chance;
+}
+
+// Which of the bonuses a party qualifies for kick in on this trip: variant
+// bonuses always, the others by chance. Rolled from the trip's seed on a
+// stream of its own, so the encounters themselves roll the same either way.
+export function rollSynergies(state, party, seed, opts = {}) {
+  const { active } = partySynergies(party, opts);
+  const rng = new Rng((seed + 104729) >>> 0);
+  const p = triggerChance(state);
+  const triggered = {};
+  for (const [id, a] of Object.entries(active)) if (SYNERGIES[id].always || rng.chance(p)) triggered[id] = a;
+  return { qualified: active, triggered };
+}
+
+// Only the bonuses that are certain to kick in (for estimates before launch).
+export function guaranteedOnly(active) {
+  return Object.fromEntries(Object.entries(active).filter(([id]) => SYNERGIES[id].always));
 }
 
 // The party as the bonuses make it: Ecosystem and Bonded raise traits. These

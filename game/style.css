@@ -647,3 +647,16 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .syn-note { margin: 2px 0; padding: 2px 6px; font-size: 0.8rem; background: #eaffd6; border-left: 3px solid var(--green); border-radius: 3px; }
 .bc-syn { display: block; margin-top: 2px; font-size: 0.7rem; font-weight: 700; color: var(--green); line-height: 1.1; }
 .muted.small { font-size: 0.8rem; }
+.syn-badge.unknown { background: var(--cream2); border-style: dashed; color: var(--ink2); }
+.syn-badge.missed { opacity: 0.45; filter: grayscale(1); }
+.syn-row .chance { color: var(--teal); white-space: nowrap; }
+.syn-note.discovery { background: #fff3cf; border-left-color: var(--yellow); }
+.presets { margin: 6px 0; }
+.preset { display: flex; gap: 4px; align-items: stretch; margin-bottom: 4px; }
+.preset-load { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 5px 8px; text-align: left; font: inherit; background: var(--paper); border: 2px solid var(--ink); border-radius: 6px; box-shadow: 2px 2px 0 var(--ink); }
+.preset-load:active { transform: translate(2px, 2px); box-shadow: none; }
+.preset-bugs { display: inline-flex; gap: 2px; }
+.preset-bugs .gone { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 2px dashed var(--mid); border-radius: 4px; font-size: 0.7rem; }
+.preset-syn { display: flex; flex-wrap: wrap; gap: 3px; width: 100%; }
+.preset-del.armed { background: var(--pink); }
+.preset-save input { flex: 1; min-width: 0; padding: 4px 6px; font: inherit; border: 2px solid var(--ink); border-radius: 5px; background: var(--paper); }
