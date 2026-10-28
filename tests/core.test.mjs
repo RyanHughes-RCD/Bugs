@@ -54,8 +54,8 @@ test('game data is valid: species, items, areas, encounters, sprites', () => {
     if (e.category !== 'chest') assert.ok(e.check ? e.success && e.fail : e.result, `${e.id} has outcomes`);
   }
   for (const rows of Object.values(SPRITES)) {
-    assert.equal(rows.length, 16);
-    for (const row of rows) assert.equal(row.length, 16);
+    assert.ok([16, 32].includes(rows.length), `${rows.length} rows`); // square, 16x16 (or 32x32 for the big ones)
+    for (const row of rows) assert.equal(row.length, rows.length);
   }
 });
 
