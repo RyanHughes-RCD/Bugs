@@ -291,7 +291,9 @@ export function renderStudio(v) {
   const head = `<div class="studio-head"><b>Sprite Studio</b>
       <small>Redraw a wonky sprite or invent a brand-new bug. The game's owner approves what goes in: approved fixes replace the sprite for everyone.</small></div>`;
   if (!studio?.available) {
-    return `${head}<p class="muted">The studio works in the shared game on claude.ai, where everyone the game is shared with can draw and submit. It isn't available in this copy.</p>`;
+    return `${head}<p class="muted">${studio?.failed
+      ? "Couldn't reach the Studio. Check your internet connection and reopen the game."
+      : 'Connecting to the Studio…'}</p>`;
   }
   const f = ui.studioFilter;
   const list = studio.list({ kind: f.kind, status: f.mine ? null : f.status, mine: f.mine });
@@ -299,6 +301,7 @@ export function renderStudio(v) {
   const live = Object.entries(studio.live.sprites);
   const ideas = Object.values(studio.live.bugs).sort((a, b) => b.at - a.at);
   return `${head}
+    ${studioAccount(v)}
     <div class="row wrap studio-actions">${btn('Fix a sprite', 'studio-pick', { mode: 'fix' }, 'go')}${btn('New bug idea', 'studio-pick', { mode: 'idea' }, 'go')}</div>
     <div class="filters">
       <div class="row wrap">${['pending', 'approved', 'rejected'].map((st) => chip(st[0].toUpperCase() + st.slice(1), { status: st }, !f.mine && f.status === st)).join('')}${chip('Mine', { mine: 1 }, f.mine)}</div>
@@ -310,6 +313,26 @@ export function renderStudio(v) {
       ${live.map(([id, fix]) => `<div class="upgrade"><img class="px bug-img" src="${A.rowsUrl(fix.rows)}" alt=""><div class="grow"><b>${esc(SPECIES[id].name)}</b><small>Live since ${ago(fix.at)}</small>
         <div class="row wrap">${studio.history(id).filter((h) => h.ref !== fix.ref).map((h) => `<button class="hist-btn" data-act="studio-live" data-id="${id}" data-ref="${esc(h.ref)}" title="Use this fix"><img class="px" src="${A.rowsUrl(h.rows)}" alt=""></button>`).join('')}</div></div>
         ${btn('Use original', 'studio-live', { id, ref: '' }, 'sm')}</div>`).join('')}` : ''}`;
+}
+
+// Signing in to the Studio (Supabase): an emailed 6-digit code, then a
+// display name. Not needed to look around, only to submit, like or edit.
+function studioAccount(v) {
+  const { ui } = v;
+  const studio = v.studio;
+  if (studio.backend !== 'supabase') return '';
+  if (studio.needsSignIn) {
+    const sent = ui.studioCodeFor;
+    return `<div class="studio-auth">${sent
+      ? `<b>Check your email</b><small>We sent a 6-digit code to ${esc(sent)}. It can take a minute, and it might be in spam.</small>
+        <div class="row"><input id="studio-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456">${btn('Sign in', 'studio-verify', {}, 'go sm')}</div>
+        <div class="row">${btn('Send a new code', 'studio-send-code', { again: 1 }, 'link')}${btn('Use a different email', 'studio-reset-email', {}, 'link')}</div>`
+      : `<b>Sign in to draw and vote</b><small>Anyone can look around. To submit, like or edit, sign in with your email: we'll send you a 6-digit code. Your game save isn't affected.</small>
+        <div class="row"><input id="studio-email" type="email" autocomplete="email" placeholder="you@example.com">${btn('Send code', 'studio-send-code', {}, 'go sm')}</div>`}</div>`;
+  }
+  return `<div class="studio-auth signed-in"><small>Signed in as <b>${esc(studio.email || '')}</b>${studio.isOwner ? ' · <b>owner</b>' : ''}</small>
+    <div class="row"><input id="studio-name" maxlength="24" value="${esc(studio.myName)}" placeholder="Your display name">${btn('Save name', 'studio-save-name', {}, 'sm')}${btn('Sign out', 'studio-signout', {}, 'sm')}</div>
+    ${studio.myName ? '' : '<small class="warn">Pick a display name so everyone knows who drew what.</small>'}</div>`;
 }
 
 function submissionCard(v, s) {

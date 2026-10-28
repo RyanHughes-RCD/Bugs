@@ -331,8 +331,30 @@ export class App {
         this.applyLiveSprites(map);
         this.checkEditorBase();
       }
-      if (this.ui.panel === 'bugs' && this.ui.bugsTab === 'studio') this.renderPanel();
+      this.studioChanged();
     });
+  }
+
+  // Redraws the Studio tab if it's open, unless someone is typing in it
+  // (live updates would wipe what they've typed).
+  studioChanged() {
+    if (this.ui.panel !== 'bugs' || this.ui.bugsTab !== 'studio') return;
+    const typing = document.activeElement?.matches?.('#sheet-body input');
+    if (typing) return; // it catches up on the next change, or when they press a button
+    this.renderPanel();
+  }
+
+  // Signed in, or told how to.
+  studioReady() {
+    if (!this.studio?.available) { this.toast("The Studio isn't connected.", 'bad'); return false; }
+    if (this.studio.needsSignIn) {
+      this.closeModal();
+      this.ui.bugsTab = 'studio';
+      this.openPanel('bugs');
+      this.toast('Sign in at the top of the Studio first.', 'bad');
+      return false;
+    }
+    return true;
   }
 
   applyLiveSprites(map) {
@@ -342,7 +364,7 @@ export class App {
   }
 
   openEditor(ed) {
-    if (!this.studio?.available) return this.toast('The studio only works in the shared game on claude.ai.', 'bad');
+    if (!this.studioReady()) return;
     // Locked: only Cancel (which asks first) can close it, so a drawing is never lost by accident.
     this.openModal(() => V.editorModal(this.v, ed), { static: true, locked: true, cls: 'editor' });
     const root = this.el.modalRoot;
@@ -830,7 +852,29 @@ export class App {
         else ui.studioFilter = { ...ui.studioFilter, kind: d.kind || null };
         this.renderPanel();
         break;
-      case 'studio-pick': this.openModal(() => V.studioPickModal(this.v, d.mode), { static: true }); break;
+      case 'studio-pick': if (this.studioReady()) this.openModal(() => V.studioPickModal(this.v, d.mode), { static: true }); break;
+      case 'studio-send-code': {
+        const email = d.again ? ui.studioCodeFor : document.querySelector('#studio-email')?.value;
+        this.studio.sendCode(email).then((res) => {
+          if (!this.result(res, `Code sent to ${res.email}.`)) return;
+          ui.studioCodeFor = res.email;
+          this.renderPanel();
+          document.querySelector('#studio-code')?.focus();
+        });
+        break;
+      }
+      case 'studio-verify':
+        this.studio.verifyCode(ui.studioCodeFor, document.querySelector('#studio-code')?.value).then((res) => {
+          if (!this.result(res, "You're signed in!")) return;
+          ui.studioCodeFor = null;
+          this.renderPanel();
+        });
+        break;
+      case 'studio-reset-email': ui.studioCodeFor = null; this.renderPanel(); break;
+      case 'studio-save-name':
+        this.studio.setName(document.querySelector('#studio-name')?.value).then((res) => { if (this.result(res, 'Name saved.')) this.renderPanel(); });
+        break;
+      case 'studio-signout': this.studio.signOut().then(() => { this.toast('Signed out of the Studio.'); this.renderPanel(); }); break;
       case 'ed-fix': {
         const rows = this.A.rowsOf(d.id);
         this.openEditor({ kind: 'fix', species: d.id, rows, original: rows.join(''), base: this.studio.liveRef(d.id), form: {} });
@@ -855,7 +899,8 @@ export class App {
         this.closeModal();
         break;
       case 'ed-submit': this.submitEditor(); break;
-      case 'studio-like': this.studio.toggleLike(d.ref).then((res) => { if (!res.ok) this.toast(res.error, 'bad'); }); break;
+      case 'studio-like': if (!this.studioReady()) break;
+        this.studio.toggleLike(d.ref).then((res) => { if (!res.ok) this.toast(res.error, 'bad'); }); break;
       case 'studio-withdraw':
         this.ask({ title: 'Withdraw this submission?', body: '<p>It will be removed from the studio. Anything already approved stays in the game.</p>', yes: 'Withdraw', danger: true }, async () => {
           const res = await this.studio.withdraw(d.key);

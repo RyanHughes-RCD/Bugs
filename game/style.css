@@ -660,3 +660,9 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .preset-syn { display: flex; flex-wrap: wrap; gap: 3px; width: 100%; }
 .preset-del.armed { background: var(--pink); }
 .preset-save input { flex: 1; min-width: 0; padding: 4px 6px; font: inherit; border: 2px solid var(--ink); border-radius: 5px; background: var(--paper); }
+.studio-auth { padding: 8px 10px; margin-bottom: 8px; background: #fff3cf; border: 2px solid var(--ink); border-radius: 6px; }
+.studio-auth.signed-in { background: var(--paper); }
+.studio-auth > b, .studio-auth > small { display: block; }
+.studio-auth small.warn { color: var(--red); }
+.studio-auth .row { margin-top: 6px; }
+.studio-auth input { flex: 1; min-width: 0; padding: 5px 7px; font: inherit; font-size: 1rem; border: 2px solid var(--ink); border-radius: 5px; background: var(--paper); }

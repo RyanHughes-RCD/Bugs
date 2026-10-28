@@ -7,6 +7,6 @@
   "scripts": {
     "start": "node serve.mjs",
     "test": "node --test tests/*.test.mjs",
-    "test:e2e": "node tests/e2e/playthrough.mjs && node tests/e2e/studio.mjs"
+    "test:e2e": "node tests/e2e/playthrough.mjs && node tests/e2e/studio.mjs && node tests/e2e/studio-supabase.mjs"
   }
 }
