@@ -4,10 +4,12 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
+import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS, MINUTE, PARTY_SIZE, PRESET_LIMIT } from './data/balance.js';
+import { SYNERGIES } from './data/synergies.js';
+import { rollSynergies } from './systems/synergies.js';
 import { createBug, gardenLimit, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
-import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
+import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty, tripMs } from './systems/expedition.js';
 import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
 import { DECOR_BY_ID, LOG, BATTERY } from './data/decor.js';
 import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
@@ -520,17 +522,50 @@ export class Game {
     }
     const party = uids.map((u) => this.bug(u));
     const seed = this.rng.seed();
-    const plan = planExpedition(st, area, party, seed, count);
     const now = this.now();
-    const encMs = encounterMs(st, area, party);
+    const hour = new Date(now).getHours(); // Night Shift goes by the device clock
+    // Which party bonuses kick in this trip, and which are newly discovered.
+    const roll = rollSynergies(st, party, seed, { hour });
+    const opts = { hour, active: roll.triggered };
+    const plan = planExpedition(st, area, party, seed, count, opts);
+    const encMs = encounterMs(st, area, party, opts);
+    const qualified = Object.keys(roll.qualified);
+    const discovered = qualified.filter((id) => !st.discovered[id]);
+    for (const id of discovered) st.discovered[id] = now;
     const exp = {
       id: st.nextUid++, areaId, party: [...uids], partyNames: party.map(bugName), seed,
-      startAt: now, encounterMs: encMs, count: plan.count, endsAt: now + plan.count * encMs,
-      encounters: plan.encounters, claimed: false,
+      startAt: now, encounterMs: encMs, count: plan.count, endsAt: 0,
+      encounters: plan.encounters, synergies: Object.keys(roll.triggered), qualified, discovered, claimed: false,
     };
+    exp.endsAt = now + tripMs(exp);
     st.expeditions.push(exp);
     this.commit();
     return { ok: true, expedition: exp };
+  }
+
+  // ---------- party presets ----------
+
+  // Saves a party of four to come back to. Presets only remember bugs: if
+  // one is released later, the preset just has a gap.
+  savePreset(name, uids) {
+    const st = this.state;
+    if (!Array.isArray(uids) || uids.length !== PARTY_SIZE || new Set(uids).size !== PARTY_SIZE || !uids.every((u) => this.bug(u))) {
+      return fail(`A preset is a party of ${PARTY_SIZE} different bugs.`);
+    }
+    if (st.presets.length >= PRESET_LIMIT) return fail(`You can keep up to ${PRESET_LIMIT} presets. Delete one first.`);
+    const clean = String(name || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 24);
+    const preset = { id: st.nextUid++, name: clean || `Party ${st.presets.length + 1}`, party: [...uids] };
+    st.presets.push(preset);
+    this.commit();
+    return { ok: true, preset };
+  }
+
+  deletePreset(id) {
+    const st = this.state;
+    if (!st.presets.some((p) => p.id === id)) return fail('That preset is gone.');
+    st.presets = st.presets.filter((p) => p.id !== id);
+    this.commit();
+    return { ok: true };
   }
 
   // Pays out a finished expedition exactly once, then archives it.
@@ -555,6 +590,12 @@ export class Game {
         keysUsed.push(bug.uid);
       }
       st.stats.chestsOpened += 1;
+    }
+    // Lure: a Shiny party member draws wild visitors for a while after it gets home.
+    if (exp.synergies?.includes('lure')) {
+      const g = st.garden;
+      g.lureUntil = this.now() + SYNERGIES.lure.lureMs;
+      g.nextVisitAt = Math.min(g.nextVisitAt || Infinity, this.now() + VISITORS.everyMin[0] * MINUTE * 0.5);
     }
     st.areas[area.id].runs += 1;
     st.stats.expeditions += 1;

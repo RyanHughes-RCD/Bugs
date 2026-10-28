@@ -8,7 +8,8 @@ import { UPGRADE_BY_ID, upgradeCost } from '../data/upgrades.js';
 import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
 import { SPECIES } from '../data/species.js';
 import { clampEncounterCount, defaultEncounterCount, encounterMs } from '../systems/expedition.js';
-import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
+import { partySynergies, guaranteedOnly } from '../systems/synergies.js';
+import { bugsOnExpedition, bugName } from '../systems/bugs.js';
 import { gardenRatePerMin, favouriteDecor } from '../systems/garden.js';
 import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
@@ -294,6 +295,7 @@ export class App {
 
   closeModal() {
     this.modal = null;
+    this.afterClose = null;
     this.editor = null;
     this.pending = null;
     this.el.modalRoot.innerHTML = '';
@@ -583,10 +585,13 @@ export class App {
     this.openModal(() => V.hatchModal(this.v, s), { cls: 'hatch-full', locked: true, static: true });
   }
 
-  autoParty(areaId) {
+  // Auto-pick: the four free bugs with the highest combined power, not
+  // counting items. Finding good bonus combinations is up to the player.
+  autoParty() {
     const st = this.game.state;
     const away = bugsOnExpedition(st);
-    return st.bugs.filter((b) => !away.has(b.uid)).sort((a, b) => traitTotal(b) - traitTotal(a)).slice(0, PARTY_SIZE).map((b) => b.uid);
+    const base = (b) => Object.values(b.traits).reduce((s, v) => s + v, 0);
+    return st.bugs.filter((b) => !away.has(b.uid)).sort((a, b) => base(b) - base(a)).slice(0, PARTY_SIZE).map((b) => b.uid);
   }
 
   dispatch(act, d) {
@@ -712,11 +717,44 @@ export class App {
         break;
       case 'plan-count': ui.plan.count = ui.lastTrip = clampEncounterCount(Number(d.n)); this.renderModal(); break;
       case 'plan-auto': ui.plan.party = this.autoParty(ui.plan.areaId); this.renderModal(); break;
+      case 'preset-save': {
+        const name = document.querySelector('#preset-name')?.value || '';
+        if (this.result(g.savePreset(name, ui.plan.party), 'Preset saved.')) this.renderModal();
+        break;
+      }
+      case 'preset-load': {
+        const p = st.presets.find((x) => x.id === Number(d.id));
+        if (!p) break;
+        const away = bugsOnExpedition(st);
+        const ready = p.party.filter((u) => g.bug(u) && !away.has(u));
+        ui.plan.party = ready;
+        const missing = p.party.length - ready.length;
+        if (missing) this.toast(`${missing} bug${missing > 1 ? 's' : ''} from "${p.name}" ${missing > 1 ? 'are' : 'is'} away or gone. Fill the gap to launch.`, 'bad');
+        this.renderModal();
+        break;
+      }
+      case 'preset-delete': {
+        const el = document.querySelector(`[data-act="preset-delete"][data-id="${d.id}"]`);
+        if (!this.armed(el, 'Delete?')) break;
+        this.result(g.deletePreset(Number(d.id)));
+        this.renderModal();
+        break;
+      }
+      case 'syn-guide': {
+        // Opens over the planner and returns to it on close.
+        const fromPlanner = this.modal && ui.plan;
+        this.openModal(() => V.synergyGuideModal(this.v), { static: true });
+        if (fromPlanner) this.afterClose = () => this.openModal(() => V.plannerModal(this.v));
+        break;
+      }
       case 'launch': {
         const area = AREA_BY_ID[ui.plan.areaId];
         const names = ui.plan.party.map((u) => bugName(g.bug(u))).join(', ');
         const plan = { ...ui.plan, party: [...ui.plan.party] };
-        const ms = plan.count * encounterMs(st, area, plan.party.map((u) => g.bug(u)));
+        const party = plan.party.map((u) => g.bug(u));
+        const hour = new Date(g.now()).getHours();
+        const sure = guaranteedOnly(partySynergies(party, { hour }).active); // bonuses that might kick in could make it quicker
+        const ms = plan.count * encounterMs(st, area, party, { hour, active: sure });
         this.ask({ title: `Send the party to ${area.name}?`, body: `<p>${plan.count} encounters, about <b>${fmtTime(ms)}</b>. ${names} will be away until the expedition ends. Their items can't be changed while they're exploring.</p>`, yes: 'Set off!' }, () => {
           const res = g.launchExpedition(plan.areaId, plan.party, plan.count);
           if (this.result(res, `The party sets off for ${area.name}!`)) this.dispatch('view-exp', { id: res.expedition.id });
@@ -767,7 +805,12 @@ export class App {
         applyUpdate();
         break;
       case 'welcome-done': st.flags.welcomed = true; g.commit(); this.closeModal(); break;
-      case 'close-modal': this.closeModal(); break;
+      case 'close-modal': {
+        const then = this.afterClose;
+        this.closeModal();
+        then?.();
+        break;
+      }
       case 'studio-filter':
         if (d.mine) ui.studioFilter = { ...ui.studioFilter, mine: !ui.studioFilter.mine };
         else if (d.status) ui.studioFilter = { ...ui.studioFilter, status: d.status, mine: false };

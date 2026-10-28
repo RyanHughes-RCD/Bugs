@@ -7,6 +7,7 @@ export const BASE_INCUBATION_MS = 4 * HOUR;
 export const BASE_ENCOUNTER_MS = 5 * MINUTE;
 export const GARDEN_LIMIT = 10; // before Bigger Garden upgrades (+5 each, up to 25)
 export const PARTY_SIZE = 4;
+export const PRESET_LIMIT = 12; // saved party presets
 export const BASE_INCUBATOR_SLOTS = 2;
 export const BASE_EXPEDITION_SLOTS = 1;
 export const MAX_TRAIT_LEVEL = 15;

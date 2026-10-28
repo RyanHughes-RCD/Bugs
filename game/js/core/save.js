@@ -58,6 +58,9 @@ export function migrate(raw) {
   s.dex = s.dex || {};
   s.stats = { expeditions: 0, hatched: 0, eggsBought: 0, chestsOpened: 0, coinsEarned: 0, visitorsGreeted: 0, rockFinds: 0, ...(s.stats || {}) };
   s.flags = s.flags || {};
+  // Party bonuses found so far (id -> when), and saved party presets.
+  s.discovered = s.discovered && typeof s.discovered === 'object' ? s.discovered : {};
+  s.presets = Array.isArray(s.presets) ? s.presets.filter((p) => p && Array.isArray(p.party)) : [];
   for (const b of s.bugs) {
     b.traits = b.traits && typeof b.traits === 'object' && !Array.isArray(b.traits) ? b.traits : {};
     b.item = b.item || null;
