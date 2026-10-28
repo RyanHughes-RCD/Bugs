@@ -629,3 +629,21 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 /* Turning sunbeams. */
 .fxp-rays::before { inset: -35%; border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(255, 205, 117, 0.5) 0deg 9deg, transparent 9deg 45deg);
   -webkit-mask: radial-gradient(circle, #000 20%, transparent 70%); mask: radial-gradient(circle, #000 20%, transparent 70%); animation: spin 9s linear infinite; z-index: -1; }
+
+/* ---------- Party bonuses ---------- */
+.syn-panel { margin: 6px 0 8px; padding: 6px 8px; background: var(--paper); border: 2px solid var(--ink); border-radius: 6px; }
+.syn-panel .section-title { margin-top: 0; }
+.syn-row { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0; }
+.syn-row small { display: block; color: var(--ink2); }
+.syn-row .need { display: block; font-size: 0.85rem; }
+.syn-badge { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; font-size: 0.8rem; font-weight: 700; background: var(--lime); border: 2px solid var(--ink); border-radius: 10px; white-space: nowrap; }
+.syn-badge.v-shiny { background: #d9f3ff; box-shadow: 0 0 6px #bfe9ff; }
+.syn-badge.v-albino { background: #f4f4f4; color: #b13e53; }
+.syn-badge.v-golden { background: #ffd75e; box-shadow: 0 0 6px #ffcd75; }
+.syn-badge.prism { background: linear-gradient(90deg, #f4a0b0, #ffcd75, #a7f070, #73eff7, #c06ad8); animation: fxhue 4s linear infinite; }
+.syn-badges { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.syn-hints { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.syn-hint { font-size: 0.75rem; padding: 1px 6px; border: 2px dashed var(--mid); border-radius: 10px; color: var(--ink2); }
+.syn-note { margin: 2px 0; padding: 2px 6px; font-size: 0.8rem; background: #eaffd6; border-left: 3px solid var(--green); border-radius: 3px; }
+.bc-syn { display: block; margin-top: 2px; font-size: 0.7rem; font-weight: 700; color: var(--green); line-height: 1.1; }
+.muted.small { font-size: 0.8rem; }

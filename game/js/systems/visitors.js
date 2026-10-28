@@ -10,8 +10,9 @@ export function freeGardenSpots(state) {
   return gardenLimit(state) - state.bugs.filter((b) => b.inGarden && !away.has(b.uid)).length;
 }
 
-function rollGap(rng) {
-  return rng.float(VISITORS.everyMin[0], VISITORS.everyMin[1]) * MINUTE;
+// Time until the next visitor; half as long while a Lure is drawing them in.
+function rollGap(rng, lured = false) {
+  return rng.float(VISITORS.everyMin[0], VISITORS.everyMin[1]) * MINUTE * (lured ? 0.5 : 1);
 }
 
 // Decorations draw in the visitors that love them.
@@ -49,7 +50,7 @@ export function tickVisitors(state, now, rng) {
       const v = newVisitor(state, rng, t);
       if (v.leavesAt > now) g.visitors.push(v);
     }
-    t += rollGap(rng);
+    t += rollGap(rng, t < (g.lureUntil || 0));
     changed = true;
   }
   g.nextVisitAt = t;

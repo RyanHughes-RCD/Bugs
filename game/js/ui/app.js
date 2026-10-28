@@ -7,7 +7,8 @@ import { AREA_BY_ID } from '../data/areas.js';
 import { UPGRADE_BY_ID, upgradeCost } from '../data/upgrades.js';
 import { BIG_SPEND, PARTY_SIZE } from '../data/balance.js';
 import { SPECIES } from '../data/species.js';
-import { clampEncounterCount, defaultEncounterCount, encounterMs } from '../systems/expedition.js';
+import { clampEncounterCount, defaultEncounterCount, encounterMs, bestParty } from '../systems/expedition.js';
+import { partySynergies, expectedTimeShare } from '../systems/synergies.js';
 import { bugsOnExpedition, traitTotal, bugName } from '../systems/bugs.js';
 import { gardenRatePerMin, favouriteDecor } from '../systems/garden.js';
 import { DECOR_BY_ID } from '../data/decor.js';
@@ -294,6 +295,7 @@ export class App {
 
   closeModal() {
     this.modal = null;
+    this.afterClose = null;
     this.editor = null;
     this.pending = null;
     this.el.modalRoot.innerHTML = '';
@@ -583,10 +585,12 @@ export class App {
     this.openModal(() => V.hatchModal(this.v, s), { cls: 'hatch-full', locked: true, static: true });
   }
 
+  // The best party for this area right now, weighing power and party bonuses.
   autoParty(areaId) {
     const st = this.game.state;
     const away = bugsOnExpedition(st);
-    return st.bugs.filter((b) => !away.has(b.uid)).sort((a, b) => traitTotal(b) - traitTotal(a)).slice(0, PARTY_SIZE).map((b) => b.uid);
+    const free = st.bugs.filter((b) => !away.has(b.uid));
+    return bestParty(st, AREA_BY_ID[areaId], free, { hour: new Date(this.game.now()).getHours() }).map((b) => b.uid);
   }
 
   dispatch(act, d) {
@@ -712,11 +716,20 @@ export class App {
         break;
       case 'plan-count': ui.plan.count = ui.lastTrip = clampEncounterCount(Number(d.n)); this.renderModal(); break;
       case 'plan-auto': ui.plan.party = this.autoParty(ui.plan.areaId); this.renderModal(); break;
+      case 'syn-guide': {
+        // Opens over the planner and returns to it on close.
+        const fromPlanner = this.modal && ui.plan;
+        this.openModal(() => V.synergyGuideModal(this.v), { static: true });
+        if (fromPlanner) this.afterClose = () => this.openModal(() => V.plannerModal(this.v));
+        break;
+      }
       case 'launch': {
         const area = AREA_BY_ID[ui.plan.areaId];
         const names = ui.plan.party.map((u) => bugName(g.bug(u))).join(', ');
         const plan = { ...ui.plan, party: [...ui.plan.party] };
-        const ms = plan.count * encounterMs(st, area, plan.party.map((u) => g.bug(u)));
+        const party = plan.party.map((u) => g.bug(u));
+        const opts = { hour: new Date(g.now()).getHours() };
+        const ms = plan.count * encounterMs(st, area, party, opts) * expectedTimeShare(partySynergies(party, opts).active);
         this.ask({ title: `Send the party to ${area.name}?`, body: `<p>${plan.count} encounters, about <b>${fmtTime(ms)}</b>. ${names} will be away until the expedition ends. Their items can't be changed while they're exploring.</p>`, yes: 'Set off!' }, () => {
           const res = g.launchExpedition(plan.areaId, plan.party, plan.count);
           if (this.result(res, `The party sets off for ${area.name}!`)) this.dispatch('view-exp', { id: res.expedition.id });
@@ -767,7 +780,12 @@ export class App {
         applyUpdate();
         break;
       case 'welcome-done': st.flags.welcomed = true; g.commit(); this.closeModal(); break;
-      case 'close-modal': this.closeModal(); break;
+      case 'close-modal': {
+        const then = this.afterClose;
+        this.closeModal();
+        then?.();
+        break;
+      }
       case 'studio-filter':
         if (d.mine) ui.studioFilter = { ...ui.studioFilter, mine: !ui.studioFilter.mine };
         else if (d.status) ui.studioFilter = { ...ui.studioFilter, status: d.status, mine: false };

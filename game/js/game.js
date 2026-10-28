@@ -4,10 +4,11 @@ import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
-import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS } from './data/balance.js';
+import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS, MINUTE } from './data/balance.js';
+import { SYNERGIES } from './data/synergies.js';
 import { createBug, gardenLimit, bugName, assignmentOf, bugsOnExpedition, gardenCount, releaseValue } from './systems/bugs.js';
 import { incubationMs, incubatorCount, rollEgg, eggProgress, shopStock } from './systems/eggs.js';
-import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty } from './systems/expedition.js';
+import { expeditionSlots, encounterMs, planExpedition, expeditionTimeline, sumRewards, validateParty, tripMs } from './systems/expedition.js';
 import { tickGarden, moveRock, decorFits, freeDecorSpot, potCap, overlapsRiver, rockRect } from './systems/garden.js';
 import { DECOR_BY_ID, LOG, BATTERY } from './data/decor.js';
 import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
@@ -520,14 +521,16 @@ export class Game {
     }
     const party = uids.map((u) => this.bug(u));
     const seed = this.rng.seed();
-    const plan = planExpedition(st, area, party, seed, count);
     const now = this.now();
-    const encMs = encounterMs(st, area, party);
+    const opts = { hour: new Date(now).getHours() }; // Night Shift goes by the device clock
+    const plan = planExpedition(st, area, party, seed, count, opts);
+    const encMs = encounterMs(st, area, party, opts);
     const exp = {
       id: st.nextUid++, areaId, party: [...uids], partyNames: party.map(bugName), seed,
-      startAt: now, encounterMs: encMs, count: plan.count, endsAt: now + plan.count * encMs,
-      encounters: plan.encounters, claimed: false,
+      startAt: now, encounterMs: encMs, count: plan.count, endsAt: 0,
+      encounters: plan.encounters, synergies: plan.synergies, claimed: false,
     };
+    exp.endsAt = now + tripMs(exp);
     st.expeditions.push(exp);
     this.commit();
     return { ok: true, expedition: exp };
@@ -555,6 +558,12 @@ export class Game {
         keysUsed.push(bug.uid);
       }
       st.stats.chestsOpened += 1;
+    }
+    // Lure: a Shiny party member draws wild visitors for a while after it gets home.
+    if (exp.synergies?.includes('lure')) {
+      const g = st.garden;
+      g.lureUntil = this.now() + SYNERGIES.lure.lureMs;
+      g.nextVisitAt = Math.min(g.nextVisitAt || Infinity, this.now() + VISITORS.everyMin[0] * MINUTE * 0.5);
     }
     st.areas[area.id].runs += 1;
     st.stats.expeditions += 1;
