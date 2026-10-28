@@ -501,6 +501,22 @@ export class Assets {
     return changed;
   }
 
+  // A decoration's shape as a flat dark silhouette, for its shadow.
+  silhouette(id) {
+    this.silhouettes = this.silhouettes || {};
+    if (!this.silhouettes[id]) {
+      const art = this.decor[id];
+      const c = makeCanvas(art.width, art.height);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(art, 0, 0);
+      ctx.globalCompositeOperation = 'source-in';
+      ctx.fillStyle = '#1a1c2c';
+      ctx.fillRect(0, 0, c.width, c.height);
+      this.silhouettes[id] = c;
+    }
+    return this.silhouettes[id];
+  }
+
   // A data URL for any rows (studio thumbnails), cached by content.
   rowsUrl(rows, variant = null) {
     const key = `rows:${variant}:${rows.join('')}`;

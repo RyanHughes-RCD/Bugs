@@ -823,13 +823,15 @@ export class GardenScene {
       const [sx, sy] = this.toScreen(spot.x, spot.y);
       const dragging = this.decorDrag?.id === id;
       const lift = dragging ? 4 * scale : 0;
-      // A soft shadow where it meets the ground (bigger when picked up).
+      // Its shadow: its own silhouette, cast down and to the right (further,
+      // and fainter, while it's picked up).
       if (d.shadow) {
-        const [w, h, oy] = d.shadow;
-        ctx.fillStyle = `rgba(26, 28, 44, ${dragging ? 0.18 : 0.28})`;
-        ctx.beginPath();
-        ctx.ellipse(Math.round(sx), Math.round(sy + oy * scale), (w / 2) * scale * (dragging ? 1.1 : 1), (h / 2) * scale, 0, 0, Math.PI * 2);
-        ctx.fill();
+        const [ox, oy] = d.shadow;
+        const sil = this.assets.silhouette(id);
+        const far = dragging ? 1.6 : 1;
+        ctx.globalAlpha = dragging ? 0.2 : 0.35;
+        ctx.drawImage(sil, Math.round(sx + ox * far * scale - (art.width * px) / 2), Math.round(sy + oy * far * scale - (art.height * px) / 2), art.width * px, art.height * px);
+        ctx.globalAlpha = 1;
       }
       ctx.save();
       ctx.translate(Math.round(sx), Math.round(sy - lift));
