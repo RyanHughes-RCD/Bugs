@@ -311,8 +311,8 @@ export function renderStudio(v) {
     </div>
     <div class="sub-list">${list.map((s) => submissionCard(v, s)).join('') || `<p class="muted">Nothing here yet.${f.status === 'pending' && !f.mine ? ' Be the first to submit something!' : ''}</p>`}</div>
     ${ideas.length ? `<h4>Approved bug ideas</h4><p class="meta">These are on their way into the game.</p><div class="idea-gallery">${ideas.map((b) => `<div class="idea-cell r-${b.rarity}"><img class="px bug-img" src="${A.rowsUrl(b.rows)}" alt=""><b>${esc(b.name)}</b><small>by ${esc(studio.nameOf(b.author))}</small></div>`).join('')}</div>` : ''}
-    ${studio.isOwner && live.length ? `<h4>Live sprite fixes</h4><p class="meta">Only you see this. Put a bug back to its original art, or to an earlier approved fix.</p>
-      ${live.map(([id, fix]) => `<div class="upgrade"><img class="px bug-img" src="${A.rowsUrl(fix.rows)}" alt=""><div class="grow"><b>${esc(SPECIES[id].name)}</b><small>Live since ${ago(fix.at)}</small>
+    ${studio.isOwner && live.length ? `<h4>Live sprite fixes</h4><p class="meta">Only you see this. Put a bug or cat back to its original art, or to an earlier approved fix.</p>
+      ${live.map(([id, fix]) => `<div class="upgrade"><img class="px bug-img" src="${A.rowsUrl(fix.rows)}" alt=""><div class="grow"><b>${esc(spriteName(id))}</b><small>Live since ${ago(fix.at)}</small>
         <div class="row wrap">${studio.history(id).filter((h) => h.ref !== fix.ref).map((h) => `<button class="hist-btn" data-act="studio-live" data-id="${id}" data-ref="${esc(h.ref)}" title="Use this fix"><img class="px" src="${A.rowsUrl(h.rows)}" alt=""></button>`).join('')}</div></div>
         ${btn('Use original', 'studio-live', { id, ref: '' }, 'sm')}</div>`).join('')}` : ''}`;
 }
