@@ -36,9 +36,10 @@ const flicker = (t) => {
 // The two orbs of light inside the Jar of Light, in its art's pixels:
 // [x, y, radius, phase].
 // Where the cats sit, in the flower bed art's pixels: [x, y of their lowest
-// pixel]. Each is in front of the box's bottom edge, two pixels below its
+// pixel]. Each is in front of the box's bottom edge, a little below its
 // shadow there: Mika on the left face, Noctis and Vyke on the right.
-const CAT_SEATS = [[13, 69], [45, 68], [69, 56]];
+const CAT_SEATS = [[13, 74], [45, 73], [69, 61]];
+const CAT_SIZE = 1.25; // drawn this much bigger than a bug's pixels
 const JAR_ORBS = [[17, 42, 3, 0], [27, 46, 2.5, 2.4]];
 
 export class GardenScene {
@@ -1238,8 +1239,8 @@ export class GardenScene {
     if (!visit?.here.length || this.decorDrag?.id === 'flower_bed') return;
     for (const c of this.catSpots()) {
       if (Math.random() > dt * (this.catsAsleep ? 0.5 : visit.petted ? 0 : 0.15)) continue;
-      if (this.catsAsleep) this.float(c.x + 2, c.y - 14, 'z', '#94b0c2');
-      else this.float(c.x, c.y - 26, 'Meow!', '#f4f4f4');
+      if (this.catsAsleep) this.float(c.x + 2, c.y - 17, 'z', '#94b0c2');
+      else this.float(c.x, c.y - 31, 'Meow!', '#f4f4f4');
     }
   }
 
@@ -1287,27 +1288,28 @@ export class GardenScene {
     for (const c of spots.sort((a, b) => a.y - b.y)) {
       const img = this.assets.bugs[this.catsAsleep ? `${c.id}_asleep` : c.id];
       if (!img) continue;
-      const size = img.width * this.bugPx;
+      const cpx = this.bugPx * CAT_SIZE; // exactly a quarter bigger than a bug's pixels
+      const size = img.width * cpx;
       const fx = left + (c.seat[0] + 0.5) * px;
       const fy = top + (c.seat[1] + 1) * px; // the bottom of the cat's lowest pixel
       // A slow breath while asleep; awake, the odd little shift of weight.
-      const breath = Math.sin(this.t * (this.catsAsleep ? 1.2 : 0.7) + c.x) > 0.6 ? this.bugPx : 0;
-      ctx.drawImage(img, Math.round(fx - size / 2), Math.round(fy - (this.lowestRow(img) + 1) * this.bugPx - breath), size, size);
+      const breath = Math.sin(this.t * (this.catsAsleep ? 1.2 : 0.7) + c.x) > 0.6 ? cpx : 0;
+      ctx.drawImage(img, Math.round(fx - size / 2), Math.round(fy - (this.lowestRow(img) + 1) * cpx - breath), Math.round(size), Math.round(size));
     }
   }
 
   // Tapped a cat? Pets them all (once a visit).
   catAt(wx, wy) {
     if (!this.cats || this.cats.petted) return false;
-    return this.catSpots().some((c) => Math.abs(c.x - wx) < 13 && wy > c.y - 22 && wy < c.y + 1);
+    return this.catSpots().some((c) => Math.abs(c.x - wx) < 16 && wy > c.y - 27 && wy < c.y + 1);
   }
 
   petCats() {
     const res = this.handlers.onCats?.();
     if (!res?.ok) return;
     for (const c of this.catSpots()) {
-      for (let k = 0; k < 5; k++) this.particles.push({ x: c.x, y: c.y - 16, vx: rand(-14, 14), vy: rand(-24, -8), life: 0.9, color: '#f4a0b0', g: 0.2 });
-      this.float(c.x, c.y - 26, 'Purr', '#f4a0b0');
+      for (let k = 0; k < 5; k++) this.particles.push({ x: c.x, y: c.y - 20, vx: rand(-14, 14), vy: rand(-24, -8), life: 0.9, color: '#f4a0b0', g: 0.2 });
+      this.float(c.x, c.y - 31, 'Purr', '#f4a0b0');
     }
     this.cats = this.game.catVisit();
   }
