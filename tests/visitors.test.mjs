@@ -159,3 +159,67 @@ test('the bird on the log: shooing it pays coins for every bug it scared', async
   clock.t += BIRD.everyMin[1] * MIN + 1;
   assert.equal(game.shooBird(999).coins.length, game.state.bugs.filter((b) => b.inGarden).length, 'never more bugs than live in the garden');
 });
+
+test('the cats visit the flower bed every two hours, on the hour, rolled once per visit', async () => {
+  const { CAT_VISITS } = await import('../game/js/data/cats.js');
+  const { game, clock } = makeGame();
+  assert.equal(game.catVisit(), null, 'no flower bed, no cats');
+  game.state.coins = 1e6;
+  game.buyDecor('flower_bed');
+  // Visits start on even hours of the local clock.
+  const start = new Date(game.catSlot());
+  assert.equal(start.getHours() % 2, 0);
+  assert.equal(start.getMinutes(), 0);
+  assert.ok(game.now() - start.getTime() < 2 * HOUR);
+  const first = game.catVisit();
+  clock.t += 30 * MIN;
+  if (game.catSlot() === first.slot) assert.equal(game.catVisit(), first, 'same visit, same cats');
+  // Over many visits each cat turns up about a quarter of the time, and
+  // sometimes two or three at once.
+  const seen = { cat_mika: 0, cat_noctis: 0, cat_vyke: 0 };
+  const together = [0, 0, 0, 0];
+  for (let i = 0; i < 2000; i++) {
+    clock.t += 2 * HOUR;
+    const v = game.catVisit();
+    for (const id of v.here) seen[id] += 1;
+    together[v.here.length] += 1;
+  }
+  for (const n of Object.values(seen)) assert.ok(Math.abs(n / 2000 - CAT_VISITS.chance) < 0.04, `${n} visits`);
+  assert.ok(together[3] > 0 && together[2] > together[3]);
+});
+
+test("petting the cats gives one egg: the toughest unlocked area's, a tier up per extra cat", () => {
+  const { game } = makeGame();
+  game.state.coins = 1e6;
+  game.buyDecor('flower_bed');
+  assert.equal(game.catEggTier(1), 'common', 'only the Garden unlocked');
+  assert.equal(game.catEggTier(2), 'uncommon');
+  assert.equal(game.catEggTier(3), 'nice');
+  for (const id of ['forest', 'caves', 'volcano']) game.state.areas[id].unlocked = true;
+  assert.equal(game.catEggTier(1), 'rare', 'the Volcano gives Rare eggs');
+  assert.equal(game.catEggTier(3), 'legendary');
+  for (const a of Object.values(game.state.areas)) a.unlocked = true;
+  assert.equal(game.catEggTier(1), 'mythic', 'New Jersey');
+  assert.equal(game.catEggTier(3), 'celestial', 'never past the top tier');
+
+  game.state.garden.cats = { slot: game.catSlot(), here: [], petted: false };
+  assert.equal(game.petCats().ok, false, 'nobody came');
+  game.state.garden.cats = { slot: game.catSlot(), here: ['cat_mika', 'cat_vyke'], petted: false };
+  const eggs = game.state.eggs.length;
+  const res = game.petCats();
+  assert.ok(res.ok);
+  assert.deepEqual(res.cats, ['Mika', 'Vyke']);
+  assert.equal(res.egg, 'celestial');
+  assert.equal(game.state.eggs.length, eggs + 1);
+  assert.equal(game.petCats().ok, false, 'one egg per visit');
+});
+
+test('the cats are asleep when the game is opened at night', async () => {
+  const { catsAsleep } = await import('../game/js/data/cats.js');
+  const at = (h) => new Date(2026, 9, 26, h, 30).getTime();
+  assert.equal(catsAsleep(at(12)), false);
+  assert.equal(catsAsleep(at(20)), false);
+  assert.equal(catsAsleep(at(21)), true);
+  assert.equal(catsAsleep(at(3)), true);
+  assert.equal(catsAsleep(at(7)), false);
+});

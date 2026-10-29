@@ -2,6 +2,13 @@ import { SPECIES, FAMILIES } from '../data/species.js';
 import { RARITY_ORDER } from '../data/rarities.js';
 import { TRAIT_IDS } from '../data/traits.js';
 import { AREA_BY_ID } from '../data/areas.js';
+import { CAT_SPRITE_BY_ID } from '../data/cats.js';
+
+// Sprites a fix can be for: any bug, or one of the owner's cats (only the
+// owner may redraw those).
+export const fixable = (id) => !!(SPECIES[id] || CAT_SPRITE_BY_ID[id]);
+export const spriteName = (id) => (SPECIES[id] || CAT_SPRITE_BY_ID[id])?.name || id;
+export const ownerOnly = (id) => !!CAT_SPRITE_BY_ID[id];
 
 // The Sprite Studio: players draw fixes for wonky bug sprites and invent new
 // bugs, the owner approves them, and approved fixes replace the sprite for
@@ -70,7 +77,7 @@ export function cleanSubmission(raw, palette) {
     updatedAt: Number(raw.updatedAt) || Number(raw.createdAt) || 0,
   };
   if (raw.kind === 'fix') {
-    if (!SPECIES[raw.species]) return null;
+    if (!fixable(raw.species)) return null;
     return { ...base, kind: 'fix', species: raw.species, base: clip(raw.base, 120) || 'original' };
   }
   if (raw.kind !== 'idea') return null;
@@ -167,7 +174,7 @@ export class Studio {
     for (const [ref, d] of Object.entries(raw)) {
       if (!d || !['approved', 'rejected'].includes(d.status)) continue;
       const rows = cleanRows(d.rows, this.palette);
-      out[ref] = { status: d.status, at: Number(d.at) || 0, note: clip(d.note, LIMITS.note), species: SPECIES[d.species] ? d.species : null, rows, eyes: cleanEyes(d.eyes, rows) };
+      out[ref] = { status: d.status, at: Number(d.at) || 0, note: clip(d.note, LIMITS.note), species: fixable(d.species) ? d.species : null, rows, eyes: cleanEyes(d.eyes, rows) };
     }
     this.decisions = out;
     this.emit('reviews');
@@ -177,7 +184,7 @@ export class Studio {
     const raw = (snap.exists && snap.data()) || {};
     const sprites = {};
     for (const [id, fix] of Object.entries(raw.sprites || {})) {
-      const rows = SPECIES[id] && cleanRows(fix?.rows, this.palette);
+      const rows = fixable(id) && cleanRows(fix?.rows, this.palette);
       if (rows) sprites[id] = { rows, eyes: cleanEyes(fix.eyes, rows), ref: clip(fix.ref, 120), at: Number(fix.at) || 0 };
     }
     const bugs = {};
@@ -267,6 +274,7 @@ export class Studio {
   // Saves a new submission, or replaces one of your own pending ones (key).
   async submit(raw, key = null) {
     if (!this.available || !this.me) return { ok: false, error: 'The studio only works in the shared game on claude.ai.' };
+    if (raw.kind === 'fix' && ownerOnly(raw.species) && !this.isOwner) return { ok: false, error: 'Only the owner can redraw the cats.' };
     const now = Date.now();
     const existing = key && this.subs.get(refOf(this.me, key));
     if (key && (!existing || this.status(existing.ref) !== 'pending')) return { ok: false, error: 'That submission can no longer be changed.' };

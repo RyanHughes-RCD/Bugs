@@ -63,7 +63,7 @@ try {
   assert.equal(await page.inputValue('#studio-name'), 'Ryan');
 
   await act('[data-act="studio-pick"][data-mode="fix"]');
-  const species = await page.getAttribute('.modal [data-act="ed-fix"]', 'data-id');
+  const species = await page.getAttribute('.modal [data-act="ed-fix"]:not([data-id^="cat_"])', 'data-id');
   await act(`.modal [data-act="ed-fix"][data-id="${species}"]`);
   await act('.swatch[data-c="R"]');
   const box = await page.locator('#ed-canvas').boundingBox();

@@ -129,3 +129,15 @@ test('eye marks for Albinos are cleaned and travel with a fix into the live spri
   await settle();
   assert.deepEqual(sam.live.sprites.ladybug.eyes, [[5, 8], [10, 8]]);
 });
+
+test("only the owner can redraw the cats", async () => {
+  const { owner, sam } = await people();
+  const cat = Array.from({ length: 32 }, (_, y) => (y === 8 ? `${'.'.repeat(4)}${'K'.repeat(8)}${'.'.repeat(20)}` : '.'.repeat(32)));
+  assert.equal((await sam.submit({ kind: 'fix', species: 'cat_mika', rows: cat })).ok, false);
+  assert.equal((await sam.submit({ kind: 'fix', species: 'cat_vyke_asleep', rows: cat })).ok, false);
+  const res = await owner.submit({ kind: 'fix', species: 'cat_mika', rows: cat });
+  assert.ok(res.ok, res.error);
+  assert.ok((await owner.approve(res.ref)).ok);
+  await settle();
+  assert.deepEqual(sam.live.sprites.cat_mika.rows, cat);
+});

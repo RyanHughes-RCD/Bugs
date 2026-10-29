@@ -1,7 +1,7 @@
 import { Rng } from './core/rng.js';
 import { SAVE_KEY, BACKUP_KEY, newGameState, serialize, deserialize, encodeSave, decodeSave } from './core/save.js';
 import { AREAS, AREA_BY_ID } from './data/areas.js';
-import { EGG_BY_ID } from './data/eggs.js';
+import { EGG_BY_ID, EGG_TIERS } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
 import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
 import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS, MINUTE, PARTY_SIZE, PRESET_LIMIT, BOAT, BIRD } from './data/balance.js';
@@ -16,6 +16,7 @@ import { GARDEN_CHEST_BY_ID } from './data/garden-chests.js';
 import { rollGardenChest } from './systems/chests.js';
 import { tickVisitors, rollVisitorGift, rockFindReady, rollRockFind, rollBoatEgg } from './systems/visitors.js';
 import { SPECIES } from './data/species.js';
+import { CATS, CAT_BY_ID, CAT_VISITS } from './data/cats.js';
 
 const fail = (error) => ({ ok: false, error });
 
@@ -413,6 +414,48 @@ export class Game {
   // The boat drifted past, or the bird flew off on its own.
   boatGone() { if (this.boatDue()) { this.scheduleEvent('nextBoatAt', BOAT); this.save(); } }
   birdGone() { if (this.birdDue()) { this.scheduleEvent('nextBirdAt', BIRD); this.save(); } }
+
+  // ---------- the cats ----------
+  // Every two hours, on the hour, each cat may come to the flower bed. Who
+  // came is rolled once per visit (garden.cats) and they stay until the next
+  // one. Petting them gives one egg; more cats, a better egg.
+
+  // When the current two-hour visit began, by the device's clock.
+  catSlot(now = this.now()) {
+    const d = new Date(now);
+    d.setHours(d.getHours() - (d.getHours() % CAT_VISITS.everyHours), 0, 0, 0);
+    return d.getTime();
+  }
+
+  // This visit: { slot, here: [cat ids], petted }, or null without a flower bed.
+  catVisit() {
+    const g = this.state.garden;
+    if (!g.decor.flower_bed) return null;
+    const slot = this.catSlot();
+    if (g.cats?.slot !== slot) {
+      g.cats = { slot, here: CATS.filter(() => this.rng.chance(CAT_VISITS.chance)).map((c) => c.id), petted: false };
+      this.save();
+    }
+    return g.cats;
+  }
+
+  // The egg n cats give: the toughest unlocked area's egg, a tier up per extra cat.
+  catEggTier(n) {
+    const area = [...AREAS].reverse().find((a) => this.state.areas[a.id]?.unlocked) || AREAS[0];
+    const i = Math.min(EGG_BY_ID[area.eggTier].index + Math.max(0, n - 1), EGG_TIERS.length - 1);
+    return EGG_TIERS[i].id;
+  }
+
+  petCats() {
+    const visit = this.catVisit();
+    if (!visit?.here.length) return fail('No cats around right now.');
+    if (visit.petted) return fail('The cats are napping. They\'ll be back later.');
+    visit.petted = true;
+    this.state.stats.catVisits = (this.state.stats.catVisits || 0) + 1;
+    const find = this.giveFind({ egg: this.catEggTier(visit.here.length) }, 'cats');
+    this.commit();
+    return { ok: true, cats: visit.here.map((id) => CAT_BY_ID[id].name), ...find };
+  }
 
   // Pays out a find. Eggs settle straight into a free nest when there is one.
   giveFind(find, source) {
