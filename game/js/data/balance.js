@@ -13,9 +13,10 @@ export const BASE_EXPEDITION_SLOTS = 1;
 export const MAX_TRAIT_LEVEL = 15;
 export const HISTORY_LIMIT = 15;
 
-// Expedition length is picked in the planner. Presets are trip lengths in
-// hours, turned into an encounter count using the party's encounter time.
-export const EXPEDITION_LENGTH = { min: 4, max: 150, presetHours: [1, 2, 4, 8] };
+// Expedition length is picked in the planner, up to `max` encounters. Presets
+// are trip lengths in hours, turned into an encounter count using the party's
+// encounter time, and never more than `presetMax` encounters.
+export const EXPEDITION_LENGTH = { min: 4, max: 250, presetMax: 150, presetHours: [1, 2, 4, 8] };
 
 // Trait checks. A party's score for a trait combines its best bugs with
 // diminishing weight, so stacking one trait helps without dominating:

@@ -242,3 +242,18 @@ test('without a key, chests stay locked unless the party can force them with Lif
   assert.ok(w.locked > w.pried * 4, 'weak lifters mostly fail');
   assert.ok(s.pried > s.locked * 4, 'strong lifters usually force it');
 });
+
+test('a trip can be up to 250 encounters, while the presets stop at 150', () => {
+  const { game } = makeGame();
+  const uids = partyUids(game);
+  const party = uids.map((u) => game.bug(u));
+  assert.equal(EXPEDITION_LENGTH.max, 250);
+  assert.equal(game.launchExpedition('garden', uids, 251).ok, false);
+  // A party so fast an 8-hour preset would hold more than 150 encounters.
+  game.state.upgrades.expedition_efficiency = 8;
+  for (const b of party) b.traits = { lift: 15, cut: 15, fight: 15, fly: 15, dig: 15, build: 15 };
+  assert.equal(encountersForHours(game.state, AREA_BY_ID.garden, party, 8), 150, 'presets as before');
+  const res = game.launchExpedition('garden', uids, 250);
+  assert.ok(res.ok, res.error);
+  assert.equal(res.expedition.count, 250);
+});
