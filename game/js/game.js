@@ -3,7 +3,7 @@ import { SAVE_KEY, BACKUP_KEY, newGameState, serialize, deserialize, encodeSave,
 import { AREAS, AREA_BY_ID } from './data/areas.js';
 import { EGG_BY_ID, EGG_TIERS } from './data/eggs.js';
 import { ITEMS, sellPrice, itemStock } from './data/items.js';
-import { UPGRADE_BY_ID, upgradeCost } from './data/upgrades.js';
+import { UPGRADE_BY_ID, upgradeCost, upgradeLock } from './data/upgrades.js';
 import { EXPEDITION_LENGTH, GARDEN_MAP, HISTORY_LIMIT, STARTING, VISITORS, MINUTE, PARTY_SIZE, PRESET_LIMIT, BOAT, BIRD } from './data/balance.js';
 import { SYNERGIES } from './data/synergies.js';
 import { rollSynergies } from './systems/synergies.js';
@@ -604,6 +604,8 @@ export class Game {
     if (!u) return fail('Unknown upgrade.');
     const level = this.state.upgrades[id] || 0;
     if (level >= u.max) return fail('Already at max level.');
+    const locked = upgradeLock(this.state, id);
+    if (locked) return fail(`${locked}.`);
     if (!this.spend(upgradeCost(id, level))) return fail('Not enough coins.');
     this.state.upgrades[id] = level + 1;
     this.commit();
