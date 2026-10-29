@@ -200,7 +200,11 @@ test("petting the cats gives one egg: the toughest unlocked area's, a tier up pe
   assert.equal(game.catEggTier(3), 'legendary');
   for (const a of Object.values(game.state.areas)) a.unlocked = true;
   assert.equal(game.catEggTier(1), 'mythic', 'New Jersey');
-  assert.equal(game.catEggTier(3), 'celestial', 'never past the top tier');
+  assert.equal(game.catEggTier(3), 'mythic', 'never better than Mythic');
+  for (const a of Object.values(game.state.areas)) a.unlocked = false;
+  game.state.areas.garden.unlocked = game.state.areas.forest.unlocked = game.state.areas.caves.unlocked = game.state.areas.volcano.unlocked = game.state.areas.chem.unlocked = game.state.areas.aether.unlocked = true;
+  assert.equal(game.catEggTier(2), 'legendary');
+  assert.equal(game.catEggTier(3), 'mythic', 'capped');
 
   game.state.garden.cats = { slot: game.catSlot(), here: [], petted: false };
   assert.equal(game.petCats().ok, false, 'nobody came');
@@ -209,7 +213,7 @@ test("petting the cats gives one egg: the toughest unlocked area's, a tier up pe
   const res = game.petCats();
   assert.ok(res.ok);
   assert.deepEqual(res.cats, ['Mika', 'Vyke']);
-  assert.equal(res.egg, 'celestial');
+  assert.equal(res.egg, 'legendary', 'two cats, the Aether unlocked');
   assert.equal(game.state.eggs.length, eggs + 1);
   assert.equal(game.petCats().ok, false, 'one egg per visit');
 });
