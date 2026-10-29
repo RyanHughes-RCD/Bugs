@@ -160,17 +160,17 @@ test('the bird on the log: shooing it pays coins for every bug it scared', async
   assert.equal(game.shooBird(999).coins.length, game.state.bugs.filter((b) => b.inGarden).length, 'never more bugs than live in the garden');
 });
 
-test('the cats visit the flower bed every two hours, on the hour, rolled once per visit', async () => {
+test('the cats visit the flower bed every six hours, on the hour, rolled once per visit', async () => {
   const { CAT_VISITS } = await import('../game/js/data/cats.js');
   const { game, clock } = makeGame();
   assert.equal(game.catVisit(), null, 'no flower bed, no cats');
   game.state.coins = 1e6;
   game.buyDecor('flower_bed');
-  // Visits start on even hours of the local clock.
+  // Visits start at midnight, 6am, noon and 6pm on the local clock.
   const start = new Date(game.catSlot());
-  assert.equal(start.getHours() % 2, 0);
+  assert.equal(start.getHours() % 6, 0);
   assert.equal(start.getMinutes(), 0);
-  assert.ok(game.now() - start.getTime() < 2 * HOUR);
+  assert.ok(game.now() - start.getTime() < 6 * HOUR);
   const first = game.catVisit();
   clock.t += 30 * MIN;
   if (game.catSlot() === first.slot) assert.equal(game.catVisit(), first, 'same visit, same cats');
@@ -179,7 +179,7 @@ test('the cats visit the flower bed every two hours, on the hour, rolled once pe
   const seen = { cat_mika: 0, cat_noctis: 0, cat_vyke: 0 };
   const together = [0, 0, 0, 0];
   for (let i = 0; i < 2000; i++) {
-    clock.t += 2 * HOUR;
+    clock.t += 6 * HOUR;
     const v = game.catVisit();
     for (const id of v.here) seen[id] += 1;
     together[v.here.length] += 1;

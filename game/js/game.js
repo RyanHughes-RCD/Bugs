@@ -416,11 +416,11 @@ export class Game {
   birdGone() { if (this.birdDue()) { this.scheduleEvent('nextBirdAt', BIRD); this.save(); } }
 
   // ---------- the cats ----------
-  // Every two hours, on the hour, each cat may come to the flower bed. Who
+  // Every six hours, on the hour, each cat may come to the flower bed. Who
   // came is rolled once per visit (garden.cats) and they stay until the next
   // one. Petting them gives one egg; more cats, a better egg.
 
-  // When the current two-hour visit began, by the device's clock.
+  // When the current six-hour visit began, by the device's clock.
   catSlot(now = this.now()) {
     const d = new Date(now);
     d.setHours(d.getHours() - (d.getHours() % CAT_VISITS.everyHours), 0, 0, 0);

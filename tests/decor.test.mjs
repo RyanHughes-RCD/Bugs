@@ -179,14 +179,14 @@ test('the river is twice its old size, and a rock it now covers moves to dry lan
   assert.equal(overlapsRiver(again.state.garden, rockRect(again.state.garden.rock)), false);
 });
 
-test('the battery pulses at most once every 5 minutes, even across a reload', () => {
+test('the battery pulses at most once an hour, even across a reload', () => {
   const { game, storage, clock } = makeGame();
   game.state.coins = 1e6;
   assert.equal(game.pulseBattery().ok, false, 'no battery yet');
   game.buyDecor('battery');
   assert.ok(game.pulseBattery().ok);
   assert.equal(game.pulseBattery().ok, false);
-  clock.t += 4 * MIN;
+  clock.t += 59 * MIN;
   const { game: again } = makeGame({ storage, clock });
   assert.equal(again.pulseBattery().ok, false, 'still recharging after a reload');
   clock.t += MIN;

@@ -70,6 +70,6 @@ export const LOG = { everyMs: 2 * HOUR, coins: [10, 30] };
 // catches drops 1 coin plus pulseCoinsPerStar for every species in the
 // Bugdex, straight into the garden's coin pot.
 export const BATTERY = {
-  reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2, rechargeMs: 5 * MINUTE,
+  reach: 6, cooldownMs: 20e3, pulseRadius: 180, pulseMs: 1200, boostMs: 60e3, boostSpeed: 2.2, rechargeMs: 60 * MINUTE,
   pulseCoinsPerStar: 0.5, pulseWindowMs: 5000,
 };
