@@ -15,7 +15,7 @@ import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 import { SpriteEditor } from '../community/editor.js';
-import { cleanRows, cleanEyes, spriteName, ownerOnly } from '../community/studio.js';
+import { cleanRows, cleanEyes, spriteName, ownerOnly, fixable } from '../community/studio.js';
 
 const anEgg = (tier) => { const n = EGG_BY_ID[tier].name; return `${/^[AEIOU]/.test(n) ? 'an' : 'a'} ${n}`; };
 const BACKUP_TIME_KEY = 'bug-garden-last-backup';
@@ -333,7 +333,7 @@ export class App {
         const rows = cleanRows(Array.isArray(fix) ? fix : fix?.rows, this.A.palette); // older caches held only rows
         return [id, rows && { rows, eyes: cleanEyes(fix?.eyes, rows) }];
       });
-      this.applyLiveSprites(Object.fromEntries(fixes.filter(([id, fix]) => fix && SPECIES[id])));
+      this.applyLiveSprites(Object.fromEntries(fixes.filter(([id, fix]) => fix && fixable(id))));
     } catch { /* no saved fixes */ }
     studio.on((what) => {
       if (what === 'live') {

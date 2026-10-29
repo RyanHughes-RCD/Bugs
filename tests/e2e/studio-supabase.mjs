@@ -90,6 +90,22 @@ try {
   assert.notEqual(await page.evaluate((id) => window.bugGarden.app.A.bugUrl(id), species), beforeArt, 'the approved fix is live');
   const liveEyes = await page.evaluate((id) => window.bugGarden.app.A.eyeMarks[id], species);
   assert.ok(liveEyes.some(([x, y]) => x === 8 && y === 12), 'and its Albino uses the marked eyes');
+  // The owner redraws a cat: it goes live at once, and the Studio still opens
+  // with the cat in its list of live fixes.
+  await act('[data-act="studio-pick"][data-mode="fix"]');
+  await act('.modal [data-act="ed-fix"][data-id="cat_mika"]');
+  await act('.swatch[data-c="R"]');
+  const catBox = await page.locator('#ed-canvas').boundingBox();
+  await page.mouse.move(catBox.x + catBox.width * 0.2, catBox.y + catBox.height * 0.9);
+  await page.mouse.down();
+  await page.mouse.move(catBox.x + catBox.width * 0.8, catBox.y + catBox.height * 0.9, { steps: 8 });
+  await page.mouse.up();
+  await act('[data-act="ed-submit"]');
+  await page.waitForFunction(() => window.bugGarden.app.A.overrideKeys?.cat_mika);
+  await act('[data-act="bugs-tab"][data-tab="mine"]');
+  await act('[data-act="bugs-tab"][data-tab="studio"]');
+  await page.waitForSelector('.upgrade:has-text("Mika")');
+  await snap('cat-live');
   await act('[data-act="studio-signout"]');
   assert.ok(await page.isVisible('text=Sign in to draw and vote'));
   await snap('signed-out');
