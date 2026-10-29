@@ -1,4 +1,4 @@
-import { Studio, cleanRows, cleanSubmission } from './studio.js';
+import { Studio, cleanRows, cleanSubmission, ownerOnly } from './studio.js';
 
 // The Sprite Studio on Supabase (see supabase/schema.sql), so it works in any
 // copy of the game: the home-screen app, a browser, or claude.ai. Players
@@ -171,6 +171,7 @@ export class SupabaseStudio extends Studio {
   async submit(raw, key = null) {
     const existing = key && this.subs.get(key);
     if (key && (!existing || existing.author !== this.me || this.status(key) !== 'pending')) return { ok: false, error: 'That submission can no longer be changed.' };
+    if (raw.kind === 'fix' && ownerOnly(raw.species) && !this.isOwner) return { ok: false, error: 'Only the owner can redraw the cats.' };
     const item = cleanSubmission({ ...raw, createdAt: 0, updatedAt: 0 }, this.palette);
     if (!item) return { ok: false, error: raw.kind === 'idea' && !String(raw.name || '').trim() ? 'Give your bug a name.' : 'Draw something first.' };
     const { createdAt, updatedAt, ...data } = item;

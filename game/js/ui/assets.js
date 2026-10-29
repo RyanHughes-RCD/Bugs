@@ -1,3 +1,4 @@
+import { CAT_SPRITES } from '../data/cats.js';
 import { SPECIES_LIST } from '../data/species.js';
 import { EGG_TIERS } from '../data/eggs.js';
 import { SPRITES } from '../data/sprites.js';
@@ -115,6 +116,8 @@ export class Assets {
       else if (baseArt[s.sprite]) this.bugs[s.id] = s.recolor ? this.recolor(baseArt[s.sprite], s.recolor) : baseArt[s.sprite];
       else this.bugs[s.id] = fallbackBug;
     }
+    // The cats live alongside the bugs, so studio fixes work the same way.
+    for (const c of CAT_SPRITES) this.bugs[c.id] = this.sprites[c.id];
     for (const t of EGG_TIERS) if (!this.eggs[t.id]) this.eggs[t.id] = this.makeEgg(t.visual);
     if (this.map[0]) this.flowerSpots = this.findFlowers(this.map[0]);
     // The brown patch on the map's second layer is the dirt the rock leaves.

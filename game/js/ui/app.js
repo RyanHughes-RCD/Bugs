@@ -15,7 +15,7 @@ import { DECOR_BY_ID } from '../data/decor.js';
 import { simulateHatches } from '../systems/eggs.js';
 import { checkForUpdate, applyUpdate } from './updater.js';
 import { SpriteEditor } from '../community/editor.js';
-import { cleanRows, cleanEyes } from '../community/studio.js';
+import { cleanRows, cleanEyes, spriteName, ownerOnly } from '../community/studio.js';
 
 const anEgg = (tier) => { const n = EGG_BY_ID[tier].name; return `${/^[AEIOU]/.test(n) ? 'an' : 'a'} ${n}`; };
 const BACKUP_TIME_KEY = 'bug-garden-last-backup';
@@ -108,6 +108,13 @@ export class App {
       onBoat: () => {
         const res = this.game.catchBoat();
         if (res.ok) this.toast(`You fish the paper boat out of the river. ${anEgg(res.egg)} was tucked inside! ${res.nested ? "It's settled into a nest." : "It's waiting in the Hatchery."}`, 'good', 4500);
+        return res;
+      },
+      onCats: () => {
+        const res = this.game.petCats();
+        if (!res.ok) return res;
+        const names = res.cats.length > 1 ? `${res.cats.slice(0, -1).join(', ')} and ${res.cats.at(-1)}` : res.cats[0];
+        this.toast(`You pet ${names}. ${res.cats.length > 1 ? 'They' : 'The cat'} left you ${anEgg(res.egg)}! ${res.nested ? "It's settled into a nest." : "It's waiting in the Hatchery."}`, 'good', 4500);
         return res;
       },
       onBird: (scared) => {
@@ -380,7 +387,7 @@ export class App {
       queued = false;
       const rows = state.editor.rows();
       const art = this.A.paint(rows);
-      const view = ed.kind === 'fix' ? SPECIES[ed.species].view : root.querySelector('#ed-view')?.value || 'top';
+      const view = ed.kind === 'fix' ? SPECIES[ed.species]?.view || 'top' : root.querySelector('#ed-view')?.value || 'top';
       const looks = [['Normal', art], ['Shiny', this.A.shiny(art)], ['Golden', this.A.golden(art)], ['Albino', this.A.albino(art, view, state.editor.eyeList())]];
       preview.innerHTML = `<div class="pv-cell"><img class="px pv-1" alt=""><small>Actual size</small></div>${looks.map(([label]) => `<div class="pv-cell"><img class="px pv-3" alt=""><small>${label}</small></div>`).join('')}`;
       const imgs = preview.querySelectorAll('img');
@@ -480,6 +487,13 @@ export class App {
     const res = await this.studio.submit(raw, ed.key || null);
     if (btnEl) btnEl.disabled = false;
     if (!res.ok) return this.toast(res.error, 'bad');
+    // The owner's own cats skip the queue: approved and live at once.
+    if (ed.kind === 'fix' && ownerOnly(ed.species) && !ed.key) {
+      const live = await this.studio.approve(res.ref);
+      if (!live.ok) return this.toast(live.error, 'bad');
+      this.closeModal();
+      return this.toast(`${spriteName(ed.species)} is redrawn for everyone.`, 'good');
+    }
     this.closeModal();
     this.ui.bugsTab = 'studio';
     this.ui.studioFilter = { ...this.ui.studioFilter, status: 'pending', mine: false };
@@ -921,7 +935,7 @@ export class App {
         this.studio.reject(d.ref, note).then((res) => this.result(res, 'Rejected.'));
         break;
       }
-      case 'studio-live': this.studio.setLiveSprite(d.id, d.ref || null).then((res) => this.result(res, d.ref ? 'Switched to that fix.' : `${SPECIES[d.id].name} is back to its original sprite.`)); break;
+      case 'studio-live': this.studio.setLiveSprite(d.id, d.ref || null).then((res) => this.result(res, d.ref ? 'Switched to that fix.' : `${spriteName(d.id)} is back to the original sprite.`)); break;
       // Developer tools (?debug only).
       case 'warp':
         g.warp(Number(d.ms));

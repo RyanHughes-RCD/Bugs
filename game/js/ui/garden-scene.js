@@ -1,6 +1,7 @@
 import { SPECIES } from '../data/species.js';
 import { EGG_BY_ID } from '../data/eggs.js';
 import { DECOR_BY_ID, BATTERY, NIGHT_FLYERS } from '../data/decor.js';
+import { CATS, catsAsleep } from '../data/cats.js';
 import { GARDEN_MAP, BOAT, BIRD } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
@@ -25,6 +26,16 @@ const rand = (a, b) => a + Math.random() * (b - a);
 // The paper boat's course down the middle of the river, in the river art's pixels.
 const BOAT_PATH = [[19, -8], [19, 8], [24, 16], [38, 22], [55, 30], [68, 40], [80, 48], [92, 56], [104, 62], [118, 67]];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// A campfire's flicker, 0 to 1: a slow sway, quicker licks, and now and
+// then a sharp dip, from sines that never quite line up.
+const flicker = (t) => {
+  const v = 0.55 + 0.2 * Math.sin(t * 2.3) + 0.14 * Math.sin(t * 6.7 + 1.3) + 0.08 * Math.sin(t * 13.1 + 0.4) + 0.05 * Math.sin(t * 23.9 + 2.1);
+  const dip = Math.max(0, Math.sin(t * 1.7 + 0.8) * Math.sin(t * 4.9)) ** 6 * 0.35;
+  return clamp(v - dip, 0, 1);
+};
+// The two orbs of light inside the Jar of Light, in its art's pixels:
+// [x, y, radius, phase].
+const JAR_ORBS = [[17, 42, 3, 0], [27, 46, 2.5, 2.4]];
 
 export class GardenScene {
   constructor(canvas, game, assets, handlers) {
@@ -448,6 +459,7 @@ export class GardenScene {
     this.updateWater(dt);
     this.updateBoat(dt);
     this.updateBird(dt, list);
+    this.updateCats(dt);
     this.logRoll = Math.max(0, this.logRoll - dt);
     for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * (p.g ?? 1) * dt; p.life -= dt; }
     this.particles = this.particles.filter((p) => p.life > 0).slice(-220);
@@ -471,6 +483,7 @@ export class GardenScene {
     this.drawRiver(); // under the decorations, so its bank never covers them
     this.drawBoat();
     this.drawDecor();
+    this.drawCats();
     this.drawCoins();
     const all = [...this.entities.values()].filter((e) => !e.hidden).sort((a, b) => a.y - b.y);
     for (const e of all) this.drawShadow(e);
@@ -525,7 +538,7 @@ export class GardenScene {
         else if (e.act === 'charge' && e.actTime > 0) lights.push([e.x, e.y, 12, 0.7]);
       }
       const jar = this.decorSpot('jar');
-      if (jar) lights.push([jar.x, jar.y, 38 + Math.sin(this.t * 2) * 2, 1]);
+      if (jar) lights.push([jar.x, jar.y + 5, 50 + flicker(this.t) * 10, 0.85 + 0.15 * flicker(this.t + 0.5)]); // the jar lights up a good patch of garden
       const bat = this.decorSpot('battery');
       if (bat) lights.push([bat.x, bat.y, 16 + Math.sin(this.t * 7) * 1.5, 0.5]);
       for (const f of this.fireflies) lights.push([f.x, f.y, 7, 0.5 + 0.4 * Math.sin(f.p * 3)]);
@@ -547,7 +560,7 @@ export class GardenScene {
     ctx.globalCompositeOperation = 'lighter';
     for (const e of all) if (e.glowing) this.glow(e.x, e.y - this.bob(e), 14, `rgba(255, 220, 120, ${0.35 * dark})`);
     const jar = this.decorSpot('jar');
-    if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, `rgba(255, 230, 120, ${0.45 * dark})`);
+    if (jar) this.glow(jar.x, jar.y + 5, 32 + flicker(this.t) * 10, `rgba(255, 215, 110, ${(0.3 + 0.25 * flicker(this.t + 0.3)) * dark})`);
     for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${(0.4 + 0.4 * Math.sin(f.p * 3)) * dark})`);
     ctx.globalCompositeOperation = 'source-over';
   }
@@ -845,11 +858,36 @@ export class GardenScene {
       if (id === 'log' && this.logRoll > 0) ctx.rotate(Math.sin(this.logRoll * 14) * 0.25 * this.logRoll);
       if (dragging && !decorFits(this.game.state.garden, id, spot.x, spot.y)) ctx.globalAlpha = 0.5;
       ctx.drawImage(art, -Math.round((art.width * px) / 2), -Math.round((art.height * px) / 2), art.width * px, art.height * px);
+      if (id === 'jar') this.drawJarOrbs(art, px);
       ctx.restore();
       // The battery crackles now and then.
       if (id === 'battery' && Math.random() < 0.02) {
         const r = decorRect(id, spot.x, spot.y);
         for (let k = 0; k < 3; k++) this.particles.push({ x: r.x0 + r.w * rand(0.2, 0.5), y: r.y0 + rand(0, 3), vx: rand(-10, 10), vy: rand(-16, -6), life: 0.5, color: '#fff07a' });
+      }
+    }
+  }
+
+  // The jar's two little orbs of light, drifting inside the glass and
+  // flickering like a campfire. Drawn in the jar's own (translated) space.
+  drawJarOrbs(art, px) {
+    const { ctx } = this;
+    for (const [ox, oy, r, ph] of JAR_ORBS) {
+      const f = flicker(this.t * 1.1 + ph);
+      const x = (ox - art.width / 2 + Math.sin(this.t * 0.9 + ph) * 1.2) * px;
+      const y = (oy - art.height / 2 + Math.sin(this.t * 1.3 + ph * 2) * 1) * px;
+      const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 3 * px);
+      halo.addColorStop(0, `rgba(255, 220, 110, ${0.35 + 0.35 * f})`);
+      halo.addColorStop(1, 'rgba(255, 200, 90, 0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(x - r * 3 * px, y - r * 3 * px, r * 6 * px, r * 6 * px);
+      // A pixel disc: deep yellow, a brighter heart, a white-hot centre.
+      const rr = r * (0.9 + 0.15 * f);
+      for (const [k, color] of [[1, '#ffcd75'], [0.6, '#fff07a'], [0.25, '#ffffff']]) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(Math.round(x), Math.round(y), Math.max(px * 0.5, rr * k * px), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -1180,6 +1218,72 @@ export class GardenScene {
     ctx.restore();
   }
 
+  // ---------- the cats ----------
+  // Whoever is visiting stands along the flower bed, in the same order each
+  // time. Opened at night (CAT_VISITS.asleep), they're curled up asleep for
+  // the whole session; awake, they meow now and then until petted.
+
+  updateCats(dt) {
+    this.catTimer = (this.catTimer || 0) - dt;
+    if (this.catTimer <= 0) {
+      this.catTimer = 1;
+      this.cats = this.ready ? this.game.catVisit() : null;
+      if (this.catsAsleep === undefined && this.ready) this.catsAsleep = catsAsleep(this.game.now());
+    }
+    const visit = this.cats;
+    if (!visit?.here.length || this.decorDrag?.id === 'flower_bed') return;
+    for (const c of this.catSpots()) {
+      if (Math.random() > dt * (this.catsAsleep ? 0.5 : visit.petted ? 0 : 0.15)) continue;
+      if (this.catsAsleep) this.float(c.x + 2, c.y - 14, 'z', '#94b0c2');
+      else this.float(c.x, c.y - 26, 'Meow!', '#f4f4f4');
+    }
+  }
+
+  // Where each visiting cat is: [{ id, x, y }], feet on the flower bed.
+  catSpots() {
+    const visit = this.cats;
+    const bed = this.decorSpot('flower_bed');
+    if (!visit?.here.length || !bed) return [];
+    const r = decorRect('flower_bed', bed.x, bed.y);
+    return CATS.map((c, i) => ({ id: c.id, x: r.x0 + r.w * (0.25 + i * 0.25), y: r.y0 + r.h * (i === 1 ? 0.45 : 0.68) }))
+      .filter((c) => visit.here.includes(c.id));
+  }
+
+  drawCats() {
+    const spots = this.catSpots();
+    if (!spots.length) return;
+    const { ctx } = this;
+    for (const c of spots.sort((a, b) => a.y - b.y)) {
+      const img = this.assets.bugs[this.catsAsleep ? `${c.id}_asleep` : c.id];
+      if (!img) continue;
+      const size = img.width * this.bugPx;
+      // A slow breath while asleep; awake, the odd little shift of weight.
+      const breath = Math.sin(this.t * (this.catsAsleep ? 1.2 : 0.7) + c.x) > 0.6 ? 1 : 0;
+      const [sx, sy] = this.toScreen(c.x, c.y);
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(Math.round(sx), Math.round(sy), size * 0.36, size * 0.07, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.drawImage(img, Math.round(sx - size / 2), Math.round(sy - size * (this.catsAsleep ? 0.86 : 0.83) + breath * this.bugPx), size, size);
+    }
+  }
+
+  // Tapped a cat? Pets them all (once a visit).
+  catAt(wx, wy) {
+    if (!this.cats || this.cats.petted) return false;
+    return this.catSpots().some((c) => Math.abs(c.x - wx) < 13 && wy > c.y - 24 && wy < c.y + 2);
+  }
+
+  petCats() {
+    const res = this.handlers.onCats?.();
+    if (!res?.ok) return;
+    for (const c of this.catSpots()) {
+      for (let k = 0; k < 5; k++) this.particles.push({ x: c.x, y: c.y - 16, vx: rand(-14, 14), vy: rand(-24, -8), life: 0.9, color: '#f4a0b0', g: 0.2 });
+      this.float(c.x, c.y - 26, 'Purr', '#f4a0b0');
+    }
+    this.cats = this.game.catVisit();
+  }
+
   // Tapping the battery: a ring of electricity spreads out from it.
   pulse() {
     const spot = this.decorSpot('battery');
@@ -1327,6 +1431,7 @@ export class GardenScene {
       const [bx, by] = this.boatAt(this.boat.d);
       if (Math.hypot(bx - wx, by - wy) < 11) return this.catchBoat();
     }
+    if (this.catAt(wx, wy)) return this.petCats();
     const onNest = this.nestLayout().some((n) => Math.abs(cx - n.x) < n.size / 2 && Math.abs(cy - n.y) < n.size / 2);
     const r = this.game.state.garden.rock;
     const onBug = [...this.entities.values()].some((b) => !b.hidden && !b.leaving && Math.hypot(b.x - wx, b.y - this.bob(b) - wy) < 8);

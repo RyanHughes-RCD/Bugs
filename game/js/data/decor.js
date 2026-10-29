@@ -46,7 +46,7 @@ export const DECOR = [
     desc: 'Flows in along the top of the garden. Water bugs love it, and it makes the coin pot 25% bigger.',
   },
   {
-    id: 'jar', name: 'Jar of Light', price: 6000, sprite: 'decor/jar.png', size: [44, 62], scale: 0.35, bonus: 0.5, attracts: 3,
+    id: 'jar', name: 'Jar of Light', price: 6000, sprite: 'decor/jar.png', size: [44, 62], scale: 0.7, bonus: 0.5, attracts: 3,
     loves: (sp) => NIGHT_FLYERS.has(sp.base),
     desc: 'Moths and fireflies circle it, and it glows after dark.',
   },

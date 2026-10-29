@@ -7,6 +7,8 @@ import { AREAS, AREA_BY_ID } from '../data/areas.js';
 import { UPGRADES, upgradeCost, upgradeValue } from '../data/upgrades.js';
 import { GARDEN_LIMIT, PARTY_SIZE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
 import { DECOR } from '../data/decor.js';
+import { CAT_SPRITES, CAT_SPRITE_BY_ID } from '../data/cats.js';
+import { spriteName } from '../community/studio.js';
 import { GARDEN_CHESTS } from '../data/garden-chests.js';
 import { gardenChestArea } from '../systems/chests.js';
 import { effectiveTraits, itemBonus, bugName, bugsOnExpedition, assignmentOf, gardenCount, gardenLimit, releaseValue, rarityOf, traitTotal } from '../systems/bugs.js';
@@ -345,7 +347,7 @@ function submissionCard(v, s) {
     ? `<img class="px bug-img" src="${A.bugUrl(s.species)}" alt="now"><span class="arrow">→</span><img class="px bug-img" src="${A.rowsUrl(s.rows)}" alt="fix">`
     : `<img class="px bug-img big" src="${A.rowsUrl(s.rows)}" alt="">`;
   const title = s.kind === 'fix'
-    ? `<b>Fix: ${esc(SPECIES[s.species].name)}</b>`
+    ? `<b>Fix: ${esc(spriteName(s.species))}</b>`
     : `<b>${esc(s.name)}</b> ${rarityTag(s.rarity)} <small class="inline">${FAMILIES[s.family]}</small>`;
   const ideaInfo = s.kind === 'idea'
     ? `${s.desc ? `<small>"${esc(s.desc)}"</small>` : ''}<small>${s.traits.map((t) => `${traitIcon(A, t)} ${TRAITS[t].name}`).join(' ')}${s.habitat ? ` · lives in ${esc(AREA_BY_ID[s.habitat].name)}` : ''}</small>`
@@ -375,9 +377,13 @@ export function studioPickModal(v, mode) {
   const st = game.state;
   const known = SPECIES_LIST.filter((s) => studio.isOwner || st.dex[s.id]?.caught);
   const cells = known.map((s) => `<button class="dex-cell known r-${s.rarity}" data-act="${mode === 'fix' ? 'ed-fix' : 'ed-idea'}" data-id="${s.id}">${speciesImg(A, s.id)}<span class="dex-name">${esc(s.name)}</span>${mode === 'fix' && studio.list({ kind: 'fix', status: 'pending', species: s.id }).length ? '<span class="dex-count">✎</span>' : ''}</button>`).join('');
+  // Only the owner redraws the cats, and their changes go live straight away.
+  const cats = mode === 'fix' && studio.isOwner
+    ? `<h4>Your cats</h4><div class="dex-grid">${CAT_SPRITES.map((c) => `<button class="dex-cell known" data-act="ed-fix" data-id="${c.id}"><img class="px bug-img" src="${A.bugUrl(c.id)}" alt=""><span class="dex-name">${esc(c.name)}</span></button>`).join('')}</div><h4>Bugs</h4>`
+    : '';
   return mode === 'fix'
     ? `<h3>Fix a sprite</h3><p class="meta">Pick a bug you've discovered. ✎ marks bugs that already have a fix waiting for approval.</p>
-      <div class="dex-grid">${cells || '<p class="muted">Discover some bugs first.</p>'}</div><div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`
+      ${cats}<div class="dex-grid">${cells || '<p class="muted">Discover some bugs first.</p>'}</div><div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`
     : `<h3>New bug idea</h3><p class="meta">Start from a blank canvas, or trace over a bug you know.</p>
       <div class="row wrap">${btn('Blank 16×16', 'ed-idea', { size: 16 }, 'go')}${btn('Blank 32×32 (big bug)', 'ed-idea', { size: 32 })}</div>
       <h4>Start from a bug</h4><div class="dex-grid">${cells}</div><div class="row sticky-foot">${btn('Close', 'close-modal')}</div>`;
@@ -388,7 +394,7 @@ export function studioPickModal(v, mode) {
 export function editorModal(v, ed) {
   const { A } = v;
   const studio = v.studio;
-  const sp = ed.species && SPECIES[ed.species];
+  const sp = ed.species && (SPECIES[ed.species] || CAT_SPRITE_BY_ID[ed.species]);
   const pendingOthers = ed.kind === 'fix' ? studio.list({ kind: 'fix', status: 'pending', species: ed.species }).filter((s) => s.ref !== ed.ref).length : 0;
   const opt = (val, label, cur) => `<option value="${val}" ${val === cur ? 'selected' : ''}>${esc(label)}</option>`;
   const f = ed.form;
@@ -428,7 +434,7 @@ export function editorModal(v, ed) {
 export function rejectModal(v, ref) {
   const s = v.studio.subs.get(ref);
   if (!s) return null;
-  return `<h3>Reject ${s.kind === 'fix' ? `this ${esc(SPECIES[s.species].name)} fix` : `"${esc(s.name)}"`}?</h3>
+  return `<h3>Reject ${s.kind === 'fix' ? `this ${esc(spriteName(s.species))} fix` : `"${esc(s.name)}"`}?</h3>
     <label class="field">Note for ${esc(v.studio.nameOf(s.author))} <small class="inline">(optional)</small><textarea id="reject-note" maxlength="160" rows="2" placeholder="Why not, or what to change"></textarea></label>
     <div class="row sticky-foot">${btn('Cancel', 'close-modal')}${btn('Reject', 'studio-reject-yes', { ref }, 'danger')}</div>`;
 }
