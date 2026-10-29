@@ -25,6 +25,16 @@ const rand = (a, b) => a + Math.random() * (b - a);
 // The paper boat's course down the middle of the river, in the river art's pixels.
 const BOAT_PATH = [[19, -8], [19, 8], [24, 16], [38, 22], [55, 30], [68, 40], [80, 48], [92, 56], [104, 62], [118, 67]];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// A campfire's flicker, 0 to 1: a slow sway, quicker licks, and now and
+// then a sharp dip, from sines that never quite line up.
+const flicker = (t) => {
+  const v = 0.55 + 0.2 * Math.sin(t * 2.3) + 0.14 * Math.sin(t * 6.7 + 1.3) + 0.08 * Math.sin(t * 13.1 + 0.4) + 0.05 * Math.sin(t * 23.9 + 2.1);
+  const dip = Math.max(0, Math.sin(t * 1.7 + 0.8) * Math.sin(t * 4.9)) ** 6 * 0.35;
+  return clamp(v - dip, 0, 1);
+};
+// The two orbs of light inside the Jar of Light, in its art's pixels:
+// [x, y, radius, phase].
+const JAR_ORBS = [[17, 47, 3, 0], [27, 51, 2.5, 2.4]];
 
 export class GardenScene {
   constructor(canvas, game, assets, handlers) {
@@ -525,7 +535,7 @@ export class GardenScene {
         else if (e.act === 'charge' && e.actTime > 0) lights.push([e.x, e.y, 12, 0.7]);
       }
       const jar = this.decorSpot('jar');
-      if (jar) lights.push([jar.x, jar.y, 56 + Math.sin(this.t * 2) * 3, 1]); // the jar lights up a good patch of garden
+      if (jar) lights.push([jar.x, jar.y + 5, 50 + flicker(this.t) * 10, 0.85 + 0.15 * flicker(this.t + 0.5)]); // the jar lights up a good patch of garden
       const bat = this.decorSpot('battery');
       if (bat) lights.push([bat.x, bat.y, 16 + Math.sin(this.t * 7) * 1.5, 0.5]);
       for (const f of this.fireflies) lights.push([f.x, f.y, 7, 0.5 + 0.4 * Math.sin(f.p * 3)]);
@@ -547,7 +557,7 @@ export class GardenScene {
     ctx.globalCompositeOperation = 'lighter';
     for (const e of all) if (e.glowing) this.glow(e.x, e.y - this.bob(e), 14, `rgba(255, 220, 120, ${0.35 * dark})`);
     const jar = this.decorSpot('jar');
-    if (jar) this.glow(jar.x, jar.y, 38 + Math.sin(this.t * 2) * 3, `rgba(255, 230, 120, ${0.45 * dark})`);
+    if (jar) this.glow(jar.x, jar.y + 5, 32 + flicker(this.t) * 10, `rgba(255, 215, 110, ${(0.3 + 0.25 * flicker(this.t + 0.3)) * dark})`);
     for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${(0.4 + 0.4 * Math.sin(f.p * 3)) * dark})`);
     ctx.globalCompositeOperation = 'source-over';
   }
@@ -845,11 +855,36 @@ export class GardenScene {
       if (id === 'log' && this.logRoll > 0) ctx.rotate(Math.sin(this.logRoll * 14) * 0.25 * this.logRoll);
       if (dragging && !decorFits(this.game.state.garden, id, spot.x, spot.y)) ctx.globalAlpha = 0.5;
       ctx.drawImage(art, -Math.round((art.width * px) / 2), -Math.round((art.height * px) / 2), art.width * px, art.height * px);
+      if (id === 'jar') this.drawJarOrbs(art, px);
       ctx.restore();
       // The battery crackles now and then.
       if (id === 'battery' && Math.random() < 0.02) {
         const r = decorRect(id, spot.x, spot.y);
         for (let k = 0; k < 3; k++) this.particles.push({ x: r.x0 + r.w * rand(0.2, 0.5), y: r.y0 + rand(0, 3), vx: rand(-10, 10), vy: rand(-16, -6), life: 0.5, color: '#fff07a' });
+      }
+    }
+  }
+
+  // The jar's two little orbs of light, drifting inside the glass and
+  // flickering like a campfire. Drawn in the jar's own (translated) space.
+  drawJarOrbs(art, px) {
+    const { ctx } = this;
+    for (const [ox, oy, r, ph] of JAR_ORBS) {
+      const f = flicker(this.t * 1.1 + ph);
+      const x = (ox - art.width / 2 + Math.sin(this.t * 0.9 + ph) * 1.2) * px;
+      const y = (oy - art.height / 2 + Math.sin(this.t * 1.3 + ph * 2) * 1) * px;
+      const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 3 * px);
+      halo.addColorStop(0, `rgba(255, 220, 110, ${0.35 + 0.35 * f})`);
+      halo.addColorStop(1, 'rgba(255, 200, 90, 0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(x - r * 3 * px, y - r * 3 * px, r * 6 * px, r * 6 * px);
+      // A pixel disc: deep yellow, a brighter heart, a white-hot centre.
+      const rr = r * (0.9 + 0.15 * f);
+      for (const [k, color] of [[1, '#ffcd75'], [0.6, '#fff07a'], [0.25, '#ffffff']]) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(Math.round(x), Math.round(y), Math.max(px * 0.5, rr * k * px), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
