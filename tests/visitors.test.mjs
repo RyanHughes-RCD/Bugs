@@ -200,11 +200,12 @@ test("petting the cats gives one egg: the toughest unlocked area's, a tier up pe
   assert.equal(game.catEggTier(3), 'legendary');
   for (const a of Object.values(game.state.areas)) a.unlocked = true;
   assert.equal(game.catEggTier(1), 'mythic', 'New Jersey');
-  assert.equal(game.catEggTier(3), 'mythic', 'never better than Mythic');
+  assert.equal(game.catEggTier(2), 'mythic', 'two cats: still Mythic at best');
+  assert.equal(game.catEggTier(3), 'celestial', 'all three, with New Jersey: Celestial');
   for (const a of Object.values(game.state.areas)) a.unlocked = false;
   game.state.areas.garden.unlocked = game.state.areas.forest.unlocked = game.state.areas.caves.unlocked = game.state.areas.volcano.unlocked = game.state.areas.chem.unlocked = game.state.areas.aether.unlocked = true;
   assert.equal(game.catEggTier(2), 'legendary');
-  assert.equal(game.catEggTier(3), 'mythic', 'capped');
+  assert.equal(game.catEggTier(3), 'mythic', 'all three, but no New Jersey: capped at Mythic');
 
   game.state.garden.cats = { slot: game.catSlot(), here: [], petted: false };
   assert.equal(game.petCats().ok, false, 'nobody came');

@@ -440,10 +440,12 @@ export class Game {
   }
 
   // The egg n cats give: the toughest unlocked area's egg, a tier up per
-  // extra cat, but never better than CAT_VISITS.maxEgg.
+  // extra cat, but never better than CAT_VISITS.maxEgg, unless every cat
+  // came and the last area is unlocked (then up to allCatsEgg).
   catEggTier(n) {
     const area = [...AREAS].reverse().find((a) => this.state.areas[a.id]?.unlocked) || AREAS[0];
-    const i = Math.min(EGG_BY_ID[area.eggTier].index + Math.max(0, n - 1), EGG_BY_ID[CAT_VISITS.maxEgg].index);
+    const best = n >= CATS.length && area === AREAS.at(-1) ? CAT_VISITS.allCatsEgg : CAT_VISITS.maxEgg;
+    const i = Math.min(EGG_BY_ID[area.eggTier].index + Math.max(0, n - 1), EGG_BY_ID[best].index);
     return EGG_TIERS[i].id;
   }
 
