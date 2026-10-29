@@ -525,7 +525,7 @@ export class GardenScene {
         else if (e.act === 'charge' && e.actTime > 0) lights.push([e.x, e.y, 12, 0.7]);
       }
       const jar = this.decorSpot('jar');
-      if (jar) lights.push([jar.x, jar.y, 38 + Math.sin(this.t * 2) * 2, 1]);
+      if (jar) lights.push([jar.x, jar.y, 56 + Math.sin(this.t * 2) * 3, 1]); // the jar lights up a good patch of garden
       const bat = this.decorSpot('battery');
       if (bat) lights.push([bat.x, bat.y, 16 + Math.sin(this.t * 7) * 1.5, 0.5]);
       for (const f of this.fireflies) lights.push([f.x, f.y, 7, 0.5 + 0.4 * Math.sin(f.p * 3)]);
@@ -547,7 +547,7 @@ export class GardenScene {
     ctx.globalCompositeOperation = 'lighter';
     for (const e of all) if (e.glowing) this.glow(e.x, e.y - this.bob(e), 14, `rgba(255, 220, 120, ${0.35 * dark})`);
     const jar = this.decorSpot('jar');
-    if (jar) this.glow(jar.x, jar.y, 26 + Math.sin(this.t * 2) * 2, `rgba(255, 230, 120, ${0.45 * dark})`);
+    if (jar) this.glow(jar.x, jar.y, 38 + Math.sin(this.t * 2) * 3, `rgba(255, 230, 120, ${0.45 * dark})`);
     for (const f of this.fireflies) this.glow(f.x, f.y, 4, `rgba(220, 255, 140, ${(0.4 + 0.4 * Math.sin(f.p * 3)) * dark})`);
     ctx.globalCompositeOperation = 'source-over';
   }
