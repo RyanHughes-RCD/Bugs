@@ -35,6 +35,11 @@ const flicker = (t) => {
 };
 // The two orbs of light inside the Jar of Light, in its art's pixels:
 // [x, y, radius, phase].
+// Where the cats sit, in the flower bed art's pixels: [x, y of their lowest
+// pixel]. Each is in front of the box's bottom edge, a little below its
+// shadow there: Mika on the left face, Noctis and Vyke on the right.
+const CAT_SEATS = [[13, 74], [45, 73], [69, 61]];
+const CAT_SIZE = 1.25; // drawn this much bigger than a bug's pixels
 const JAR_ORBS = [[17, 42, 3, 0], [27, 46, 2.5, 2.4]];
 
 export class GardenScene {
@@ -1234,52 +1239,77 @@ export class GardenScene {
     if (!visit?.here.length || this.decorDrag?.id === 'flower_bed') return;
     for (const c of this.catSpots()) {
       if (Math.random() > dt * (this.catsAsleep ? 0.5 : visit.petted ? 0 : 0.15)) continue;
-      if (this.catsAsleep) this.float(c.x + 2, c.y - 14, 'z', '#94b0c2');
-      else this.float(c.x, c.y - 26, 'Meow!', '#f4f4f4');
+      if (this.catsAsleep) this.float(c.x + 2, c.y - 17, 'z', '#94b0c2');
+      else this.float(c.x, c.y - 31, 'Meow!', '#f4f4f4');
     }
   }
 
-  // Where each visiting cat is: [{ id, x, y }], feet on the flower bed.
+  // Where each visiting cat is: [{ id, x, y }], in map pixels, with y the
+  // bottom of its lowest pixel: in front of the flower bed's bottom edge,
+  // just below the bed's shadow (CAT_SEATS).
   catSpots() {
     const visit = this.cats;
     const bed = this.decorSpot('flower_bed');
     if (!visit?.here.length || !bed) return [];
     const r = decorRect('flower_bed', bed.x, bed.y);
-    return CATS.map((c, i) => ({ id: c.id, x: r.x0 + r.w * (0.25 + i * 0.25), y: r.y0 + r.h * (i === 1 ? 0.45 : 0.68) }))
+    const k = DECOR_BY_ID.flower_bed.scale;
+    return CATS.map((c, i) => ({ id: c.id, x: r.x0 + (CAT_SEATS[i][0] + 0.5) * k, y: r.y0 + (CAT_SEATS[i][1] + 1) * k, seat: CAT_SEATS[i] }))
       .filter((c) => visit.here.includes(c.id));
+  }
+
+  // The lowest drawn row of a sprite (redrawn cats may differ), cached per image.
+  lowestRow(img) {
+    this.lowRows = this.lowRows || new WeakMap();
+    if (!this.lowRows.has(img)) {
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const cx = c.getContext('2d');
+      cx.drawImage(img, 0, 0);
+      const d = cx.getImageData(0, 0, c.width, c.height).data;
+      let low = img.height - 1;
+      while (low > 0 && ![...Array(img.width).keys()].some((x) => d[(low * img.width + x) * 4 + 3] > 0)) low--;
+      this.lowRows.set(img, low);
+    }
+    return this.lowRows.get(img);
   }
 
   drawCats() {
     const spots = this.catSpots();
-    if (!spots.length) return;
+    const art = this.assets.decor.flower_bed;
+    if (!spots.length || !art) return;
     const { ctx } = this;
+    // Seats are in the bed art's pixels, placed exactly as drawDecor draws it.
+    const bed = this.decorSpot('flower_bed');
+    const px = Math.max(1, Math.round(this.scale * DECOR_BY_ID.flower_bed.scale));
+    const [bx, by] = this.toScreen(bed.x, bed.y);
+    const left = Math.round(bx) - Math.round((art.width * px) / 2);
+    const top = Math.round(by) - Math.round((art.height * px) / 2);
     for (const c of spots.sort((a, b) => a.y - b.y)) {
       const img = this.assets.bugs[this.catsAsleep ? `${c.id}_asleep` : c.id];
       if (!img) continue;
-      const size = img.width * this.bugPx;
+      const cpx = this.bugPx * CAT_SIZE; // exactly a quarter bigger than a bug's pixels
+      const size = img.width * cpx;
+      const fx = left + (c.seat[0] + 0.5) * px;
+      const fy = top + (c.seat[1] + 1) * px; // the bottom of the cat's lowest pixel
       // A slow breath while asleep; awake, the odd little shift of weight.
-      const breath = Math.sin(this.t * (this.catsAsleep ? 1.2 : 0.7) + c.x) > 0.6 ? 1 : 0;
-      const [sx, sy] = this.toScreen(c.x, c.y);
-      ctx.fillStyle = 'rgba(26, 28, 44, 0.25)';
-      ctx.beginPath();
-      ctx.ellipse(Math.round(sx), Math.round(sy), size * 0.36, size * 0.07, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.drawImage(img, Math.round(sx - size / 2), Math.round(sy - size * (this.catsAsleep ? 0.86 : 0.83) + breath * this.bugPx), size, size);
+      const breath = Math.sin(this.t * (this.catsAsleep ? 1.2 : 0.7) + c.x) > 0.6 ? cpx : 0;
+      ctx.drawImage(img, Math.round(fx - size / 2), Math.round(fy - (this.lowestRow(img) + 1) * cpx - breath), Math.round(size), Math.round(size));
     }
   }
 
   // Tapped a cat? Pets them all (once a visit).
   catAt(wx, wy) {
     if (!this.cats || this.cats.petted) return false;
-    return this.catSpots().some((c) => Math.abs(c.x - wx) < 13 && wy > c.y - 24 && wy < c.y + 2);
+    return this.catSpots().some((c) => Math.abs(c.x - wx) < 16 && wy > c.y - 27 && wy < c.y + 1);
   }
 
   petCats() {
     const res = this.handlers.onCats?.();
     if (!res?.ok) return;
     for (const c of this.catSpots()) {
-      for (let k = 0; k < 5; k++) this.particles.push({ x: c.x, y: c.y - 16, vx: rand(-14, 14), vy: rand(-24, -8), life: 0.9, color: '#f4a0b0', g: 0.2 });
-      this.float(c.x, c.y - 26, 'Purr', '#f4a0b0');
+      for (let k = 0; k < 5; k++) this.particles.push({ x: c.x, y: c.y - 20, vx: rand(-14, 14), vy: rand(-24, -8), life: 0.9, color: '#f4a0b0', g: 0.2 });
+      this.float(c.x, c.y - 31, 'Purr', '#f4a0b0');
     }
     this.cats = this.game.catVisit();
   }
