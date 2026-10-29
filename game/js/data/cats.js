@@ -1,5 +1,5 @@
-// The owner's three cats. They visit the flower bed: every two hours, on the
-// hour (by the device clock), each one has a `chance` of turning up. Pet
+// The owner's three cats. They visit the flower bed: every six hours, on the
+// hour (midnight, 6am, noon and 6pm by the device clock), each one has a `chance` of turning up. Pet
 // them for an egg as good as the toughest area you've unlocked gives, one
 // tier better for each extra cat (data/areas.js eggTier), up to Mythic. Only
 // all three at once, with the last area (New Jersey) unlocked, give Celestial.
@@ -18,7 +18,7 @@ export const CAT_BY_ID = Object.fromEntries(CATS.map((c) => [c.id, c]));
 export const CAT_SPRITES = CATS.flatMap((c) => [{ id: c.id, name: c.name }, { id: `${c.id}_asleep`, name: `${c.name} (asleep)` }]);
 export const CAT_SPRITE_BY_ID = Object.fromEntries(CAT_SPRITES.map((c) => [c.id, c]));
 
-export const CAT_VISITS = { everyHours: 2, chance: 0.25, asleep: [21, 7], maxEgg: 'mythic', allCatsEgg: 'celestial' };
+export const CAT_VISITS = { everyHours: 6, chance: 0.25, asleep: [21, 7], maxEgg: 'mythic', allCatsEgg: 'celestial' };
 
 // Are the cats asleep, for a game opened at `time`?
 export function catsAsleep(time) {

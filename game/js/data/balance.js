@@ -55,7 +55,7 @@ export const STARTING = {
 // tier's weight raised by `perStar` x its rank for every species in the
 // Bugdex, so a fuller Bugdex brings rarer eggs.
 export const BOAT = {
-  everyMin: [20, 45], speed: 5, // map pixels a second: it takes about a minute to pass
+  everyMin: [40, 75], speed: 5, // map pixels a second: it takes about a minute to pass
   eggWeights: [50, 25, 13, 7, 3.2, 1.2, 0.45, 0.15], perStar: 0.05,
 };
 

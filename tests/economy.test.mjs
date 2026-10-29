@@ -27,6 +27,7 @@ test('upgrade purchases validate coins and max level, never going negative', () 
   assert.equal(game.state.upgrades.better_finds, 0);
   game.state.coins = 1e9;
   const u = UPGRADES.find((x) => x.id === 'improved_exploration');
+  game.state.areas.void.unlocked = true; // the last level waits for The Void
   for (let i = 0; i < u.max; i++) assert.ok(game.buyUpgrade(u.id).ok);
   assert.equal(game.buyUpgrade(u.id).ok, false);
   assert.equal(game.state.upgrades[u.id], u.max);
@@ -41,7 +42,26 @@ test('upgrade effects: better finds, more expedition slots', () => {
   game.state.upgrades.improved_exploration = 1;
   assert.equal(expeditionSlots(game.state), 2);
   game.state.upgrades.improved_exploration = 2;
-  assert.equal(expeditionSlots(game.state), 2, 'two slots at most');
+  assert.equal(expeditionSlots(game.state), 2);
+  game.state.upgrades.improved_exploration = 3;
+  assert.equal(expeditionSlots(game.state), 3, 'three slots at most');
+});
+
+test('the third expedition slot costs 50,000 and waits for The Void', () => {
+  const { game } = makeGame();
+  game.state.coins = 1e6;
+  assert.ok(game.buyUpgrade('improved_exploration').ok);
+  assert.ok(game.buyUpgrade('improved_exploration').ok);
+  assert.equal(upgradeCost('improved_exploration', 2), 50000);
+  const coins = game.state.coins;
+  const res = game.buyUpgrade('improved_exploration');
+  assert.equal(res.ok, false);
+  assert.match(res.error, /The Void/);
+  assert.equal(game.state.coins, coins, 'nothing spent');
+  game.state.areas.void.unlocked = true;
+  assert.ok(game.buyUpgrade('improved_exploration').ok);
+  assert.equal(game.state.coins, coins - 50000);
+  assert.equal(expeditionSlots(game.state), 3);
 });
 
 test('Better Finds adds half again the coins at max level for the same expedition', async () => {

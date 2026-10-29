@@ -1,6 +1,10 @@
+import { AREA_BY_ID } from './areas.js';
+
 // Permanent, global upgrades bought with coins. Separate from bug equipment.
-// cost(level) = round(base * growth^level). value(level) is the effect used by
-// the game; text(level) describes it. Upgrades apply to timers started after
+// cost(level) = round(base * growth^level), unless levelCosts sets that
+// level's price. needs: { level: area } keeps a level locked until that area
+// is unlocked. value(level) is the effect used by the game; text(level)
+// describes it. Upgrades apply to timers started after
 // purchase, never to eggs or expeditions already running.
 export const UPGRADES = [
   {
@@ -22,10 +26,11 @@ export const UPGRADES = [
     text: (l) => `+${5 * l}% coins`,
   },
   {
-    id: 'improved_exploration', name: 'Improved Exploration', max: 2, base: 600, growth: 2.6,
+    id: 'improved_exploration', name: 'Improved Exploration', max: 3, base: 600, growth: 2.6,
+    levelCosts: { 2: 50000 }, needs: { 2: 'void' }, // the third slot is a late-game goal
     desc: 'Run more expeditions at once, and find more treasure, chests and eggs.',
-    value: (l) => ({ slots: l ? 1 : 0, specialFind: 0.1 * l }),
-    text: (l) => `${l ? 2 : 1} expedition slot${l ? 's' : ''}, +${10 * l}% special finds`,
+    value: (l) => ({ slots: l >= 3 ? 2 : l ? 1 : 0, specialFind: 0.1 * Math.min(l, 2) }),
+    text: (l) => `${1 + (l >= 3 ? 2 : l ? 1 : 0)} expedition slot${l ? 's' : ''}, +${10 * Math.min(l, 2)}% special finds`,
   },
   {
     id: 'garden_space', name: 'Bigger Garden', max: 3, base: 1500, growth: 2.5,
@@ -46,7 +51,15 @@ export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 export function upgradeCost(id, level) {
   const u = UPGRADE_BY_ID[id];
   if (!u || level >= u.max) return Infinity;
-  return Math.round(u.base * Math.pow(u.growth, level));
+  return u.levelCosts?.[level] ?? Math.round(u.base * Math.pow(u.growth, level));
+}
+
+// Why the next level can't be bought yet (an area still locked), or null.
+export function upgradeLock(state, id) {
+  const u = UPGRADE_BY_ID[id];
+  const area = u?.needs?.[state.upgrades[id] || 0];
+  if (!area || state.areas[area]?.unlocked) return null;
+  return `Unlocks with ${AREA_BY_ID[area].name}`;
 }
 
 export function upgradeValue(state, id) {

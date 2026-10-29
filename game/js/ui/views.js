@@ -4,7 +4,7 @@ import { TRAITS, TRAIT_IDS } from '../data/traits.js';
 import { ITEMS, ITEM_TYPES, ITEM_TIERS, sellPrice, itemEffectsText, itemStock } from '../data/items.js';
 import { EGG_TIERS, EGG_BY_ID, HATCHERY_MOTTO } from '../data/eggs.js';
 import { AREAS, AREA_BY_ID } from '../data/areas.js';
-import { UPGRADES, upgradeCost, upgradeValue } from '../data/upgrades.js';
+import { UPGRADES, upgradeCost, upgradeValue, upgradeLock } from '../data/upgrades.js';
 import { GARDEN_LIMIT, PARTY_SIZE, BASE_ENCOUNTER_MS, EXPEDITION_LENGTH } from '../data/balance.js';
 import { DECOR } from '../data/decor.js';
 import { CAT_SPRITES, CAT_SPRITE_BY_ID } from '../data/cats.js';
@@ -844,11 +844,12 @@ export function renderUpgrades(v) {
       const lvl = st.upgrades[u.id] || 0;
       const cost = upgradeCost(u.id, lvl);
       const maxed = lvl >= u.max;
+      const locked = !maxed && upgradeLock(st, u.id);
       return `<div class="upgrade ${maxed ? 'maxed' : ''}">
         <div class="grow"><b>${u.name}</b> <small class="inline">Lv ${lvl}/${u.max}</small><small>${u.desc}</small>
           <div class="pips">${Array.from({ length: u.max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</div>
-          <small>Now: ${lvl || u.showZero ? u.text(lvl) : 'no bonus yet'}${maxed ? '' : `<br>Next: <b>${u.text(lvl + 1)}</b>`}</small></div>
-        ${maxed ? '<span class="ok">MAX</span>' : btn(coins(A, cost), 'upgrade', { id: u.id }, 'go sm', st.coins < cost)}
+          <small>Now: ${lvl || u.showZero ? u.text(lvl) : 'no bonus yet'}${maxed ? '' : `<br>Next: <b>${u.text(lvl + 1)}</b>`}${locked ? `<br><span class="muted">${locked}</span>` : ''}</small></div>
+        ${maxed ? '<span class="ok">MAX</span>' : btn(coins(A, cost), 'upgrade', { id: u.id }, 'go sm', st.coins < cost || !!locked)}
       </div>`;
     }).join('')}`;
 }
