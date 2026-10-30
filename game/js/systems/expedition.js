@@ -67,9 +67,10 @@ export function clampEncounterCount(n) {
   return Math.min(EXPEDITION_LENGTH.max, Math.max(EXPEDITION_LENGTH.min, Math.round(n)));
 }
 
-// Encounters that fit in a trip of this many hours with this party.
+// Encounters that fit in a trip of this many hours with this party (for the
+// presets, so capped at presetMax).
 export function encountersForHours(state, area, party, hours, opts = {}) {
-  return clampEncounterCount((hours * 3600e3) / encounterMs(state, area, party, opts));
+  return Math.min(EXPEDITION_LENGTH.presetMax, clampEncounterCount((hours * 3600e3) / encounterMs(state, area, party, opts)));
 }
 
 // An egg tier `up` steps higher, capped at the top tier.

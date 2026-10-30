@@ -17,9 +17,9 @@ function pickStorage() {
 }
 
 async function boot() {
-  const fill = document.querySelector('#loading .bar i');
+  const fill = document.querySelector('#loading .load-fill');
   const assets = new Assets();
-  await assets.load((p) => { if (fill) fill.style.width = `${Math.round(p * 100)}%`; });
+  await assets.load((p) => { if (fill) fill.style.height = `${Math.round(p * 100)}%`; });
 
   const storage = pickStorage();
   const game = new Game({ storage });
@@ -43,8 +43,20 @@ async function boot() {
       app.studioChanged();
     }
   });
-  document.querySelector('#loading')?.remove();
+  finishLoading(fill);
   window.bugGarden = { game, app, get studio() { return app.studio; } }; // handy for testing from the console
+}
+
+// Lets the pink fill finish rising to the top, then fades the loading screen
+// out. The game is already running underneath.
+function finishLoading(fill) {
+  const el = document.querySelector('#loading');
+  if (!el) return;
+  if (fill) fill.style.height = '100%';
+  setTimeout(() => {
+    el.classList.add('done');
+    setTimeout(() => el.remove(), 260);
+  }, el.classList.contains('ready') ? 850 : 0);
 }
 
 boot().catch((err) => {

@@ -319,9 +319,17 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .toast.good { border-color: var(--lime); } .toast.bad { border-color: var(--orange); }
 .toast.out { opacity: 0; }
 
-#loading { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--ink); color: var(--paper); text-align: center; padding: 20px; }
-#loading img { width: 96px; height: 96px; animation: walk 0.5s steps(2) infinite; }
-#loading .bar { flex: none; width: 60%; }
+/* The loading screen: loading.png (white, with see-through cut-outs) over a
+   pink fill that rises from the bottom as the game loads. Behind it all is
+   white, so a cut-out stays hidden until the pink reaches it. The fill only
+   shows once the art has arrived, so it never shows on its own. */
+#loading { position: absolute; inset: 0; z-index: 50; overflow: hidden; background: #ffffff; transition: opacity 0.25s ease-out; }
+#loading.done { opacity: 0; }
+#loading .load-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: #e71f67; opacity: 0; transition: height 0.8s ease-out; }
+#loading.ready .load-fill { opacity: 1; }
+#loading .load-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#loading p { position: absolute; left: 16px; right: 16px; bottom: 24px; margin: 0; color: var(--ink); text-align: center; font-weight: 700; }
+#loading p:empty { display: none; }
 
 /* ---------- v2: traits, eggs, expeditions ---------- */
 .hud-row { display: flex; gap: 6px; align-items: center; }
