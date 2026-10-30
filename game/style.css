@@ -320,10 +320,10 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .toast.out { opacity: 0; }
 
 /* The loading screen: loading.png (white, with see-through cut-outs) over a
-   pink fill that rises from the bottom as the game loads. Plain white until
-   the art has arrived, so the fill never shows on its own. */
+   pink fill that rises from the bottom as the game loads. Behind it all is
+   white, so a cut-out stays hidden until the pink reaches it. The fill only
+   shows once the art has arrived, so it never shows on its own. */
 #loading { position: absolute; inset: 0; z-index: 50; overflow: hidden; background: #ffffff; transition: opacity 0.25s ease-out; }
-#loading.ready { background: var(--ink); }
 #loading.done { opacity: 0; }
 #loading .load-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: #e71f67; opacity: 0; transition: height 0.8s ease-out; }
 #loading.ready .load-fill { opacity: 1; }
