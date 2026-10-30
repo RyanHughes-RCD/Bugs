@@ -467,7 +467,18 @@ export class GardenScene {
     this.updateBird(dt, list);
     this.updateCats(dt);
     this.logRoll = Math.max(0, this.logRoll - dt);
-    for (const p of this.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 30 * (p.g ?? 1) * dt; p.life -= dt; }
+    for (const p of this.particles) {
+      if (p.spin) {
+        // Curving round, for spirals.
+        const c = Math.cos(p.spin * dt);
+        const s = Math.sin(p.spin * dt);
+        [p.vx, p.vy] = [p.vx * c - p.vy * s, p.vx * s + p.vy * c];
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 30 * (p.g ?? 1) * dt;
+      p.life -= dt;
+    }
     this.particles = this.particles.filter((p) => p.life > 0).slice(-220);
     this.floaters = this.floaters.filter((f) => (f.life -= dt) > 0);
   }
@@ -507,7 +518,22 @@ export class GardenScene {
       ctx.globalAlpha = Math.min(1, p.life * 2);
       ctx.fillStyle = p.color;
       if (p.star) this.sparkle(sx, sy, scale * 0.7, p.color);
-      else if (p.ring) {
+      else if (p.cloud) {
+        ctx.globalAlpha = 1;
+        this.glow(p.x, p.y, p.cloud, hexA(p.color, 0.55 * Math.min(1, p.life)));
+      } else if (p.streak) {
+        // A shooting star: a bright head with a fading tail.
+        const tail = ctx.createLinearGradient(sx, sy, sx - p.vx * 0.25 * scale, sy - p.vy * 0.25 * scale);
+        tail.addColorStop(0, p.color);
+        tail.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = tail;
+        ctx.lineWidth = Math.max(1, scale * 0.6);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - p.vx * 0.25 * scale, sy - p.vy * 0.25 * scale);
+        ctx.stroke();
+        this.sparkle(sx, sy, scale * 0.7, p.color);
+      } else if (p.ring) {
         // A bubble: a hollow ring with a glint.
         ctx.fillRect(sx - scale, sy - 2 * scale, 2 * scale, scale * 0.6);
         ctx.fillRect(sx - scale, sy + scale, 2 * scale, scale * 0.6);

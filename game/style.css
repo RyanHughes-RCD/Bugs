@@ -619,6 +619,19 @@ textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.75rem
 .fxp-sparkle::before, .fxp-constellation::before { top: 4%; right: 6%; }
 .fxp-sparkle::after, .fxp-constellation::after { bottom: 10%; left: 4%; font-size: 9px; animation-delay: 0.75s; }
 .fxp-constellation::before, .fxp-constellation::after { color: #f4f4f4; }
+/* Celestial particles: a trail of stars, falling star dust and sand, nebula clouds, a spinning galaxy. */
+.fxp-startrail::before, .fxp-startrail::after, .fxp-galaxy::before { content: '✦'; color: #d6f6ff; text-shadow: 0 0 4px #73eff7; font-size: 10px; line-height: 1; animation: twinkle 1.2s ease-in-out infinite; }
+.fxp-startrail::before { bottom: 18%; left: 2%; }
+.fxp-startrail::after { bottom: 34%; left: -10%; font-size: 7px; animation-delay: 0.6s; }
+.fxp-stardust::before, .fxp-stardust::after, .fxp-sands::before, .fxp-sands::after { width: 3px; height: 3px; background: #73eff7; box-shadow: 0 0 3px #f4f4f4; left: 30%; top: 20%; animation: fxfall 1.8s linear infinite; }
+.fxp-stardust::after { left: 66%; background: #f4f4f4; animation-delay: 0.9s; }
+.fxp-sands::before, .fxp-sands::after { background: #ffcd75; box-shadow: none; left: 48%; top: 0; animation-duration: 1.1s; }
+.fxp-sands::after { left: 54%; background: #73eff7; animation-delay: 0.55s; }
+.fxp-nebula::before, .fxp-nebula::after { width: 60%; height: 60%; border-radius: 50%; top: 20%; left: 20%; background: radial-gradient(circle, rgba(244, 160, 176, 0.55), rgba(192, 106, 216, 0) 70%); animation: fxnebula 3.2s ease-in-out infinite; z-index: -1; }
+.fxp-nebula::after { background: radial-gradient(circle, rgba(59, 93, 201, 0.5), rgba(59, 93, 201, 0) 70%); animation-delay: 1.6s; }
+@keyframes fxnebula { 0%, 100% { transform: translate(-12%, 6%) scale(0.8); opacity: 0.4; } 50% { transform: translate(14%, -8%) scale(1.25); opacity: 1; } }
+.fxp-galaxy::before { top: 2%; right: 4%; }
+.fxp-galaxy::after { inset: 10%; border-radius: 50%; border: 2px dotted rgba(115, 239, 247, 0.6); animation: spin 4s linear infinite; z-index: -1; }
 /* Bursts of light. */
 .fxp-nova::after { inset: 15%; border-radius: 50%; border: 2px solid #fff07a; animation: fxnova 3s ease-out infinite; z-index: -1; }
 .fxp-nova::before { top: 0; left: 8%; }
