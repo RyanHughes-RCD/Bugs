@@ -30,7 +30,7 @@ const icon = (A, id, cls = '') => `<img class="px icon ${cls}" src="${A.spriteUr
 // wrapper so CSS can draw sparkles around them.
 // Bugs with special effects (species fx) get matching CSS animations, and a
 // wrapper that draws particles around them (not on silhouettes).
-const PARTICLE_FX = ['embers', 'bubbles', 'frost', 'sparkle', 'nova', 'constellation', 'orbit', 'lightning', 'void', 'rays'];
+const PARTICLE_FX = ['embers', 'bubbles', 'frost', 'sparkle', 'nova', 'constellation', 'orbit', 'lightning', 'void', 'rays', 'startrail', 'stardust', 'nebula', 'galaxy', 'sands'];
 export const bugImg = (A, bug, cls = '') => {
   const sp = SPECIES[bug.species];
   const sil = cls.includes('sil');

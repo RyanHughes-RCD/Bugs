@@ -200,6 +200,9 @@ const DRAWN = [
 //   orbit: motes circling it   pulse: breathing glow   glitch: digital tearing
 //   lightning: sparks arcing off it   void: light pulled inward
 //   nova: bursts of light   rays: turning sunbeams   constellation: linked stars
+//   startrail: drops stars where it goes   stardust: glitter falling from its wings
+//   nebula: drifting coloured clouds   galaxy: motes spiralling outward
+//   shooting: the odd shooting star overhead   sands: hourglass sand trickling down
 const FX = {
   ember_moth: ['embers'],
   bubble_diver: ['bubbles'],
@@ -214,11 +217,16 @@ const FX = {
   dream_weaver: ['orbit', 'trail'],
   rime_mantis: ['frost'],
   supernova_firefly: ['nova', 'sparkle'],
-  constellation_spider: ['constellation'],
+  constellation_spider: ['constellation', 'shooting'],
   seraph_butterfly: ['rainbow', 'trail', 'sparkle'],
-  chrono_scarab: ['trail', 'orbit'],
+  chrono_scarab: ['trail', 'orbit', 'sands'],
+  // Every celestial bug has particles of its own.
+  comet_dragonfly: ['startrail'],
+  star_moth: ['stardust'],
+  nebula_beetle: ['nebula'],
+  cosmic_butterfly: ['galaxy', 'sparkle'],
 };
-const FX_COLOR = { clockwork_beetle: '#ffcd75', bubble_diver: '#d6f6ff', prism_spider: '#f4f4f4', glitch_beetle: '#ff5fa8', dream_weaver: '#f4a0b0', chrono_scarab: '#73eff7', seraph_butterfly: '#fff3b8' };
+const FX_COLOR = { cosmic_butterfly: '#d6f6ff', clockwork_beetle: '#ffcd75', bubble_diver: '#d6f6ff', prism_spider: '#f4f4f4', glitch_beetle: '#ff5fa8', dream_weaver: '#f4a0b0', chrono_scarab: '#73eff7', seraph_butterfly: '#fff3b8' };
 
 // Shade-lovers that like to hide under the garden rock (relatives inherit
 // this from their base species).

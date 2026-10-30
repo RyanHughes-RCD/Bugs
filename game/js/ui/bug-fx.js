@@ -61,6 +61,47 @@ export function updateFx(scene, e, dt) {
       }
     }
   }
+  if (has('startrail')) {
+    // Stars left hanging in the air wherever it goes (and the odd one while it rests).
+    e.starT = (e.starT || 0) - dt;
+    if (e.starT <= 0) {
+      e.starT = e.moving ? 0.07 : rand(0.6, 1.4);
+      const c = ['#f4f4f4', '#d6f6ff', '#73eff7', '#41a6f6'][Math.floor(rand(0, 4))];
+      puff({ x: e.x + rand(-2, 2), y: y + rand(-1, 3), vx: rand(-1, 1), vy: rand(-1, 1), g: 0, life: rand(0.9, 1.5), color: c, star: Math.random() < 0.6 });
+    }
+  }
+  if (has('stardust') && Math.random() < dt * 8) {
+    // Glitter shaken from its wings, drifting down.
+    puff({ x: e.x + rand(-8, 8), y: y + rand(-3, 2), vx: rand(-3, 3), vy: rand(4, 9), g: 0, life: rand(0.8, 1.4), color: Math.random() < 0.5 ? '#73eff7' : '#f4f4f4', star: Math.random() < 0.2 });
+  }
+  if (has('nebula')) {
+    // Soft clouds of pink, violet and blue, with tiny stars twinkling in them.
+    if (Math.random() < dt * 5) {
+      const a = rand(0, TAU);
+      puff({ x: e.x + Math.cos(a) * 4, y: y + Math.sin(a) * 3, vx: Math.cos(a) * rand(2, 5), vy: Math.sin(a) * rand(1.5, 4) - 1, g: 0, life: rand(1.2, 2), color: ['#f4a0b0', '#c06ad8', '#3b5dc9', '#ff5fa8'][Math.floor(rand(0, 4))], cloud: rand(5, 8) });
+    }
+    if (Math.random() < dt * 3) puff({ x: e.x + rand(-9, 9), y: y + rand(-7, 6), vx: 0, vy: 0, g: 0, life: 0.5, color: '#f4f4f4', star: true });
+  }
+  if (has('galaxy') && Math.random() < dt * 12) {
+    // Motes spun off along two spiral arms.
+    const arm = Math.random() < 0.5 ? 0 : Math.PI;
+    const a = scene.t * 1.5 + arm + rand(-0.3, 0.3);
+    const v = rand(7, 11);
+    puff({ x: e.x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6, g: 0, spin: 2.2, life: rand(1, 1.5), color: ['#73eff7', '#f4a0b0', '#c06ad8', '#f4f4f4'][Math.floor(rand(0, 4))] });
+  }
+  if (has('shooting')) {
+    // Now and then a shooting star streaks across above it.
+    e.shootT = (e.shootT ?? rand(1, 4)) - dt;
+    if (e.shootT <= 0) {
+      e.shootT = rand(3, 7);
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      puff({ x: e.x - dir * 14, y: y - rand(14, 20), vx: dir * 45, vy: 16, g: 0, life: 0.55, color: '#f4f4f4', streak: true });
+    }
+  }
+  if (has('sands') && Math.random() < dt * 9) {
+    // Time trickling away: grains of sand falling straight down.
+    puff({ x: e.x + rand(-3, 3), y: y - rand(9, 12), vx: rand(-0.5, 0.5), vy: rand(10, 14), g: 0, life: rand(0.6, 0.9), color: Math.random() < 0.7 ? '#ffcd75' : '#73eff7' });
+  }
   if (has('glitch')) {
     e.glitchT = (e.glitchT || 0) - dt;
     if (e.glitchT < -rand(0.8, 2.5)) e.glitchT = rand(0.1, 0.35);

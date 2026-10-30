@@ -137,13 +137,21 @@ test('every side-view and rock-loving entry names a real species', async () => {
 });
 
 test('the four top rarities each gained four drawn bugs with special effects', () => {
-  const KNOWN_FX = ['embers', 'bubbles', 'frost', 'sparkle', 'rainbow', 'phase', 'trail', 'orbit', 'pulse', 'glitch', 'lightning', 'void', 'nova', 'rays', 'constellation'];
-  const withFx = SPECIES_LIST.filter((s) => s.fx.length);
-  assert.equal(withFx.length, 16);
-  for (const r of ['epic', 'legendary', 'mythic', 'celestial']) assert.equal(withFx.filter((s) => s.rarity === r).length, 4, r);
-  for (const s of withFx) {
-    for (const f of s.fx) assert.ok(KNOWN_FX.includes(f), `${s.id}: ${f}`);
+  const KNOWN_FX = ['embers', 'bubbles', 'frost', 'sparkle', 'rainbow', 'phase', 'trail', 'orbit', 'pulse', 'glitch', 'lightning', 'void', 'nova', 'rays', 'constellation',
+    'startrail', 'stardust', 'nebula', 'galaxy', 'shooting', 'sands'];
+  const drawn = SPECIES_LIST.filter((s) => s.fx.length && s.grid);
+  assert.equal(drawn.length, 16);
+  for (const r of ['epic', 'legendary', 'mythic', 'celestial']) assert.equal(drawn.filter((s) => s.rarity === r).length, 4, r);
+  for (const s of drawn) {
     const rows = SPRITES[s.grid];
     assert.ok(rows?.length === 16 && rows.every((row) => row.length === 16), `${s.id} has a 16x16 sprite`);
   }
+  for (const s of SPECIES_LIST.filter((x) => x.fx.length)) for (const f of s.fx) assert.ok(KNOWN_FX.includes(f), `${s.id}: ${f}`);
+});
+
+test('every celestial bug has particle effects', () => {
+  const PARTICLES = ['embers', 'bubbles', 'frost', 'sparkle', 'void', 'lightning', 'nova', 'startrail', 'stardust', 'nebula', 'galaxy', 'shooting', 'sands'];
+  const celestial = SPECIES_LIST.filter((s) => s.rarity === 'celestial');
+  assert.ok(celestial.length >= 8);
+  for (const s of celestial) assert.ok(s.fx.some((f) => PARTICLES.includes(f)), `${s.id} has particles`);
 });
