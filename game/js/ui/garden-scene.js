@@ -6,7 +6,7 @@ import { GARDEN_MAP, BOAT, BIRD } from '../data/balance.js';
 import { Rng } from '../core/rng.js';
 import { bugsOnExpedition, effectiveTraits } from '../systems/bugs.js';
 import { incubatorCount } from '../systems/eggs.js';
-import { dirtPatches, favouriteDecor, potCap, decorFits, decorRect } from '../systems/garden.js';
+import { dirtPatches, favouriteDecor, potCap, decorFits, decorRect, rockRect, overlapsRiver } from '../systems/garden.js';
 import { rockFindReady } from '../systems/visitors.js';
 import { fmtTime } from './format.js';
 import { daylight } from '../systems/daylight.js';
@@ -40,6 +40,7 @@ const flicker = (t) => {
 // shadow there: Mika on the left face, Noctis and Vyke on the right.
 const CAT_SEATS = [[13, 74], [45, 73], [69, 61]];
 const CAT_SIZE = 1.25; // drawn this much bigger than a bug's pixels
+const CAT_SPEED = 10; // map pixels a second, a little slower than a crawler
 const JAR_ORBS = [[17, 42, 3, 0], [27, 46, 2.5, 2.4]];
 
 export class GardenScene {
@@ -1224,9 +1225,12 @@ export class GardenScene {
   }
 
   // ---------- the cats ----------
-  // Whoever is visiting stands along the flower bed, in the same order each
-  // time. Opened at night (CAT_VISITS.asleep), they're curled up asleep for
-  // the whole session; awake, they meow now and then until petted.
+  // Whoever is visiting starts at their seat by the flower bed, in the same
+  // order each time. Opened at night (CAT_VISITS.asleep), they stay curled up
+  // asleep there for the whole session, breathing and snoozing like the
+  // bugs. Awake, they wander the garden like the bugs do (pausing, looking
+  // around, often wandering back to the bed) and meow now and then until
+  // petted. Cats aren't bugs: the bird, the battery and the rock leave them be.
 
   updateCats(dt) {
     this.catTimer = (this.catTimer || 0) - dt;
@@ -1236,25 +1240,101 @@ export class GardenScene {
       if (this.catsAsleep === undefined && this.ready) this.catsAsleep = catsAsleep(this.game.now());
     }
     const visit = this.cats;
-    if (!visit?.here.length || this.decorDrag?.id === 'flower_bed') return;
-    for (const c of this.catSpots()) {
-      if (Math.random() > dt * (this.catsAsleep ? 0.5 : visit.petted ? 0 : 0.15)) continue;
-      if (this.catsAsleep) this.float(c.x + 2, c.y - 17, 'z', '#94b0c2');
-      else this.float(c.x, c.y - 31, 'Meow!', '#f4f4f4');
+    if (!visit?.here.length) { this.catWalk = {}; return; }
+    this.catWalk = this.catWalk || {};
+    const seats = Object.fromEntries(this.catSeats().map((c) => [c.id, c]));
+    for (const id of Object.keys(this.catWalk)) if (!seats[id]) delete this.catWalk[id];
+    const cats = Object.values(seats).map((seat) => {
+      const c = this.catWalk[seat.id] || (this.catWalk[seat.id] = { id: seat.id, x: seat.x, y: seat.y, tx: seat.x, ty: seat.y, wait: rand(1, 4), flip: 1, phase: rand(0, 6), moving: false });
+      c.seat = seat;
+      return c;
+    });
+    for (const c of cats) {
+      c.phase += dt * 10;
+      c.moving = false;
+      if (this.catsAsleep || this.decorDrag?.id === 'flower_bed') {
+        // Asleep (or the bed is being moved): keep to the seat.
+        Object.assign(c, { x: c.seat.x, y: c.seat.y, tx: c.seat.x, ty: c.seat.y });
+        if (this.catsAsleep && Math.random() < dt * 0.4) this.floaters.push({ x: c.x - 5, y: c.y - 17, text: 'z', color: '#c8d4ff', life: 1.6 });
+        continue;
+      }
+      // A little personal space, as the bugs keep.
+      for (const o of cats) {
+        if (o === c) continue;
+        const dx = c.x - o.x;
+        const dy = c.y - o.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.01 && d < 16) {
+          const push = ((16 - d) / 16) * 14 * dt;
+          c.x = clamp(c.x + (dx / d) * push, BOUNDS.x0, BOUNDS.x1);
+          c.y = clamp(c.y + (dy / d) * push, BOUNDS.y0, BOUNDS.y1);
+        }
+      }
+      if (c.wait > 0) {
+        c.wait -= dt;
+        if (Math.random() < dt * 0.12) c.flip = -c.flip; // looking around
+        if (c.wait <= 0) this.pickCatTarget(c);
+      } else {
+        const dx = c.tx - c.x;
+        const dy = c.ty - c.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 0.8) c.wait = rand(2, 7);
+        else {
+          const step = Math.min(d, CAT_SPEED * dt);
+          c.x += (dx / d) * step;
+          c.y += (dy / d) * step;
+          c.moving = true;
+          if (Math.abs(dx) > 0.3) c.flip = dx < 0 ? -1 : 1; // the art faces right
+        }
+      }
+      if (!visit.petted && Math.random() < dt * 0.15) this.float(c.x, c.y - 31, 'Meow!', '#f4f4f4');
     }
   }
 
-  // Where each visiting cat is: [{ id, x, y }], in map pixels, with y the
+  // Somewhere new to stroll to: often back to its seat by the flower bed,
+  // otherwise a short wander from where it is.
+  pickCatTarget(c) {
+    if (Math.random() < 0.45) {
+      c.tx = c.seat.x;
+      c.ty = c.seat.y;
+      return;
+    }
+    // Somewhere on open grass: not on a decoration, the rock or the river.
+    const g = this.game.state.garden;
+    const blocked = (x, y) => {
+      const foot = { x0: x - 8, x1: x + 8, y0: y - 4, y1: y };
+      const hit = (o) => foot.x0 < o.x1 && foot.x1 > o.x0 && foot.y0 < o.y1 && foot.y1 > o.y0;
+      if (hit(rockRect(g.rock)) || overlapsRiver(g, foot)) return true;
+      return Object.entries(g.decor).some(([id, spot]) => spot && !DECOR_BY_ID[id].fixed && hit(decorRect(id, spot.x, spot.y)));
+    };
+    for (let k = 0; k < 10; k++) {
+      const x = clamp(c.x + rand(-50, 50), BOUNDS.x0 + 10, BOUNDS.x1 - 10);
+      const y = clamp(c.y + rand(-35, 35), BOUNDS.y0 + 26, BOUNDS.y1);
+      if (blocked(x, y)) continue;
+      c.tx = x;
+      c.ty = y;
+      return;
+    }
+    c.tx = c.seat.x; // nowhere open nearby: back to the bed
+    c.ty = c.seat.y;
+  }
+
+  // Each visiting cat's seat: [{ id, x, y }], in map pixels, with y the
   // bottom of its lowest pixel: in front of the flower bed's bottom edge,
   // just below the bed's shadow (CAT_SEATS).
-  catSpots() {
+  catSeats() {
     const visit = this.cats;
     const bed = this.decorSpot('flower_bed');
     if (!visit?.here.length || !bed) return [];
     const r = decorRect('flower_bed', bed.x, bed.y);
     const k = DECOR_BY_ID.flower_bed.scale;
-    return CATS.map((c, i) => ({ id: c.id, x: r.x0 + (CAT_SEATS[i][0] + 0.5) * k, y: r.y0 + (CAT_SEATS[i][1] + 1) * k, seat: CAT_SEATS[i] }))
+    return CATS.map((c, i) => ({ id: c.id, x: r.x0 + (CAT_SEATS[i][0] + 0.5) * k, y: r.y0 + (CAT_SEATS[i][1] + 1) * k }))
       .filter((c) => visit.here.includes(c.id));
+  }
+
+  // Where each visiting cat is right now: [{ id, x, y, ... }], y at its feet.
+  catSpots() {
+    return this.catSeats().map((seat) => this.catWalk?.[seat.id] || seat);
   }
 
   // The lowest drawn row of a sprite (redrawn cats may differ), cached per image.
@@ -1276,25 +1356,25 @@ export class GardenScene {
 
   drawCats() {
     const spots = this.catSpots();
-    const art = this.assets.decor.flower_bed;
-    if (!spots.length || !art) return;
+    if (!spots.length) return;
     const { ctx } = this;
-    // Seats are in the bed art's pixels, placed exactly as drawDecor draws it.
-    const bed = this.decorSpot('flower_bed');
-    const px = Math.max(1, Math.round(this.scale * DECOR_BY_ID.flower_bed.scale));
-    const [bx, by] = this.toScreen(bed.x, bed.y);
-    const left = Math.round(bx) - Math.round((art.width * px) / 2);
-    const top = Math.round(by) - Math.round((art.height * px) / 2);
     for (const c of spots.sort((a, b) => a.y - b.y)) {
       const img = this.assets.bugs[this.catsAsleep ? `${c.id}_asleep` : c.id];
       if (!img) continue;
       const cpx = this.bugPx * CAT_SIZE; // exactly a quarter bigger than a bug's pixels
       const size = img.width * cpx;
-      const fx = left + (c.seat[0] + 0.5) * px;
-      const fy = top + (c.seat[1] + 1) * px; // the bottom of the cat's lowest pixel
-      // A slow breath while asleep; awake, the odd little shift of weight.
-      const breath = Math.sin(this.t * (this.catsAsleep ? 1.2 : 0.7) + c.x) > 0.6 ? cpx : 0;
-      ctx.drawImage(img, Math.round(fx - size / 2), Math.round(fy - (this.lowestRow(img) + 1) * cpx - breath), Math.round(size), Math.round(size));
+      const feet = (this.lowestRow(img) + 1) * cpx; // from the sprite's top to the bottom of its lowest pixel
+      // Asleep: a slow breath, squishing up and down from the feet. Walking:
+      // the same waddle the bugs have.
+      const wig = c.moving ? 1 + Math.sin(c.phase) * 0.05 : 1;
+      const sy = this.catsAsleep ? 1 + Math.sin(this.t * 1.6 + c.x) * 0.05 : 2 - wig;
+      const [x, y] = this.toScreen(c.x, c.y);
+      ctx.save();
+      ctx.translate(Math.round(x), Math.round(y));
+      if (c.flip < 0) ctx.scale(-1, 1);
+      ctx.scale(wig, sy);
+      ctx.drawImage(img, -size / 2, -feet, size, size);
+      ctx.restore();
     }
   }
 
