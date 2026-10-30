@@ -32,11 +32,11 @@
     <nav id="nav"></nav>
     <div id="modal-root"></div>
     <div id="toasts"></div>
-    <div id="loading">
-      <img class="px" src="8x/ladybug.png" alt="">
-      <h1>Bug Garden</h1>
-      <div class="bar"><i></i></div>
-      <p>Waking up the bugs...</p>
+    <div id="loading" aria-label="Loading Bug Garden">
+      <!-- Pink fills up from the bottom, behind the art, so its cut-outs turn pink as the game loads. -->
+      <div class="load-fill"></div>
+      <img class="load-art" src="loading.png" alt="" onload="this.parentNode.classList.add('ready')">
+      <p></p>
     </div>
   </div>
   <script type="module" src="game/js/main.js"></script>
